@@ -1,0 +1,736 @@
+{
+  "module": {
+    "id": "M05",
+    "name": "Cadastro de Sucata / Veículo",
+    "slug": "cadastro_sucata",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P0",
+    "epic_ref": "E04",
+    "estimated_sprint": "Sprint 3",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "storage": "Supabase Storage / AWS S3/R2 (fotos do veículo)",
+      "queue": "BullMQ (processamento assíncrono de fotos e notificações)",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo responsável pelo cadastro, edição e gestão de sucatas (veículos completos). Vendedor cadastra um veículo completo com fotos e marca quais peças estão disponíveis usando lista fixa de PartCategory. Todo anúncio criado ou editado obrigatoriamente entra em fila de moderação antes de ser publicado (RN14).",
+    "goals": [
+      "Permitir que o vendedor cadastre sucatas via wizard multi-step no app",
+      "Gerenciar upload eficiente de 4 a 10 fotos por veículo via presigned URL",
+      "Garantir que todo anúncio passe pela moderação antes de ser publicado (RN14)",
+      "Permitir atualização rápida das peças disponíveis e status do veículo"
+    ],
+    "actors": [
+      "Vendedor",
+      "Moderador (aprova/rejeita anúncios via M09)",
+      "Sistema (BullMQ para processamento assíncrono)",
+      "Supabase Storage (armazenamento de fotos)"
+    ],
+    "dependencies": {
+      "modules": ["M01", "M03", "M04", "M09"],
+      "external_services": ["Supabase Storage / AWS S3/R2", "BullMQ"]
+    },
+    "module_flow": {
+      "description": "Fluxo completo de cadastro de sucata via wizard com upload de fotos e aprovação mandatória de moderador",
+      "pools": [
+        { "name": "Vendedor", "lanes": ["Operador de Desmanche"] },
+        { "name": "App Mobile", "lanes": ["Wizard multi-step (Expo Router)"] },
+        { "name": "API NestJS", "lanes": ["VehicleController", "VehicleService", "ListingService"] },
+        { "name": "Fila (BullMQ)", "lanes": ["PhotoProcessingWorker", "NotificationWorker"] },
+        { "name": "Moderação", "lanes": ["Moderador (painel web — M09)"] },
+        { "name": "Infraestrutura", "lanes": ["Supabase Storage", "Supabase PostgreSQL"] }
+      ],
+      "bpmn_text": [
+        "START EVENT: Vendedor toca 'Novo Anúncio' no app",
+        "TASK (App): Navegar para wizard app/(seller)/novo-anuncio.tsx",
+        "TASK (App): Step 1 — Seletor de Marca em cascata (componente VehicleSelector do M04)",
+        "TASK (Vendedor): Selecionar Marca → Modelo → Versão → Ano",
+        "TASK (App): Step 2 — Dados do veículo: cor, cidade, estado, observações, placa? (mascarada)",
+        "TASK (App): Step 3 — Seleção de peças disponíveis (checkboxes de PartCategory do M04)",
+        "TASK (App): Step 4 — Upload de fotos (mínimo 4, máximo 10)",
+        "TASK (Vendedor): Selecionar fotos da galeria ou câmera",
+        "TASK (App): Exibir preview de fotos com opção de reordenar e remover",
+        "TASK (App): Step 5 — Revisão e confirmação do anúncio",
+        "TASK (Vendedor): Tocar em 'Publicar para revisão'",
+        "TASK (API — VehicleController): POST /vehicles com CreateVehicleDto",
+        "TASK (API — VehicleService): Criar Vehicle com status DRAFT",
+        "TASK (API — ListingService): Criar Listing com status PENDING (RN14 obrigatório)",
+        "TASK (BullMQ): Enfileirar job de upload de fotos para cada imagem",
+        "TASK (BullMQ — PhotoWorker): Fazer upload para Supabase Storage / S3",
+        "TASK (BullMQ — PhotoWorker): Gerar thumbnail e salvar VehiclePhoto",
+        "MESSAGE FLOW (API → Moderador): Notificar nova sucata na fila de moderação (M09)",
+        "TASK (Vendedor): Visualizar anúncio com status 'Em revisão'",
+        "TASK (Moderador): Analisar anúncio na fila de moderação (M09.M09-T02)",
+        "EXCLUSIVE GATEWAY: Decisão do moderador?",
+        "  [PUBLISHED] --> TASK (API): Listing.status = PUBLISHED, publishedAt = now()",
+        "               MESSAGE FLOW (App): Notificar vendedor 'Anúncio publicado' (M11)",
+        "  [REJECTED] --> TASK (API): Listing.status = REJECTED, Vehicle.status = INACTIVE",
+        "               MESSAGE FLOW (App): Notificar vendedor com motivo da rejeição (M11)",
+        "END EVENT: Anúncio publicado ou rejeitado com notificação"
+      ],
+      "message_flows": [
+        "API → BullMQ: Jobs de upload e processamento de fotos",
+        "BullMQ → Supabase Storage: Upload e geração de thumbnail",
+        "API → M09: Novo anúncio na fila de moderação",
+        "M09 → M11: Notificação de aprovação/rejeição para o vendedor"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF40", "description": "Vendedor deve poder cadastrar sucata completa via wizard multi-step com: versão do veículo, ano, cor, localização, observações e placa opcional (mascarada)", "priority": "P0" },
+      { "id": "RF41", "description": "Vendedor deve poder marcar quais peças estão disponíveis usando lista fixa de PartCategory", "priority": "P0" },
+      { "id": "RF42", "description": "Vendedor deve poder fazer upload de 4 a 10 fotos por sucata", "priority": "P0" },
+      { "id": "RF43", "description": "Sistema deve submeter todo anúncio novo ou editado para fila de moderação com status PENDING (RN14)", "priority": "P0" },
+      { "id": "RF44", "description": "Vendedor deve poder editar sucata existente (dados e fotos)", "priority": "P0" },
+      { "id": "RF45", "description": "Vendedor deve poder atualizar lista de peças disponíveis de forma rápida", "priority": "P0" },
+      { "id": "RF46", "description": "Vendedor deve poder marcar sucata como 'Vendida' encerrando o anúncio", "priority": "P0" }
+    ],
+    "business_rules": [
+      { "id": "RN03", "description": "Anúncio representa SEMPRE um veículo completo NUNCA peças avulsas independentes" },
+      { "id": "RN04", "description": "A plataforma NÃO exibe preços em nenhum campo — negociação exclusivamente via chat" },
+      { "id": "RN05", "description": "Chassi NÃO é campo do sistema" },
+      { "id": "RN06", "description": "Ao marcar 'Vendido', veículo removido dos resultados públicos; histórico mantido" },
+      { "id": "RN08", "description": "Placa exibida parcialmente mascarada: ABC-****" },
+      { "id": "RN10", "description": "Sistema deve detectar e sinalizar anúncios duplicados do mesmo vendedor" },
+      { "id": "RN14", "description": "APROVAÇÃO MANDATÓRIA: Todo anúncio novo ou editado OBRIGATORIAMENTE passa pela moderação antes de se tornar público" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC20",
+        "name": "Cadastrar nova sucata",
+        "actors": ["Vendedor"],
+        "preconditions": ["Vendedor com status ACTIVE e SellerProfile criado"],
+        "main_flow": [
+          "1. Vendedor inicia wizard de novo anúncio",
+          "2. Seleciona veículo em cascata (M04)",
+          "3. Preenche dados do veículo",
+          "4. Seleciona peças disponíveis (PartCategory)",
+          "5. Faz upload de fotos (mín. 4)",
+          "6. Revisa e confirma",
+          "7. Sistema cria Vehicle + Listing(PENDING) e envia para moderação"
+        ],
+        "alternative_flows": [
+          "A1. Anúncio duplicado detectado: avisar vendedor e sugerir edição do existente",
+          "A2. Upload de foto falha: retornar erro com opção de retry"
+        ],
+        "postconditions": ["Vehicle criado com status PENDING; Listing em fila de moderação"]
+      },
+      {
+        "id": "UC21",
+        "name": "Editar sucata existente",
+        "actors": ["Vendedor"],
+        "preconditions": ["Veículo existente pertencente ao vendedor"],
+        "main_flow": [
+          "1. Vendedor acessa tela de edição do anúncio",
+          "2. Edita dados desejados",
+          "3. Sistema atualiza Vehicle e recoloca Listing em PENDING (RN14)"
+        ],
+        "alternative_flows": [],
+        "postconditions": ["Vehicle atualizado; Listing volta para PENDING aguardando moderação"]
+      },
+      {
+        "id": "UC22",
+        "name": "Marcar sucata como vendida",
+        "actors": ["Vendedor"],
+        "preconditions": ["Listing com status PUBLISHED"],
+        "main_flow": [
+          "1. Vendedor acessa opções do anúncio",
+          "2. Toca em 'Marcar como Vendida'",
+          "3. Confirma a ação",
+          "4. Sistema atualiza Vehicle.status=SOLD, Listing.status=SOLD"
+        ],
+        "alternative_flows": [],
+        "postconditions": ["Anúncio removido dos resultados públicos (RN06); histórico mantido"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M05-T01",
+        "title": "Schema Prisma — Vehicle, VehiclePhoto e Listing",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 1,
+        "epic": "E04 — Cadastro de Sucata",
+        "description": "Definir e criar as entidades Vehicle (sucata), VehiclePhoto e Listing no Prisma com todos os campos, relacionamentos com o catálogo do M04, constraints e índices necessários para busca eficiente.",
+        "user_stories": [
+          "Como desenvolvedor, quero entidades Vehicle e Listing bem estruturadas para que o cadastro de sucatas seja type-safe e suporte todas as regras de negócio",
+          "Como sistema de busca, quero índices adequados nas entidades para que queries de busca por veículo sejam eficientes"
+        ],
+        "use_cases": ["UC20"],
+        "functional_requirements": [
+          { "id": "RF40", "description": "Vehicle com versionId, yearFabId, availableParts (JSON), plate, color, city, state, status" },
+          { "id": "RF42", "description": "VehiclePhoto com url, order, type para galeria de fotos" },
+          { "id": "RF43", "description": "Listing com status PENDING como default" }
+        ],
+        "business_rules": [
+          { "id": "RN04", "description": "Sem campo de preço em nenhuma entidade" },
+          { "id": "RN05", "description": "Sem campo chassi no schema" },
+          { "id": "RN14", "description": "Listing.status default PENDING" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Schema das entidades de sucata",
+          "TASK: Declarar enum VehicleStatus (DRAFT, PENDING, ACTIVE, INACTIVE, SOLD)",
+          "TASK: Declarar enum ListingStatus (PENDING, PUBLISHED, REJECTED, SOLD, EXPIRED)",
+          "TASK: Escrever model Vehicle com todos os campos (SEM preço, SEM chassi)",
+          "TASK: Escrever model VehiclePhoto com order e type",
+          "TASK: Escrever model Listing vinculado a Vehicle e SellerProfile",
+          "TASK: Adicionar índices: (sellerId, status), (city, state), (versionId)",
+          "TASK: Executar migration",
+          "END EVENT: Schema de sucata pronto"
+        ],
+        "acceptance_criteria": [
+          "Vehicle NÃO contém campos: price, preco, valor, chassi, vin",
+          "Listing.status default PENDING (RN14)",
+          "Vehicle.availableParts como Json (array de PartCategory IDs)",
+          "Índice composto (city, state, status) para busca geográfica filtrada",
+          "VehiclePhoto com order Int para ordenação de galeria"
+        ],
+        "subtasks": [
+          {
+            "id": "M05-T01-ST01",
+            "title": "Escrever models Vehicle, VehiclePhoto e Listing no Prisma",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar schema.prisma com: Vehicle (id, sellerId FK→SellerProfile, versionId FK→VehicleVersion, yearFabId FK→VehicleYear, availableParts Json @default('[]'), plate String?, color String?, observations String?, city String, state String(2), lat Float?, lng Float?, status VehicleStatus @default(DRAFT)), VehiclePhoto (id, vehicleId, url, order Int, type PhotoType enum: EXTERIOR/INTERIOR/ENGINE/DAMAGE/OTHER), Listing (id, sellerId, vehicleId @unique, title String, status ListingStatus @default(PENDING), views Int @default(0), favoritesCount Int @default(0), publishedAt DateTime?, expiresAt DateTime?).",
+            "user_story": "Como desenvolvedor, quero models de sucata completos no Prisma para que o cadastro suporte todas as regras de negócio sem ambiguidades",
+            "use_case": "UC20",
+            "functional_requirements": [
+              { "id": "RF40", "description": "Vehicle com todos os campos exceto preço e chassi" },
+              { "id": "RF43", "description": "Listing.status default PENDING" }
+            ],
+            "business_rules": [
+              { "id": "RN03", "description": "Vehicle representa sucata completa, não peça avulsa" },
+              { "id": "RN04", "description": "Sem campo de preço em Vehicle nem Listing" },
+              { "id": "RN05", "description": "Sem campo chassi/VIN no schema" },
+              { "id": "RN14", "description": "Listing.status @default(PENDING)" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Escrever models de sucata",
+              "TASK: Declarar enums VehicleStatus, ListingStatus, PhotoType",
+              "TASK: Escrever model Vehicle sem preço e sem chassi",
+              "TASK: availableParts como Json array de IDs de PartCategory",
+              "TASK: Escrever model VehiclePhoto com order e type",
+              "TASK: Escrever model Listing com @default(PENDING) no status",
+              "TASK: Adicionar indices: @@index([sellerId, status]), @@index([city, state])",
+              "TASK: npx prisma validate",
+              "END EVENT: Schema válido"
+            ],
+            "acceptance_criteria": [
+              "npx prisma validate retorna sem erros",
+              "Vehicle não possui campo price, preco, valor, chassi, vin, chassis",
+              "Listing.status @default(PENDING) confirmado no schema",
+              "VehiclePhoto.order Int para reordenação no app",
+              "Listing.vehicleId @unique (1 anúncio por veículo)"
+            ],
+            "tech_notes": "Vehicle: `@@map('vehicle')`. Listing: `@@map('listing')`. VehiclePhoto: `@@map('vehicle_photo')`. availableParts: `Json @default('[]')` — armazenar array de IDs UUID de PartCategory: `['uuid1', 'uuid2']`. plate: `String?` — armazenar com todos os caracteres, mascarar na resposta da API via DTO. expiresAt: 90 dias após publishedAt. Não adicionar softDelete no Listing — usar status EXPIRED. Adicionar @@index([versionId]) no Vehicle para busca por modelo."
+          },
+          {
+            "id": "M05-T01-ST02",
+            "title": "Execução de migration e verificação do schema",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Executar `npx prisma migrate dev --name add_vehicle_listing` e verificar o SQL gerado. Confirmar criação das tabelas vehicle, vehicle_photo, listing com todos os índices e constraints corretos no Supabase.",
+            "user_story": "Como desenvolvedor, quero migration executada com sucesso para que o banco esteja pronto para receber cadastros de sucatas",
+            "use_case": "UC20",
+            "functional_requirements": [
+              { "id": "RF40", "description": "Tabelas criadas com estrutura correta" }
+            ],
+            "business_rules": [
+              { "id": "RN14", "description": "Verificar constraint DEFAULT 'PENDING' no banco" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Executar migration",
+              "TASK: npx prisma migrate dev --name add_vehicle_listing",
+              "TASK: Inspecionar SQL gerado em migrations/XXXX_add_vehicle_listing/migration.sql",
+              "TASK: Verificar índices: idx_vehicle_seller_status, idx_vehicle_city_state",
+              "TASK: Verificar DEFAULT 'PENDING' na tabela listing",
+              "TASK: Testar com prisma studio",
+              "END EVENT: Migration verificada"
+            ],
+            "acceptance_criteria": [
+              "Migration aplicada no Supabase staging sem erros",
+              "Tabelas criadas com snake_case correto conforme @@map",
+              "DEFAULT 'PENDING' visível no banco via Supabase SQL Editor",
+              "Índices criados e visíveis via \\d+ vehicle no PostgreSQL"
+            ],
+            "tech_notes": "Verificar no Supabase Studio: Tables → vehicle → Columns e Indexes. Usar `prisma studio` localmente para inspecionar dados. A coluna `available_parts` deve ser do tipo `jsonb` no PostgreSQL (Prisma mapeia Json para jsonb no Postgres — confirmar no SQL gerado). Testar insert manual via Supabase SQL Editor para validar constraints."
+          },
+          {
+            "id": "M05-T01-ST03",
+            "title": "Verificação de duplicidade de anúncios (RN10)",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Implementar lógica de detecção de anúncios duplicados do mesmo vendedor (RN10). Ao criar novo anúncio, verificar se o vendedor já tem Vehicle com o mesmo versionId + yearFabId com status ACTIVE ou PENDING. Retornar aviso sem bloquear a criação.",
+            "user_story": "Como sistema de qualidade, quero detectar anúncios duplicados do mesmo vendedor para garantir que o catálogo seja único e sem redundâncias que confundam compradores",
+            "use_case": "UC20",
+            "functional_requirements": [
+              { "id": "RF40", "description": "Verificação de duplicidade antes de criar anúncio" }
+            ],
+            "business_rules": [
+              { "id": "RN10", "description": "Sistema detecta e sinaliza anúncios duplicados do mesmo vendedor" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Vendedor submete novo anúncio",
+              "TASK: Buscar Vehicles do mesmo sellerId com versionId + yearFabId iguais e status IN [PENDING, ACTIVE]",
+              "EXCLUSIVE GATEWAY: Duplicata encontrada?",
+              "  [Sim] --> TASK: Incluir campo warnings: ['Você já tem um anúncio similar publicado. Listingid: XXX'] na resposta 201",
+              "           TASK: Marcar Listing com isDuplicate: true (campo no modelo)",
+              "  [Não] --> TASK: Criar normalmente sem aviso",
+              "END EVENT: Anúncio criado com ou sem aviso de duplicidade"
+            ],
+            "acceptance_criteria": [
+              "Criação de anúncio duplicado retorna 201 com campo warnings[] com aviso",
+              "App exibe modal de aviso ao comprador com link para anúncio existente",
+              "Verificação usa versionId + yearFabId + sellerId como chave de duplicidade",
+              "Campo isDuplicate no Listing para filtros de moderação"
+            ],
+            "tech_notes": "Adicionar campo `isDuplicate Boolean @default(false)` e `duplicateOfId String?` ao Listing para rastrear. Query: `prisma.listing.findFirst({ where: { sellerId, vehicle: { versionId, yearFabId }, status: { in: ['PENDING', 'PUBLISHED'] } } })`. Resposta da API ao criar: `{ listing: {...}, warnings: ['Anúncio similar já existe. ID: {listingId}'] }`. App: ao receber warnings, exibir BottomSheet com aviso e botão 'Ver anúncio existente'."
+          }
+        ]
+      },
+      {
+        "id": "M05-T02",
+        "title": "Wizard de cadastro de sucata no app React Native",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 3,
+        "epic": "E04 — Cadastro de Sucata",
+        "description": "Implementar wizard multi-step no Expo Router para cadastro de sucata: Step 1 (seleção de veículo em cascata), Step 2 (dados do veículo), Step 3 (peças disponíveis), Step 4 (upload de fotos), Step 5 (revisão). Usar Zustand para estado do wizard e React Hook Form + Zod para validação.",
+        "user_stories": [
+          "Como vendedor, quero um wizard intuitivo com passos claros para que o cadastro da minha sucata seja simples mesmo com muitas informações"
+        ],
+        "use_cases": ["UC20"],
+        "functional_requirements": [
+          { "id": "RF40", "description": "Wizard com 5 steps: veículo, dados, peças, fotos, revisão" },
+          { "id": "RF41", "description": "Checkboxes de PartCategory no Step 3" },
+          { "id": "RF42", "description": "Upload de 4-10 fotos no Step 4" }
+        ],
+        "business_rules": [
+          { "id": "RN03", "description": "Wizard cadastra veículo completo, não peças individuais" },
+          { "id": "RN04", "description": "Sem campo de preço em nenhum step do wizard" },
+          { "id": "RN08", "description": "Campo placa opcional com máscara ABC-XXXX" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Vendedor toca 'Novo Anúncio'",
+          "TASK (App): Inicializar Zustand store 'useWizardStore' com dados vazios",
+          "TASK (App): Renderizar Step 1 — VehicleSelector (componente do M04)",
+          "TASK (Vendedor): Selecionar veículo completo (marca → modelo → versão → ano)",
+          "TASK (App): Avançar para Step 2 — Dados do Veículo",
+          "TASK (Vendedor): Preencher: cor, cidade, estado, observações, placa (opcional)",
+          "TASK (App): Avançar para Step 3 — Peças Disponíveis",
+          "TASK (App): usePartCategories() busca lista fixa de categorias",
+          "TASK (Vendedor): Marcar checkboxes das peças disponíveis",
+          "TASK (App): Avançar para Step 4 — Upload de Fotos",
+          "TASK (Vendedor): Selecionar 4-10 fotos da galeria/câmera",
+          "TASK (App): Exibir grid de preview com opção de reordenar",
+          "TASK (App): Avançar para Step 5 — Revisão",
+          "TASK (App): Exibir resumo completo do anúncio",
+          "TASK (Vendedor): Confirmar e tocar 'Publicar para revisão'",
+          "END EVENT: Dados do wizard enviados para API"
+        ],
+        "acceptance_criteria": [
+          "Cada step valida seus dados antes de avançar",
+          "Navegação back sem perda de dados (estado no Zustand)",
+          "Step de fotos exige mínimo 4 e máximo 10 imagens",
+          "Nenhum step contém campo de preço ou valor",
+          "Placa com máscara ABC-**** (exibe apenas 3 primeiros caracteres no preview)"
+        ],
+        "subtasks": [
+          {
+            "id": "M05-T02-ST01",
+            "title": "Implementar Zustand store e estrutura do wizard",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar useWizardStore (Zustand) com estado completo do wizard: vehicleSelection, vehicleData, selectedPartIds, photos, currentStep. Implementar layout do wizard em app/(seller)/novo-anuncio/ com barra de progresso e navegação entre steps. Preservar estado ao navegar back.",
+            "user_story": "Como vendedor, quero que o wizard salve meu progresso ao navegar entre etapas para que eu não perca dados preenchidos ao voltar",
+            "use_case": "UC20",
+            "functional_requirements": [
+              { "id": "RF40", "description": "Estado persistido ao navegar entre steps" }
+            ],
+            "business_rules": [
+              { "id": "RN03", "description": "Estado do wizard reflete cadastro de veículo completo" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Wizard store inicializado",
+              "TASK: Criar useWizardStore com Zustand: { currentStep, vehicleSelection, vehicleData, selectedPartIds, photos, reset }",
+              "TASK: Criar layout app/(seller)/novo-anuncio/_layout.tsx com barra de progresso (5 steps)",
+              "TASK: Criar telas: step-1-veiculo.tsx, step-2-dados.tsx, step-3-pecas.tsx, step-4-fotos.tsx, step-5-revisao.tsx",
+              "TASK: Botões Next/Back que atualizam currentStep no Zustand",
+              "END EVENT: Estrutura do wizard implementada"
+            ],
+            "acceptance_criteria": [
+              "Barra de progresso reflete step atual (1/5, 2/5, etc)",
+              "Navegar back não reseta dados do step anterior",
+              "reset() limpa todo o estado após submissão bem-sucedida",
+              "Estado do Zustand tipado (TypeScript) com type WizardState"
+            ],
+            "tech_notes": "Zustand store: `create<WizardState>()((set) => ({ currentStep: 1, vehicleSelection: {}, vehicleData: {}, selectedPartIds: [], photos: [], setVehicleSelection: (s) => set({ vehicleSelection: s }), ... reset: () => set(initialState) }))`. Expo Router: o wizard usa pilha de rotas em `app/(seller)/novo-anuncio/`. Barra de progresso: componente StepProgressBar com `Animated.Value` para animar transição. Persistir no Zustand (não no AsyncStorage) — se app fechar, wizard reseta (comportamento intencional)."
+          },
+          {
+            "id": "M05-T02-ST02",
+            "title": "Step 3 — Seleção de peças disponíveis (PartCategory checkboxes)",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Implementar tela step-3-pecas.tsx com grid de checkboxes para seleção das PartCategory disponíveis no veículo. Usar usePartCategories() do M04. Permitir selecionar todas ou nenhuma. Mínimo de 1 categoria selecionada para avançar.",
+            "user_story": "Como vendedor, quero marcar de forma rápida quais peças tenho disponíveis na sucata para que compradores saibam o que podem comprar",
+            "use_case": "UC20",
+            "functional_requirements": [
+              { "id": "RF41", "description": "Grid de PartCategory com checkboxes e ícones" }
+            ],
+            "business_rules": [
+              { "id": "RN03", "description": "Peças são categorias de uma sucata completa, não anúncios avulsos" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Step 3 renderizado",
+              "TASK: usePartCategories() busca lista fixa (cache TanStack Query)",
+              "TASK: Renderizar grid 2x ou 3x com PartCategoryCard (ícone + nome + checkbox)",
+              "TASK (Vendedor): Tocar em categoria para toggle de seleção",
+              "TASK: Atualizar selectedPartIds no Zustand store",
+              "TASK: Botão 'Selecionar Todas' e 'Limpar'",
+              "TASK: Validar min. 1 selecionada antes de avançar",
+              "END EVENT: selectedPartIds atualizado no store"
+            ],
+            "acceptance_criteria": [
+              "Grid exibe todas as categorias com ícone e nome",
+              "Categoria selecionada exibe borda e fundo destacado",
+              "Botão Avançar desabilitado se nenhuma categoria selecionada",
+              "Contador de categorias selecionadas exibido (ex: '8 peças selecionadas')"
+            ],
+            "tech_notes": "Ícones: cada PartCategory tem campo `icon` com nome do MaterialCommunityIcons (ex: 'engine', 'car-brake-abs', 'car-door'). FlatList com numColumns=3 e keyExtractor={item.id}. PartCategoryCard: componentes com Pressable, borda selecionada via `borderWidth: 2, borderColor: primaryColor`. Persistir no Zustand: `setSelectedPartIds(ids: string[])`. Importante: sem campo de preço por categoria (RN04)."
+          },
+          {
+            "id": "M05-T02-ST03",
+            "title": "Step 4 — Upload de fotos com preview e reordenação",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 5,
+            "description": "Implementar tela step-4-fotos.tsx com seleção de 4-10 fotos via expo-image-picker. Exibir grid de preview com drag-to-reorder para definir ordem das fotos (foto 1 = capa do anúncio). Implementar compressão de imagem antes de armazenar no estado do Zustand.",
+            "user_story": "Como vendedor, quero fazer upload de fotos de boa qualidade da minha sucata, organizadas por importância, para que compradores vejam o veículo claramente",
+            "use_case": "UC20",
+            "functional_requirements": [
+              { "id": "RF42", "description": "Upload de 4-10 fotos com preview e reordenação" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Step 4 renderizado",
+              "TASK: Exibir botões: 'Câmera' e 'Galeria'",
+              "TASK (Vendedor): Selecionar fotos (múltipla seleção)",
+              "TASK (App): expo-image-manipulator comprime para max 1200px width e qualidade 0.85",
+              "TASK (App): Exibir grid de preview com DraggableFlatList ou equivalente",
+              "TASK (Vendedor): Reordenar fotos via drag-and-drop",
+              "TASK (App): Atualizar photos[] no Zustand com { uri, order, type }",
+              "EXCLUSIVE GATEWAY: Quantidade de fotos válida? (4 <= n <= 10)",
+              "  [Não] --> TASK: Exibir badge de aviso (vermelho se <4, verde se ok)",
+              "  [Sim] --> TASK: Habilitar botão Avançar",
+              "END EVENT: Fotos selecionadas e ordenadas"
+            ],
+            "acceptance_criteria": [
+              "Mínimo 4 fotos para avançar (erro inline se menos)",
+              "Máximo 10 fotos (botão de adicionar desabilitado após 10)",
+              "Primeira foto marcada como CAPA com badge visual",
+              "Compressão: max 1200x1200px, qualidade 0.85, formato JPEG",
+              "Drag-to-reorder funcional"
+            ],
+            "tech_notes": "expo-image-picker: `{ allowsMultipleSelection: true, mediaTypes: 'images', quality: 1 }`. expo-image-manipulator: `await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 1200 } }], { compress: 0.85, format: 'jpeg' })`. Drag-and-drop: `react-native-draggable-flatlist` — `<DraggableFlatList data={photos} onDragEnd={({ data }) => setPhotos(data)} renderItem={...} />`. Preview: grid 3x3 com Image fill, badge '#1' na foto capa, botão X para remover individual. Fotos armazenadas no Zustand como `{ uri: string, order: number, type: PhotoType }`."
+          }
+        ]
+      },
+      {
+        "id": "M05-T03",
+        "title": "API NestJS — Endpoints de Vehicle e Listing",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 3,
+        "epic": "E04 — Cadastro de Sucata",
+        "description": "Implementar VehicleModule no NestJS com endpoints: POST /vehicles (criar sucata + listing PENDING), GET /vehicles/:id, PUT /vehicles/:id, DELETE /vehicles/:id, PUT /vehicles/:id/available-parts (atualização rápida de peças), PUT /vehicles/:id/status. Garantir RN14: toda criação/edição gera Listing PENDING.",
+        "user_stories": [
+          "Como API, quero criar Vehicle e Listing em transaction atomic para que RN14 seja sempre respeitado sem chance de inconsistência"
+        ],
+        "use_cases": ["UC20", "UC21", "UC22"],
+        "functional_requirements": [
+          { "id": "RF43", "description": "POST /vehicles cria Vehicle + Listing(PENDING) em transaction" },
+          { "id": "RF44", "description": "PUT /vehicles/:id recoloca listing em PENDING (RN14)" },
+          { "id": "RF45", "description": "PUT /vehicles/:id/available-parts atualiza peças sem PENDING" },
+          { "id": "RF46", "description": "PUT /vehicles/:id/status para marcar SOLD" }
+        ],
+        "business_rules": [
+          { "id": "RN04", "description": "DTO de criação não aceita campo de preço (whitelist + forbidNonWhitelisted)" },
+          { "id": "RN14", "description": "Transaction obrigatória: Vehicle(PENDING) + Listing(PENDING)" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: POST /vehicles recebida do app",
+          "TASK (NestJS): JwtAuthGuard + verificar type SELLER ou BOTH",
+          "TASK: Validar CreateVehicleDto (sem campos de preço ou chassi)",
+          "TASK: Verificar duplicidade (RN10)",
+          "TASK: prisma.$transaction([createVehicle(PENDING), createListing(PENDING)])",
+          "TASK: Enfileirar jobs de upload de fotos no BullMQ",
+          "TASK: Notificar fila de moderação (M09)",
+          "TASK: Retornar 201 com Vehicle e Listing criados",
+          "END EVENT: Sucata registrada aguardando moderação e upload de fotos"
+        ],
+        "acceptance_criteria": [
+          "POST /vehicles retorna 201 com vehicle.status=PENDING e listing.status=PENDING",
+          "PUT /vehicles/:id retorna listing.status=PENDING (remoderate obrigatório)",
+          "PUT /vehicles/:id/available-parts NÃO altera status do listing (só atualiza peças)",
+          "DTO rejeitado se contiver campo price, valor, preco ou chassi",
+          "Vendedor só acessa seus próprios veículos"
+        ],
+        "subtasks": [
+          {
+            "id": "M05-T03-ST01",
+            "title": "Criar CreateVehicleDto, UpdateVehicleDto e VehicleService",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 5,
+            "description": "Implementar DTOs com class-validator para criar e editar Vehicle. CreateVehicleDto: versionId, yearFabId, color, city, state, observations?, plate?, availableParts (array de UUIDs), photoUrls (após upload). Garantia de whitelist para bloquear campos não permitidos (price, chassi). VehicleService com métodos create, update, findById, updateParts, updateStatus.",
+            "user_story": "Como API NestJS, quero DTOs rigorosamente validados para que nenhum campo não autorizado (preço, chassi) entre na criação de sucata",
+            "use_case": "UC20",
+            "functional_requirements": [
+              { "id": "RF40", "description": "DTO com campos necessários e whitelisting estrito" }
+            ],
+            "business_rules": [
+              { "id": "RN04", "description": "forbidNonWhitelisted: true bloqueia qualquer campo de preço" },
+              { "id": "RN14", "description": "create() sempre gera Listing(PENDING) em transaction" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: POST /vehicles com body",
+              "TASK: ValidationPipe (whitelist: true, forbidNonWhitelisted: true)",
+              "TASK: CreateVehicleDto valida todos os campos",
+              "TASK: VehicleService.create(sellerId, dto)",
+              "TASK: prisma.$transaction: Vehicle(PENDING) + Listing(PENDING)",
+              "TASK: Detectar duplicidade via findFirst",
+              "TASK: Enfileirar BullMQ job de upload (passando photoUris temporárias)",
+              "END EVENT: 201 Created com vehicle e listing"
+            ],
+            "acceptance_criteria": [
+              "forbidNonWhitelisted rejeitará qualquer body com 'price', 'valor', 'chassi', 'vin'",
+              "availableParts validado como array de UUIDs (IsArray, IsUUID each)",
+              "Transaction garante Vehicle + Listing criados atomicamente",
+              "Listing.title auto-gerado: 'Sucata {Brand} {Model} {Year}'"
+            ],
+            "tech_notes": "CreateVehicleDto: `@IsUUID() versionId`, `@IsUUID() yearFabId`, `@IsString() @Length(1,50) color`, `@IsString() @Length(2,2) state`, `@IsString() @Length(2,100) city`, `@IsOptional() @IsString() @MaxLength(500) observations`, `@IsOptional() @Matches(/^[A-Z]{3}\\d{4}$|^[A-Z]{3}[A-Z0-9]\\d{3}$/) plate`, `@IsArray() @IsUUID('all', { each: true }) availableParts`. Auto-title no service: `{brand.name} {model.name} {yearFab.yearFab}` incluindo include no Prisma via versionId chain. PROIBIDO: qualquer campo começando com price, valor, preco, custo."
+          },
+          {
+            "id": "M05-T03-ST02",
+            "title": "Upload de fotos via presigned URL e job BullMQ",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 5,
+            "description": "Implementar endpoint POST /vehicles/:id/photos que retorna presigned URLs para upload direto ao Supabase Storage / S3. App faz upload das fotos diretamente ao storage. Job BullMQ processa confirmação, gera thumbnail e salva VehiclePhoto no banco.",
+            "user_story": "Como app mobile, quero fazer upload de fotos diretamente ao storage via presigned URL para que o processo seja rápido sem passar pela API NestJS",
+            "use_case": "UC20",
+            "functional_requirements": [
+              { "id": "RF42", "description": "Presigned URLs para upload direto, processamento assíncrono via BullMQ" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: POST /vehicles/:id/photos { count: 6, mimeTypes: [] }",
+              "TASK (API): Gerar N presigned upload URLs via Supabase Storage",
+              "TASK (API): Retornar array de { uploadUrl, path, index }",
+              "TASK (App): PUT uploadUrl para cada foto em paralelo (Promise.all)",
+              "TASK (App): POST /vehicles/:id/photos/confirm { paths: [] }",
+              "TASK (API): Criar VehiclePhoto com order=index e status UPLOADING",
+              "TASK (BullMQ): Enfileirar job 'process-vehicle-photo' para cada foto",
+              "TASK (Worker): Gerar thumbnail 400x300px via sharp ou cloudflare images",
+              "TASK (Worker): Atualizar VehiclePhoto.url com URL final e status READY",
+              "END EVENT: Fotos processadas e salvas"
+            ],
+            "acceptance_criteria": [
+              "Presigned URLs expiram em 5 minutos",
+              "Upload máximo de 10MB por foto",
+              "Foto capa (order=0) usada em thumbnails de listagem",
+              "Jobs de foto com retry 3x em caso de falha",
+              "Fotos armazenadas em bucket Supabase 'vehicle-photos' público"
+            ],
+            "tech_notes": "Supabase: `supabase.storage.from('vehicle-photos').createSignedUploadUrl(path, { expiresIn: 300 })`. Path: `vehicles/{vehicleId}/{index}.jpg`. Thumbnail: se usando Cloudflare Images, usar transform URL. Se S3/R2: usar `sharp` no worker para resize. BullMQ job: `{ vehicleId, photoPath, order }`. Worker: download via Storage, resize com sharp, re-upload thumbnail, atualizar VehiclePhoto. Expo: `fetch(uploadUrl, { method: 'PUT', body: imageBlob, headers: { 'Content-Type': 'image/jpeg' } })`."
+          },
+          {
+            "id": "M05-T03-ST03",
+            "title": "Endpoint de atualização rápida de peças disponíveis",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Implementar PUT /vehicles/:id/available-parts que atualiza apenas o campo availableParts do Vehicle SEM recolocar o Listing em PENDING. Esta é a única edição que não dispara moderação — pois atualizar quais peças estão disponíveis é operação rotineira do vendedor após negociações.",
+            "user_story": "Como vendedor, quero atualizar rapidamente quais peças ainda estão disponíveis na sucata após vendas parciais, sem precisar que o anúncio passe pela moderação novamente",
+            "use_case": "UC21",
+            "functional_requirements": [
+              { "id": "RF45", "description": "PUT /available-parts atualiza peças sem trigger de moderação" }
+            ],
+            "business_rules": [
+              { "id": "RN03", "description": "Peças são marcações do veículo completo, não anúncios avulsos" },
+              { "id": "RN14", "description": "EXCEÇÃO: update de available-parts não dispara moderação" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: PUT /vehicles/:id/available-parts { partIds: [] }",
+              "TASK: Verificar que Vehicle.sellerId === req.user.sellerId",
+              "TASK: Validar que partIds são UUIDs de PartCategory existentes",
+              "TASK: prisma.vehicle.update({ data: { availableParts: partIds } })",
+              "TASK: NÃO alterar Listing.status",
+              "TASK: Retornar 200 com vehicle atualizado",
+              "END EVENT: Peças atualizadas sem nova moderação"
+            ],
+            "acceptance_criteria": [
+              "PUT /available-parts retorna 200 sem alterar Listing.status",
+              "DTO: array de UUIDs de PartCategory válidos",
+              "Vendedor não pode editar veículo de outro vendedor (403 Forbidden)",
+              "partIds vazios são permitidos (vendedor pode limpar todas as peças)"
+            ],
+            "tech_notes": "UpdateAvailablePartsDto: `@IsArray() @IsUUID('all', { each: true }) partIds: string[]`. Validar existência das partIds: `prisma.partCategory.count({ where: { id: { in: partIds } } })` deve ser igual a `partIds.length`. Guard de ownership: `@UseGuards(JwtAuthGuard, VehicleOwnerGuard)` onde VehicleOwnerGuard verifica `vehicle.sellerId === req.user.sellerProfile.id`."
+          }
+        ]
+      },
+      {
+        "id": "M05-T04",
+        "title": "Edição de sucata e marcação como vendida",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E04 — Cadastro de Sucata",
+        "description": "Implementar tela de edição de sucata no app (reutilizando o wizard em modo edit) e endpoint PUT /vehicles/:id que obrigatoriamente recoloca o Listing em PENDING para nova moderação (RN14). Implementar marcação como vendida com confirmação.",
+        "user_stories": [
+          "Como vendedor, quero editar minha sucata quando informações mudarem e quero marcar como vendida quando a negociação for concluída"
+        ],
+        "use_cases": ["UC21", "UC22"],
+        "functional_requirements": [
+          { "id": "RF44", "description": "Edição recoloca listing em PENDING (RN14)" },
+          { "id": "RF46", "description": "Marcação como Vendida em 2 cliques" }
+        ],
+        "business_rules": [
+          { "id": "RN06", "description": "Marcação como Vendida remove anúncio dos resultados públicos" },
+          { "id": "RN14", "description": "Toda edição dispara nova moderação obrigatoriamente" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Vendedor acessa tela de edição de anúncio",
+          "TASK (App): useQuery(['vehicle', id]) carrega dados atuais para pré-preencher wizard",
+          "TASK (Vendedor): Edita campos desejados",
+          "TASK (API): PUT /vehicles/:id com campos editados",
+          "TASK (API): prisma.$transaction: update Vehicle + Listing.status = PENDING",
+          "TASK (API): Notificar fila de moderação (M09)",
+          "TASK (App): Exibir status 'Em revisão' na listagem de anúncios",
+          "PARALLEL GATEWAY: Ação de Vendida",
+          "  --> TASK: Botão 'Marcar como Vendida' em tela de gestão",
+          "  --> TASK (App): Alert de confirmação 'Esta ação não pode ser desfeita'",
+          "  --> TASK (API): PUT /vehicles/:id/status { status: 'SOLD' }",
+          "  --> TASK (API): Vehicle.status=SOLD + Listing.status=SOLD",
+          "END EVENT: Veículo editado ou marcado como vendido"
+        ],
+        "acceptance_criteria": [
+          "PUT /vehicles/:id retorna listing.status=PENDING obrigatoriamente",
+          "Tela de edição pré-preenchida com dados atuais",
+          "Marcação como SOLD remove imediatamente dos resultados de busca (RN06)",
+          "Vendedor notificado quando anúncio editado for reaprovado pela moderação"
+        ],
+        "subtasks": [
+          {
+            "id": "M05-T04-ST01",
+            "title": "Implementar PUT /vehicles/:id com re-moderação obrigatória (RN14)",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Criar endpoint PUT /vehicles/:id que atualiza dados do Vehicle e obrigatoriamente recoloca o Listing em status PENDING via transaction. Disparar notificação para fila de moderação (M09). Retornar 200 com vehicle e listing atualizados.",
+            "user_story": "Como sistema de conformidade, quero que toda edição de sucata obrigatoriamente passe por moderação para garantir qualidade e confiança na plataforma",
+            "use_case": "UC21",
+            "functional_requirements": [
+              { "id": "RF44", "description": "PUT /vehicles/:id sempre gera nova revisão (RN14)" }
+            ],
+            "business_rules": [
+              { "id": "RN14", "description": "editado = PENDING. Sem exceção." }
+            ],
+            "bpmn_flow": [
+              "START EVENT: PUT /vehicles/:id",
+              "TASK: Verificar ownership (VehicleOwnerGuard)",
+              "TASK: Validar UpdateVehicleDto (mesmo que CreateVehicleDto, todos opcionais)",
+              "TASK: prisma.$transaction([updateVehicle, updateListing({ status: 'PENDING' })])",
+              "TASK: Enfileirar job de notificação para moderação",
+              "TASK: Retornar 200 com { vehicle, listing: { status: 'PENDING' } }",
+              "END EVENT: Veículo atualizado, listing em PENDING"
+            ],
+            "acceptance_criteria": [
+              "listing.status sempre PENDING na resposta, independente do estado anterior",
+              "Campos não enviados no body não são alterados (partial update via Partial<UpdateVehicleDto>)",
+              "Transaction garante atomicidade do update",
+              "AuditLog registra quais campos foram alterados"
+            ],
+            "tech_notes": "UpdateVehicleDto extends PartialType(CreateVehicleDto). No service: `prisma.$transaction([prisma.vehicle.update({ data: dto }), prisma.listing.update({ where: { vehicleId }, data: { status: 'PENDING', publishedAt: null } })])`. AuditLog: comparar dto vs vehicle anterior e registrar diff. Não resetar views e favoritesCount do Listing ao voltar para PENDING."
+          },
+          {
+            "id": "M05-T04-ST02",
+            "title": "Tela de edição de anúncio no app (wizard em modo edit)",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Reutilizar o wizard de cadastro em modo edição: app/(seller)/anuncio/[id]/editar.tsx. Carregar dados atuais como defaultValues no Zustand store. Permitir editar qualquer step. Ao submeter, chamar PUT /vehicles/:id e exibir aviso 'Anúncio enviado para revisão novamente'.",
+            "user_story": "Como vendedor, quero editar meu anúncio de sucata usando o mesmo wizard de cadastro para que a experiência seja consistente e familiar",
+            "use_case": "UC21",
+            "functional_requirements": [
+              { "id": "RF44", "description": "Wizard em modo edit com dados pré-preenchidos" }
+            ],
+            "business_rules": [
+              { "id": "RN14", "description": "App exibe aviso de re-moderação após edição" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Vendedor toca 'Editar anúncio'",
+              "TASK: useQuery(['vehicle', id]) carrega Vehicle com VehiclePhotos",
+              "TASK: Inicializar Zustand store com dados existentes (modo edit)",
+              "TASK: Wizard renderizado com dados pré-preenchidos",
+              "TASK (Vendedor): Navega pelos steps e edita o que precisa",
+              "TASK: useMutation PUT /vehicles/:id",
+              "TASK: onSuccess → Toast 'Anúncio enviado para revisão novamente'",
+              "END EVENT: Edição concluída"
+            ],
+            "acceptance_criteria": [
+              "Todos os steps carregados com dados atuais do veículo",
+              "Fotos existentes exibidas no Step 4 com opção de adicionar/remover",
+              "Alert antes de submeter informando que anúncio voltará para revisão",
+              "Após edição, status do anúncio exibido como 'Em revisão' na lista"
+            ],
+            "tech_notes": "Ao inicializar Zustand em modo edit: `useEffect(() => { wizardStore.loadExistingVehicle(vehicleData) }, [vehicleData])`. Fotos existentes: carregadas com URLs atuais mas status isExisting=true para não re-fazer upload. Novas fotos adicionadas: processadas normalmente. Fotos removidas: lista de photosToDelete enviada no body do PUT. Body do PUT: `{ ...editedFields, newPhotoUrls: [], deletePhotoIds: [] }`."
+          },
+          {
+            "id": "M05-T04-ST03",
+            "title": "Marcação de sucata como Vendida (RN06)",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Implementar endpoint PUT /vehicles/:id/status { status: 'SOLD' } e fluxo no app: botão 'Marcar como Vendida' → Alert de confirmação → chamada API → anúncio removido dos resultados públicos. Chats existentes permanecem acessíveis mas novos não podem ser iniciados (RN11).",
+            "user_story": "Como vendedor, quero marcar minha sucata como vendida com apenas 2 toques para que eu possa atualizar meu inventário rapidamente",
+            "use_case": "UC22",
+            "functional_requirements": [
+              { "id": "RF46", "description": "Marcar como SOLD em 2 cliques com confirmação" }
+            ],
+            "business_rules": [
+              { "id": "RN06", "description": "SOLD remove dos resultados públicos, histórico mantido" },
+              { "id": "RN11", "description": "Novos chats não permitidos em anúncios SOLD" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Vendedor toca 'Marcar como Vendida'",
+              "TASK (App): Alert.alert('Confirmar Venda', 'Esta ação encerrará o anúncio definitivamente.')",
+              "TASK (Vendedor): Confirmar",
+              "TASK (API): PUT /vehicles/:id/status { status: 'SOLD' }",
+              "TASK (API): prisma.$transaction: Vehicle.status=SOLD + Listing.status=SOLD + soldAt=now()",
+              "TASK (API): Atualizar SellerStats.totalSold via BullMQ job",
+              "TASK (App): queryClient.invalidateQueries(['seller', 'listings'])",
+              "TASK (App): Toast 'Anúncio encerrado como vendido'",
+              "END EVENT: Sucata marcada como SOLD, removida dos resultados públicos"
+            ],
+            "acceptance_criteria": [
+              "Dois passos de confirmação (botão + Alert nativo)",
+              "Vehicle.status=SOLD e Listing.status=SOLD em transaction",
+              "Anúncio não aparece em buscas após SOLD (filter status='PUBLISHED' nas queries)",
+              "Chats existentes do anúncio continuam acessíveis (RN06)",
+              "Novos chats no anúncio SOLD retornam 403 (RN11)"
+            ],
+            "tech_notes": "UpdateVehicleStatusDto: `@IsEnum(['SOLD', 'INACTIVE', 'ACTIVE']) status`. Endpoint: `@Put(':id/status') @UseGuards(JwtAuthGuard, VehicleOwnerGuard)`. No Prisma: adicionar campo `soldAt DateTime?` no Listing. Após SOLD: BullMQ job 'update-seller-stats' para recalcular totalSold. No M07 (busca): sempre filtrar `listing.status === 'PUBLISHED'`."
+          }
+        ]
+      }
+    ]
+  }
+}

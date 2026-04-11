@@ -1,0 +1,370 @@
+{
+  "module": {
+    "id": "M10",
+    "name": "Gestão de Assinaturas",
+    "slug": "gestao_assinaturas",
+    "version": "1.0.0",
+    "status": "deferred",
+    "priority": "P3",
+    "epic_ref": "E09",
+    "estimated_sprint": "Post-MVP (indefinido)",
+    "deferred_reason": "Modelo de monetização do PECAÊ foi redefinido. Vendedores não pagam assinatura — a plataforma é gratuita para vendedores. A monetização ocorre via anúncios e propagandas in-app (M13). Este módulo é OPCIONAL e deve ser revisado apenas se houver mudança estratégica futura.",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "payment": "Mercado Pago Checkout Pro (checkout externo via WebView) ou Apple IAP e Google Play Billing (MVP mobile-only)",
+      "queue": "BullMQ (jobs de renovação e expiração de assinatura)",
+      "webhook": "POST /webhooks/mercadopago (ingestão de eventos de pagamento)",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo de monetização do PECAÊ via assinaturas para vendedores. Define planos (Gratuito, Pro, Premium) com diferentes quotas de anúncios e features. Integração com Mercado Pago para pagamentos no Brasil. Webhooks para sincronização de status de assinatura. Toda transação financeira é externa — o PECAÊ não processa pagamentos diretamente.",
+    "goals": [
+      "Definir e gerenciar planos de assinatura para vendedores (Gratuito/Pro/Premium)",
+      "Integrar Mercado Pago para processar assinaturas e pagamentos recorrentes",
+      "Sincronizar status de assinatura via webhooks do Mercado Pago",
+      "Aplicar limites de anúncios baseados no plano do vendedor"
+    ],
+    "actors": [
+      "Vendedor (assina plano e gerencia assinatura)",
+      "Mercado Pago (processa pagamentos)",
+      "Sistema (verifica limites de anúncios, processa webhooks)"
+    ],
+    "dependencies": {
+      "modules": ["M01", "M03", "M05"],
+      "external_services": ["Mercado Pago API (preapproval/subscriptions)", "BullMQ (expiração de assinatura)"]
+    },
+    "plans": {
+      "GRATUITO": {
+        "max_listings": 3,
+        "features": ["Cadastro básico", "Chat", "Busca padrão"],
+        "price_brl": 0
+      },
+      "PRO": {
+        "max_listings": 15,
+        "features": ["Destaque na busca", "Selo Pro", "Analytics básico", "Alertas prioritários"],
+        "price_brl": 49.90,
+        "billing": "monthly"
+      },
+      "PREMIUM": {
+        "max_listings": 50,
+        "features": ["Todas as features Pro", "Suporte prioritário", "Analytics avançado", "Destaque premium na busca"],
+        "price_brl": 99.90,
+        "billing": "monthly"
+      }
+    },
+    "module_flow": {
+      "description": "Fluxo de assinatura — seleção de plano, checkout Mercado Pago, webhook de confirmação",
+      "pools": [
+        { "name": "Vendedor", "lanes": ["App mobile"] },
+        { "name": "App Mobile", "lanes": ["WebView (Mercado Pago Checkout)"] },
+        { "name": "API NestJS", "lanes": ["SubscriptionController", "WebhookController"] },
+        { "name": "Mercado Pago", "lanes": ["Preapproval API + Webhooks"] },
+        { "name": "BullMQ", "lanes": ["SubscriptionExpiryWorker"] }
+      ],
+      "bpmn_text": [
+        "START EVENT: Vendedor toca em 'Fazer Upgrade' no perfil",
+        "TASK (App): Tela de planos exibe PRO e PREMIUM com preços e features",
+        "TASK (Vendedor): Seleciona plano PRO",
+        "TASK (API): POST /subscriptions/checkout { plan: 'PRO' }",
+        "TASK (SubscriptionService): Criar preapproval (assinatura recorrente) via Mercado Pago API",
+        "TASK (API): Retornar { checkoutUrl } (URL do Mercado Pago)",
+        "TASK (App): Abrir WebView com checkoutUrl do Mercado Pago",
+        "TASK (Vendedor): Preenche dados de pagamento no Mercado Pago (externo)",
+        "EXCLUSIVE GATEWAY: Pagamento aprovado?",
+        "  [Sim] --> TASK (Mercado Pago): POST /webhooks/mercadopago { type: 'subscription.updated', status: 'authorized' }",
+        "           TASK (WebhookController): Verificar assinatura do webhook (HMAC)",
+        "           TASK: prisma.subscription.upsert({ plan, status: ACTIVE, externalId, nextBillingDate })",
+        "           TASK: SellerProfile.plan = PRO",
+        "           TASK: M11: notificationService.send(SUBSCRIPTION_ACTIVATED)",
+        "  [Não] --> TASK: App exibe erro de pagamento (Mercado Pago redireciona)",
+        "TASK (BullMQ): Job agendado para verificar renovação ou expiração em nextBillingDate",
+        "END EVENT: Assinatura ativa, vendedor com plano PRO"
+      ],
+      "message_flows": [
+        "API → Mercado Pago: Criar preapproval (assinatura recorrente)",
+        "Mercado Pago → API Webhook: Eventos de pagamento (authorized, cancelled, paused)",
+        "BullMQ → Sistema: Verificação de renovação/expiração"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF110", "description": "Sistema deve exibir tela de planos com preços, features e botão de upgrade", "priority": "P1" },
+      { "id": "RF111", "description": "Sistema deve criar checkout Mercado Pago e retornar URL para WebView", "priority": "P1" },
+      { "id": "RF112", "description": "Sistema deve processar webhooks do Mercado Pago e atualizar status de assinatura", "priority": "P1" },
+      { "id": "RF113", "description": "Sistema deve bloquear cadastro de novos anúncios quando quota do plano atingida (M05)", "priority": "P0" },
+      { "id": "RF114", "description": "Vendedor deve poder cancelar assinatura e downgrade para GRATUITO", "priority": "P1" }
+    ],
+    "business_rules": [
+      { "id": "RN-M10-01", "description": "Plano GRATUITO: máximo 3 anúncios PUBLISHED simultâneos" },
+      { "id": "RN-M10-02", "description": "Plano PRO: máximo 15 anúncios PUBLISHED simultâneos" },
+      { "id": "RN-M10-03", "description": "Plano PREMIUM: máximo 50 anúncios PUBLISHED simultâneos" },
+      { "id": "RN-M10-04", "description": "PECAÊ nunca processa dados de cartão diretamente — checkout externo via Mercado Pago" },
+      { "id": "RN-M10-05", "description": "Webhook deve ser verificado via HMAC-SHA256 antes de processar" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC55",
+        "name": "Fazer upgrade de plano para PRO",
+        "actors": ["Vendedor"],
+        "preconditions": ["Vendedor autenticado com SellerProfile criado"],
+        "main_flow": [
+          "1. Vendedor acessa tela de planos (Upgrade)",
+          "2. Seleciona plano PRO",
+          "3. API cria preapproval no Mercado Pago",
+          "4. App abre WebView com checkout URL",
+          "5. Vendedor completa pagamento (externo no Mercado Pago)",
+          "6. Webhook recebido: assinatura autorizada",
+          "7. Subscription.status = ACTIVE, SellerProfile.plan = PRO"
+        ],
+        "alternative_flows": [
+          "A1. Pagamento recusado: app exibe mensagem de erro, plano não alterado"
+        ],
+        "postconditions": ["Subscription ACTIVE, plano PRO disponível ao vendedor"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M10-T01",
+        "title": "Schema Prisma — Subscription e PlanQuota",
+        "status": "planned",
+        "priority": "P1",
+        "estimated_days": 0.5,
+        "epic": "E09 — Gestão de Assinaturas",
+        "description": "Criar model Subscription no Prisma com: sellerProfileId, plan (SellerPlan enum), status (SubscriptionStatus), externalId (ID do preapproval no Mercado Pago), nextBillingDate, cancelledAt. Adicionar SellerProfile.plan para acesso rápido ao plano atual.",
+        "user_stories": [
+          "Como desenvolvedor, quero schema de assinatura que rastreie o plano atual do vendedor e o estado do pagamento recorrente"
+        ],
+        "use_cases": ["UC55"],
+        "functional_requirements": [
+          { "id": "RF112", "description": "Subscription com externalId do Mercado Pago para reconciliação" }
+        ],
+        "business_rules": [
+          { "id": "RN-M10-01", "description": "SellerProfile.plan com enum SellerPlan" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Schema de assinaturas",
+          "TASK: enum SellerPlan { GRATUITO PRO PREMIUM }",
+          "TASK: enum SubscriptionStatus { ACTIVE CANCELLED PAUSED EXPIRED }",
+          "TASK: model Subscription (id, sellerProfileId @unique, plan, status, externalId String? @unique, nextBillingDate, createdAt, updatedAt)",
+          "TASK: SellerProfile.plan SellerPlan @default(GRATUITO)",
+          "TASK: Executar migration",
+          "END EVENT: Schema pronto"
+        ],
+        "acceptance_criteria": [
+          "sellerProfileId @unique: um vendedor tem uma assinatura",
+          "externalId @unique: ID do Mercado Pago para reconciliação de eventos",
+          "SellerProfile.plan sincronizado com Subscription.plan pelo webhook",
+          "Migration sem breaking changes"
+        ],
+        "subtasks": [
+          {
+            "id": "M10-T01-ST01",
+            "title": "Model Subscription e atualização do SellerProfile",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 2,
+            "description": "Adicionar ao schema.prisma: enums SellerPlan e SubscriptionStatus, model Subscription, e SellerProfile.plan SellerPlan @default(GRATUITO). Executar migration.",
+            "user_story": "Como sistema, quero SellerProfile.plan como cache do plano atual para queries rápidas de quota sem join em Subscription",
+            "use_case": "UC55",
+            "functional_requirements": [
+              { "id": "RF113", "description": "SellerProfile.plan para check rápido de quota em M05" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Escrever model Subscription",
+              "TASK: enums SellerPlan e SubscriptionStatus",
+              "TASK: model Subscription com todos os campos",
+              "TASK: Adicionar `plan SellerPlan @default(GRATUITO)` ao SellerProfile",
+              "TASK: npx prisma migrate dev --name add-subscriptions",
+              "END EVENT: Migration aplicada"
+            ],
+            "acceptance_criteria": [
+              "sellerProfileId @unique na Subscription",
+              "externalId como String? @unique para Mercado Pago ID",
+              "SellerProfile.plan default GRATUITO",
+              "nextBillingDate DateTime? para jobs de expiração"
+            ],
+            "tech_notes": "model Subscription: `sellerProfile SellerProfile @relation(fields: [sellerProfileId], references: [id])`. nextBillingDate: data da próxima cobrança fornecida pelo Mercado Pago no webhook. SellerProfile.plan: campo desnormalizado para performance — evita JOIN com Subscription em toda query de quota. Manter sincronizado via webhook handler."
+          }
+        ]
+      },
+      {
+        "id": "M10-T02",
+        "title": "SubscriptionController — checkout e gerenciamento de plano",
+        "status": "planned",
+        "priority": "P1",
+        "estimated_days": 3,
+        "epic": "E09 — Gestão de Assinaturas",
+        "description": "Implementar SubscriptionController com: POST /subscriptions/checkout { plan } (cria preapproval no Mercado Pago e retorna checkoutUrl), GET /subscriptions/me (plano atual e status), POST /subscriptions/cancel (cancela no Mercado Pago). Integrar Mercado Pago SDK para Node.js.",
+        "user_stories": [
+          "Como vendedor, quero iniciar o processo de upgrade com um toque e ser redirecionado para um checkout seguro"
+        ],
+        "use_cases": ["UC55"],
+        "functional_requirements": [
+          { "id": "RF111", "description": "POST /subscriptions/checkout retorna checkoutUrl" },
+          { "id": "RF114", "description": "POST /subscriptions/cancel com downgrade para GRATUITO" }
+        ],
+        "business_rules": [
+          { "id": "RN-M10-04", "description": "Dados de pagamento apenas no Mercado Pago — PECAÊ não armazena" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: POST /subscriptions/checkout { plan }",
+          "TASK: Buscar SellerProfile do req.user.id",
+          "TASK: Verificar que não existe Subscription ACTIVE já",
+          "TASK: Mercado Pago SDK: preapproval.create({ plan, price, backUrls })",
+          "TASK: Retornar { checkoutUrl: preapproval.init_point }",
+          "PARALLEL FLOW: POST /subscriptions/cancel",
+          "TASK: Buscar Subscription ACTIVE do vendedor",
+          "TASK: Mercado Pago SDK: preapproval.update(externalId, { status: 'cancelled' })",
+          "TASK: Subscription.status = CANCELLED, SellerProfile.plan = GRATUITO",
+          "TASK: notificationService.send(SUBSCRIPTION_CANCELLED)",
+          "END EVENT: Checkout URL retornada ou assinatura cancelada"
+        ],
+        "acceptance_criteria": [
+          "POST /checkout cria preapproval real no Mercado Pago e retorna init_point URL",
+          "GET /me retorna { plan, status, nextBillingDate } do vendedor",
+          "POST /cancel faz downgrade para GRATUITO e mantém anúncios existentes (não exclui)",
+          "Cancel: anúncios acima da quota GRATUITO ficam ARCHIVED até vendedor excluir"
+        ],
+        "subtasks": [
+          {
+            "id": "M10-T02-ST01",
+            "title": "Integração com Mercado Pago SDK para criação de preapproval",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 4,
+            "description": "Instalar e configurar mercadopago SDK para Node.js. Implementar SubscriptionService.createCheckout(plan, sellerProfile). Criar preapproval.create() com back_url de retorno para o app (Expo Router deep link). Retornar init_point como checkoutUrl.",
+            "user_story": "Como integração de pagamentos, quero o Mercado Pago SDK configurado corretamente para criar assinaturas recorrentes de forma segura",
+            "use_case": "UC55",
+            "functional_requirements": [
+              { "id": "RF111", "description": "Preapproval criado no Mercado Pago" }
+            ],
+            "business_rules": [
+              { "id": "RN-M10-04", "description": "Dados de pagamento apenas no MP" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: createCheckout(plan, sellerProfile)",
+              "TASK: new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN })",
+              "TASK: preapproval.create({ payer_email: user.email, auto_recurring: { frequency: 1, frequency_type: 'months', transaction_amount: PLAN_PRICES[plan] }, back_url: 'pecae://subscription/callback', status: 'pending' })",
+              "TASK: Retornar { checkoutUrl: response.init_point, externalId: response.id }",
+              "END EVENT: Checkout URL disponível"
+            ],
+            "acceptance_criteria": [
+              "MP_ACCESS_TOKEN em variável de ambiente (nunca hardcoded)",
+              "back_url como deep link Expo: 'pecae://subscription/callback'",
+              "preapproval.id salvo como pendingExternalId para reconciliação futura",
+              "Testar com MP sandbox antes de produção"
+            ],
+            "tech_notes": "SDK: `npm install mercadopago`. Configuração: `import { MercadoPagoConfig, PreApproval } from 'mercadopago'; const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN })`. PLAN_PRICES: `const PLAN_PRICES = { PRO: 49.90, PREMIUM: 99.90 }`. back_url: deep link que o app deve capturar via Expo Linking para exibir feedback de pagamento. Ambiente: MP Sandbox para testes com credenciais de teste MP."
+          },
+          {
+            "id": "M10-T02-ST02",
+            "title": "Webhook Handler — processar eventos do Mercado Pago",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 4,
+            "description": "Implementar POST /webhooks/mercadopago. Verificar assinatura HMAC-SHA256 do webhook. Processar evento type='subscription.updated' com status 'authorized', 'cancelled' e 'paused'. Atualizar Subscription e SellerProfile.plan no banco. Idempotente via externalId.",
+            "user_story": "Como sistema de pagamentos, quero um webhook handler seguro e idempotente para sincronizar o status de pagamento sem processar eventos duplicados",
+            "use_case": "UC55",
+            "functional_requirements": [
+              { "id": "RF112", "description": "Webhook idempotente com verificação HMAC" }
+            ],
+            "business_rules": [
+              { "id": "RN-M10-05", "description": "HMAC-SHA256 obrigatório antes de processar" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: POST /webhooks/mercadopago (request do Mercado Pago)",
+              "TASK: Verificar header x-signature com HMAC-SHA256 (MP_WEBHOOK_SECRET)",
+              "EXCLUSIVE GATEWAY: Assinatura válida?",
+              "  [Não] --> TASK: Retornar 401 Unauthorized",
+              "  [Sim] --> TASK: Extrair type, status, data.id (preapproval ID)",
+              "TASK: Buscar Subscription onde externalId = data.id",
+              "EXCLUSIVE GATEWAY: type = 'subscription.updated'?",
+              "  [authorized] --> TASK: Subscription.status=ACTIVE, SellerProfile.plan=plan",
+              "  [cancelled] --> TASK: Subscription.status=CANCELLED, SellerProfile.plan=GRATUITO",
+              "  [paused] --> TASK: Subscription.status=PAUSED (sem downgrade imediato)",
+              "TASK: Retornar 200 OK (sempre — MP não retenta 200)",
+              "END EVENT: Evento processado"
+            ],
+            "acceptance_criteria": [
+              "HMAC verificado antes de qualquer processamento",
+              "Idempotente: processar mesmo externalId novamente não causa erro",
+              "authorized: plan atualizado em transaction (Subscription + SellerProfile.plan)",
+              "Retornar sempre 200 para evitar retentativas do Mercado Pago",
+              "Log de todos os eventos recebidos para auditoria"
+            ],
+            "tech_notes": "Verificação HMAC: `const signature = createHmac('sha256', process.env.MP_WEBHOOK_SECRET).update(rawBody).digest('hex'); if (signature !== req.headers['x-signature']) throw new UnauthorizedException()`. rawBody: usar `express.raw()` middleware para a rota de webhook antes do `express.json()`. Idempotência: `prisma.subscription.upsert({ where: { externalId }, create: {...}, update: {...} })`. plan paused: aguardar 3 dias antes de downgrade (configurável via job BullMQ com delay)."
+          }
+        ]
+      },
+      {
+        "id": "M10-T03",
+        "title": "Verificação de quota no cadastro de anúncios (M05)",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 0.5,
+        "epic": "E09 — Gestão de Assinaturas",
+        "description": "Adicionar verificação de quota de anúncios ao fluxo de cadastro de sucata (M05). Antes de criar novo Listing, verificar contagem de anúncios PUBLISHED+PENDING_APPROVAL do vendedor contra limite do plano. Retornar 402 Payment Required se quota atingida.",
+        "user_stories": [
+          "Como vendedor no plano GRATUITO, quero ser informado de forma clara quando atingir o limite de anúncios e ter a opção de fazer upgrade"
+        ],
+        "use_cases": ["UC55"],
+        "functional_requirements": [
+          { "id": "RF113", "description": "Quota verificada antes de criar Listing (M05)" }
+        ],
+        "business_rules": [
+          { "id": "RN-M10-01", "description": "GRATUITO: max 3 anúncios ativos" },
+          { "id": "RN-M10-02", "description": "PRO: max 15" },
+          { "id": "RN-M10-03", "description": "PREMIUM: max 50" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: POST /listings (criação de novo anúncio — M05)",
+          "TASK: Buscar SellerProfile.plan do vendedor",
+          "TASK: Contar Listings com status IN [PENDING_APPROVAL, PUBLISHED]",
+          "EXCLUSIVE GATEWAY: count >= PLAN_LIMITS[plan]?",
+          "  [Sim] --> TASK: Retornar 402 { error: 'QUOTA_EXCEEDED', currentPlan, limit, upgradeUrl: '/subscription/plans' }",
+          "  [Não] --> TASK: Continuar fluxo normal de criação de anúncio",
+          "END EVENT: Quota verificada"
+        ],
+        "acceptance_criteria": [
+          "402 com payload estruturado incluindo currentPlan e limit",
+          "App exibe modal de upgrade ao receber 402",
+          "PENDING_APPROVAL contado na quota (não apenas PUBLISHED)",
+          "Verificação via SellerProfile.plan (sem JOIN em Subscription)"
+        ],
+        "subtasks": [
+          {
+            "id": "M10-T03-ST01",
+            "title": "PlanQuotaGuard no endpoint de criação de anúncio",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Criar PlanQuotaGuard para o endpoint POST /listings (M05). Verificar sellerProfile.plan e contar anúncios ativos. Retornar 402 com payload estruturado se quota atingida. Implementar no app: interceptar 402 e exibir modal de upgrade.",
+            "user_story": "Como aplicação, quero PlanQuotaGuard reutilizável para aplicar limites de plano em qualquer endpoint futuro",
+            "use_case": "UC55",
+            "functional_requirements": [
+              { "id": "RF113", "description": "Guard de quota de anúncios antes de criar listing" }
+            ],
+            "business_rules": [
+              { "id": "RN-M10-01", "description": "Limites por plano: 3/15/50" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: PlanQuotaGuard chamado",
+              "TASK: const PLAN_LIMITS = { GRATUITO: 3, PRO: 15, PREMIUM: 50 }",
+              "TASK: const count = await prisma.listing.count({ where: { vehicle: { sellerProfile: { userId } }, status: { in: ['PENDING_APPROVAL', 'PUBLISHED'] } } })",
+              "TASK: if count >= PLAN_LIMITS[sellerProfile.plan] throw new QuotaExceededException()",
+              "END EVENT: Guard passou ou 402 lançado"
+            ],
+            "acceptance_criteria": [
+              "QuotaExceededException lança HttpException 402 com payload correto",
+              "PLAN_LIMITS como constante compartilhada",
+              "App: axios interceptor captura 402 e dispara evento de modal de upgrade",
+              "Guard pode ser reutilizado via @UseGuards(PlanQuotaGuard)"
+            ],
+            "tech_notes": "QuotaExceededException: `throw new HttpException({ error: 'QUOTA_EXCEEDED', currentPlan: sellerProfile.plan, limit: PLAN_LIMITS[sellerProfile.plan], upgradeUrl: '/subscription/plans' }, HttpStatus.PAYMENT_REQUIRED)`. App side: axios interceptor `if (error.response.status === 402) { eventEmitter.emit('upgrade:required', error.response.data) }`. Modal de upgrade: escutar evento global e exibir TelaDeUpgrade como modal. Guard aplicado apenas ao POST /listings no M05."
+          }
+        ]
+      }
+    ]
+  }
+}

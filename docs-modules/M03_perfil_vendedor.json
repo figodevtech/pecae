@@ -1,0 +1,712 @@
+{
+  "module": {
+    "id": "M03",
+    "name": "Perfil do Vendedor",
+    "slug": "perfil_vendedor",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P0",
+    "epic_ref": "E02",
+    "estimated_sprint": "Sprint 2",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "storage": "Supabase Storage / S3/R2 (logo do vendedor)",
+      "cache": "Redis via Upstash",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo responsável pela criação, edição e exibição do perfil público do vendedor (desmanche). Inclui dados da loja (nome, tipo PF/PJ, endereço, horário, logo), processo de solicitação de verificação (Selo Verificado), e estatísticas de qualidade (tempo de resposta médio, anúncios ativos, avaliações).",
+    "goals": [
+      "Permitir que o vendedor crie e edite seu perfil de loja",
+      "Exibir página pública do vendedor com todos os seus anúncios ativos",
+      "Gerenciar processo de solicitação e concessão do Selo Verificado",
+      "Calcular e exibir estatísticas de qualidade do vendedor"
+    ],
+    "actors": [
+      "Vendedor (PF ou PJ)",
+      "Comprador (visualiza perfil público)",
+      "Moderador (concede/revoga Selo Verificado)",
+      "Sistema (calcula SellerStats)"
+    ],
+    "dependencies": {
+      "modules": ["M01", "M04"],
+      "external_services": ["Supabase Storage (upload de logo)"]
+    },
+    "module_flow": {
+      "description": "Fluxo de criação de perfil de vendedor após cadastro e fluxo de solicitação de verificação",
+      "pools": [
+        { "name": "Vendedor", "lanes": ["Operador de Desmanche / Particular"] },
+        { "name": "App Mobile", "lanes": ["Expo Router / Telas do Vendedor"] },
+        { "name": "API NestJS", "lanes": ["SellerController", "SellerService", "VerificationService"] },
+        { "name": "Moderação", "lanes": ["Moderador (interface web)"] },
+        { "name": "Infraestrutura", "lanes": ["Supabase Storage", "Supabase PostgreSQL"] }
+      ],
+      "bpmn_text": [
+        "START EVENT: Usuário com tipo SELLER/BOTH conclui cadastro no M01",
+        "TASK (App): Redirecionar para app/(seller)/perfil-criar.tsx (onboarding de perfil)",
+        "TASK (Vendedor): Preencher: nome da loja, tipo (PF/PJ), telefone, WhatsApp, endereço, cidade, estado, horário de atendimento",
+        "TASK (Vendedor): Upload opcional de logo da loja",
+        "TASK (App): React Hook Form + Zod valida campos localmente",
+        "TASK (API - SellerController): POST /sellers com CreateSellerProfileDto",
+        "TASK (API - SellerService): Verificar se usuário já tem SellerProfile",
+        "EXCLUSIVE GATEWAY: Já tem perfil?",
+        "  [Sim] --> INTERMEDIATE EVENT (Error): 409 Conflict — use PUT /sellers/me",
+        "  [Não] --> TASK (Prisma): prisma.sellerProfile.create({ userId, storeName, type, ... })",
+        "TASK (API): Criar SellerStats inicial com zeros",
+        "TASK (App): Exibir tela de perfil criado com opção 'Solicitar verificação'",
+        "PARALLEL GATEWAY: Fluxos paralelos disponíveis após criação",
+        "  --> TASK (Vendedor): Editar perfil via PUT /sellers/me",
+        "  --> TASK (Vendedor): Solicitar Selo Verificado via POST /sellers/request-verification",
+        "TASK (API - VerificationService): Registrar solicitação de verificação",
+        "MESSAGE FLOW (Moderador): Notificado de nova solicitação de verificação",
+        "TASK (Moderador): Analisar documentos enviados e aprovar/reprovar",
+        "EXCLUSIVE GATEWAY: Verificação aprovada?",
+        "  [Sim] --> TASK (API): Atualizar SellerProfile.isVerified = true",
+        "           MESSAGE FLOW (App): Notificar vendedor do Selo Verificado",
+        "  [Não] --> MESSAGE FLOW (App): Notificar vendedor com motivo da reprovação",
+        "END EVENT: Perfil de vendedor ativo e visível publicamente"
+      ],
+      "message_flows": [
+        "API → Supabase Storage: Upload de logo via presigned URL",
+        "API → App: Notificação de Selo Verificado concedido ou negado",
+        "API → Moderador: Alert de nova solicitação de verificação na fila"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF30", "description": "Vendedor deve poder criar perfil com nome da loja, tipo (PF/PJ), telefone, WhatsApp, endereço, cidade e estado", "priority": "P0" },
+      { "id": "RF31", "description": "Vendedor deve poder fazer upload de logo da loja", "priority": "P1" },
+      { "id": "RF32", "description": "Vendedor deve poder editar seu perfil a qualquer momento", "priority": "P0" },
+      { "id": "RF33", "description": "Sistema deve exibir página pública do vendedor com seus anúncios ativos", "priority": "P0" },
+      { "id": "RF34", "description": "Vendedor deve poder solicitar o Selo Verificado enviando documentação", "priority": "P1" },
+      { "id": "RF35", "description": "Sistema deve calcular e exibir estatísticas do vendedor (tempo de resposta, anúncios ativos, total de vendas)", "priority": "P1" },
+      { "id": "RF36", "description": "Comprador deve poder visualizar o perfil público de qualquer vendedor", "priority": "P0" }
+    ],
+    "business_rules": [
+      { "id": "RN13", "description": "Selo de Verificado é concedido exclusivamente pela moderação após validação documental" },
+      { "id": "RN07", "description": "Vendedor é inteiramente responsável pela veracidade das informações publicadas no perfil" },
+      { "id": "RN08", "description": "Placa de veículos é exibida mascarada; CNPJ do vendedor PJ é exibido apenas parcialmente no perfil público" },
+      { "id": "RN-M03-01", "description": "Um usuário pode ter apenas um SellerProfile ativo" },
+      { "id": "RN-M03-02", "description": "Vendedor com status SUSPENDED ou BANNED tem perfil oculto dos resultados públicos" },
+      { "id": "RN-M03-03", "description": "SellerStats são calculados assincronamente via jobs; não são calculados em tempo real" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC15",
+        "name": "Criar perfil de vendedor",
+        "actors": ["Vendedor"],
+        "preconditions": ["Usuário com type SELLER ou BOTH e status ACTIVE"],
+        "main_flow": [
+          "1. Vendedor acessa onboarding de criação de perfil",
+          "2. Preenche dados da loja",
+          "3. Sistema valida e cria SellerProfile",
+          "4. Sistema cria SellerStats inicial zerado",
+          "5. Perfil público disponível imediatamente"
+        ],
+        "alternative_flows": [
+          "A1. Usuário já tem perfil: redirecionar para edição"
+        ],
+        "postconditions": ["SellerProfile criado e associado ao User"]
+      },
+      {
+        "id": "UC16",
+        "name": "Editar perfil de vendedor",
+        "actors": ["Vendedor"],
+        "preconditions": ["SellerProfile existente"],
+        "main_flow": [
+          "1. Vendedor acessa tela de edição",
+          "2. Modifica campos desejados",
+          "3. Sistema valida e atualiza SellerProfile"
+        ],
+        "alternative_flows": [],
+        "postconditions": ["SellerProfile atualizado"]
+      },
+      {
+        "id": "UC17",
+        "name": "Visualizar perfil público do vendedor",
+        "actors": ["Comprador", "Visitante"],
+        "preconditions": ["SellerProfile existente e vendedor com status ACTIVE"],
+        "main_flow": [
+          "1. Comprador acessa tela do vendedor via /vendedor/:id",
+          "2. Sistema exibe dados públicos: nome, localização, selo, anúncios ativos, estatísticas"
+        ],
+        "alternative_flows": [
+          "A1. Vendedor suspenso: exibir mensagem de perfil indisponível"
+        ],
+        "postconditions": ["Comprador visualizou perfil e pode iniciar chat via anúncio"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M03-T01",
+        "title": "Schema Prisma — SellerProfile, SellerStats e SellerVerification",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 1,
+        "epic": "E02 — Perfis de Usuário",
+        "description": "Definir e criar entidades SellerProfile (dados da loja), SellerStats (estatísticas calculadas) e SellerVerification (processo de solicitação do Selo) no schema Prisma com relações, constraints e índices adequados.",
+        "user_stories": [
+          "Como desenvolvedor, quero entidades de vendedor bem estruturadas no Prisma para garantir integridade dos dados de loja",
+          "Como sistema, quero SellerStats como entidade separada para atualizações assíncronas sem bloquear o perfil"
+        ],
+        "use_cases": ["UC15"],
+        "functional_requirements": [
+          { "id": "RF30", "description": "SellerProfile com campos: storeName, type, address, city, state, lat, lng, whatsapp, phone, openHours, logo, description" },
+          { "id": "RF35", "description": "SellerStats com responseTimeAvg, activeListings, totalSales, rating" }
+        ],
+        "business_rules": [
+          { "id": "RN-M03-01", "description": "userId @unique em SellerProfile (1 perfil por usuário)" },
+          { "id": "RN13", "description": "isVerified gerenciado apenas pela moderação" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Início do schema de vendedor",
+          "TASK: Declarar enum SellerType (PF, PJ)",
+          "TASK: Escrever model SellerProfile com todos os campos e userId @unique",
+          "TASK: Escrever model SellerStats (1:1 com SellerProfile)",
+          "TASK: Escrever model SellerVerification (solicitação de verificação)",
+          "TASK: Adicionar índices em state, city para busca por proximidade",
+          "TASK: Executar prisma migrate dev",
+          "END EVENT: Schema de vendedor pronto"
+        ],
+        "acceptance_criteria": [
+          "SellerProfile.userId tem @unique (uma conta = um perfil de vendedor)",
+          "SellerProfile tem campos lat e lng como Float? para localização",
+          "SellerStats é 1:1 com SellerProfile via sellerProfileId @unique",
+          "SellerVerification tem status enum (PENDING, APPROVED, REJECTED)",
+          "Migration aplicada sem erros"
+        ],
+        "subtasks": [
+          {
+            "id": "M03-T01-ST01",
+            "title": "Escrever schema Prisma — SellerProfile e SellerStats",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Adicionar ao schema.prisma: SellerProfile (id, userId @unique @relation→User, storeName, type SellerType, cnpj?, address, city, state, lat?, lng?, whatsapp, phone?, openHours?, logo?, description?, isVerified Boolean @default(false), responseTimeAvg Int?, createdAt, updatedAt) e SellerStats (id, sellerProfileId @unique, activeListings, totalListings, totalSold, avgResponseTimeMinutes?, createdAt, updatedAt).",
+            "user_story": "Como desenvolvedor, quero SellerProfile bem modelado no Prisma para que dados do vendedor sejam type-safe e rastreáveis",
+            "use_case": "UC15",
+            "functional_requirements": [
+              { "id": "RF30", "description": "SellerProfile com todos os campos de loja" },
+              { "id": "RF35", "description": "SellerStats separado para atualização assíncrona" }
+            ],
+            "business_rules": [
+              { "id": "RN-M03-01", "description": "userId @unique em SellerProfile" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Escrita do schema de vendedor",
+              "TASK: Declarar enum SellerType { PF PJ }",
+              "TASK: Escrever model SellerProfile com todos os campos",
+              "TASK: Adicionar userId @unique e relação com User",
+              "TASK: Escrever model SellerStats com sellerProfileId @unique",
+              "TASK: Adicionar @@index([city, state]) no SellerProfile",
+              "END EVENT: Schema validado"
+            ],
+            "acceptance_criteria": [
+              "npx prisma validate sem erros",
+              "userId @unique garante 1 perfil por usuário",
+              "lat e lng como Float? para localização futura",
+              "SellerStats tem relação 1:1 via sellerProfileId @unique"
+            ],
+            "tech_notes": "SellerProfile: `@@map('seller_profile')`. Campos: `openHours Json?` para armazenar objeto com horários por dia da semana: `{ monday: '08:00-18:00', ... }`. `cnpj String?` — apenas para PJ, sem validação de formato no banco (validar no DTO). SellerStats: `activeListings Int @default(0), totalListings Int @default(0), totalSold Int @default(0), avgResponseTimeMinutes Int?`. Índice: `@@index([city, state])` para futura busca por proximidade."
+          },
+          {
+            "id": "M03-T01-ST02",
+            "title": "Escrever schema Prisma — SellerVerification",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 2,
+            "description": "Criar model SellerVerification para rastrear o processo de solicitação do Selo Verificado. Campos: id, sellerProfileId, status (PENDING/APPROVED/REJECTED), documentUrls (JSON array de URLs), notes?, moderatorId?, resolvedAt?, createdAt.",
+            "user_story": "Como sistema de moderação, quero rastrear solicitações de verificação de vendedores para que a concessão do Selo seja auditável e controlada",
+            "use_case": "UC15",
+            "functional_requirements": [
+              { "id": "RF34", "description": "SellerVerification com documentUrls e status para processo de verificação" }
+            ],
+            "business_rules": [
+              { "id": "RN13", "description": "Verificação aprovada somente por moderação; rastro completo no banco" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Modelo SellerVerification criado",
+              "TASK: Declarar enum VerificationStatus { PENDING APPROVED REJECTED }",
+              "TASK: Escrever model SellerVerification com sellerProfileId e status",
+              "TASK: Adicionar campos documentUrls (Json), notes?, moderatorId? FK → User",
+              "TASK: Executar migrate",
+              "END EVENT: Entidade de verificação disponível"
+            ],
+            "acceptance_criteria": [
+              "VerificationStatus enum com PENDING, APPROVED, REJECTED",
+              "documentUrls como Json para armazenar array de URLs dos documentos",
+              "moderatorId com relação opcional para User (quem aprovou)",
+              "Índice em sellerProfileId para lookup rápido"
+            ],
+            "tech_notes": "model SellerVerification: `documentUrls Json @default('[]')`. Ao aprovar: `prisma.sellerVerification.update({ where: { id }, data: { status: 'APPROVED', moderatorId, resolvedAt: new Date() } })` + `prisma.sellerProfile.update({ where: { id: sellerProfileId }, data: { isVerified: true } })` em transaction. Criar AuditLog para registro de moderação."
+          },
+          {
+            "id": "M03-T01-ST03",
+            "title": "Migration e índices geoespaciais básicos",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Executar migration das entidades de vendedor no Supabase. Adicionar índices em city e state para busca por localização. Configurar extensão PostGIS no Supabase para suporte futuro a busca geoespacial com lat/lng.",
+            "user_story": "Como sistema de busca, quero índices otimizados em cidade e estado para que a busca de vendedores por localização seja eficiente",
+            "use_case": "UC15",
+            "functional_requirements": [
+              { "id": "RF33", "description": "Perfil de vendedor indexado por localização" }
+            ],
+            "business_rules": [
+              { "id": "RN-M03-03", "description": "Índices de localização para queries eficientes" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Executar migration das entidades de vendedor",
+              "TASK: npx prisma migrate dev --name add_seller_profiles",
+              "TASK: Verificar SQL gerado (@@index em city, state)",
+              "TASK: Habilitar extensão PostGIS no Supabase via SQL: CREATE EXTENSION IF NOT EXISTS postgis",
+              "TASK: Executar migration no Supabase staging e produção",
+              "END EVENT: Tabelas de vendedor criadas com índices"
+            ],
+            "acceptance_criteria": [
+              "Tabelas seller_profile, seller_stats, seller_verification criadas",
+              "Índice composto (city, state) em seller_profile",
+              "PostGIS habilitado no Supabase para suporte geoespacial futuro",
+              "Migration executada sem erros em local e staging"
+            ],
+            "tech_notes": "Para habilitar PostGIS no Supabase: acessar SQL Editor e executar `CREATE EXTENSION IF NOT EXISTS postgis;`. Para busca geoespacial futura: adicionar coluna `location geography(Point, 4326)` e índice GIST. Por ora, lat/lng como Float? é suficiente para o MVP. Migration Prisma com SQL raw: usar `prisma/migrations/XXXX/migration.sql` com comando adicional CREATE EXTENSION."
+          }
+        ]
+      },
+      {
+        "id": "M03-T02",
+        "title": "SellerController — CRUD de perfil e endpoints públicos",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E02 — Perfis de Usuário",
+        "description": "Implementar SellerModule no NestJS com endpoints: POST /sellers (criar perfil), GET /sellers/me (perfil próprio), PUT /sellers/me (editar), GET /sellers/:id (perfil público), GET /sellers/me/stats (estatísticas). Proteger rotas de escrita com JwtAuthGuard e verificação de role SELLER.",
+        "user_stories": [
+          "Como vendedor, quero criar e gerenciar meu perfil de loja via API para que compradores possam me encontrar",
+          "Como comprador, quero visualizar o perfil público de um vendedor para que eu possa avaliar sua credibilidade antes de iniciar um chat"
+        ],
+        "use_cases": ["UC15", "UC16", "UC17"],
+        "functional_requirements": [
+          { "id": "RF30", "description": "POST /sellers para criação de perfil" },
+          { "id": "RF32", "description": "PUT /sellers/me para edição" },
+          { "id": "RF33", "description": "GET /sellers/:id para perfil público" },
+          { "id": "RF35", "description": "GET /sellers/me/stats para estatísticas" }
+        ],
+        "business_rules": [
+          { "id": "RN-M03-01", "description": "Verificar se usuário já tem perfil em POST /sellers" },
+          { "id": "RN-M03-02", "description": "GET /sellers/:id retorna 404 para vendedor suspenso/banido" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Vendedor acessa endpoints do SellerController",
+          "TASK (API): JwtAuthGuard valida token JWT",
+          "EXCLUSIVE GATEWAY: Endpoint de escrita ou leitura pública?",
+          "  [Escrita — POST/PUT] --> TASK: Verificar que req.user.type inclui SELLER ou BOTH",
+          "  [Leitura pública — GET /sellers/:id] --> TASK: @Public() — sem autenticação",
+          "EXCLUSIVE GATEWAY: POST /sellers — criando novo perfil?",
+          "  [Sim] --> TASK: Verificar que usuário não tem perfil (unique constraint userId)",
+          "           TASK: prisma.sellerProfile.create() em transaction com SellerStats zero",
+          "  [Não — PUT /sellers/me] --> TASK: prisma.sellerProfile.update({ where: { userId } })",
+          "TASK: GET /sellers/:id — buscar perfil com anúncios PUBLISHED",
+          "EXCLUSIVE GATEWAY: Vendedor ativo?",
+          "  [Não] --> TASK: Retornar 404 Not Found",
+          "  [Sim] --> TASK: Retornar perfil público com stats e anúncios ativos",
+          "END EVENT: Resposta entregue ao app"
+        ],
+        "acceptance_criteria": [
+          "POST /sellers retorna 201 com perfil criado",
+          "POST /sellers com usuário que já tem perfil retorna 409",
+          "PUT /sellers/me retorna 200 com perfil atualizado",
+          "GET /sellers/:id retorna perfil público sem dados sensíveis (sem cnpj completo, sem userId)",
+          "GET /sellers/me/stats retorna estatísticas do vendedor autenticado"
+        ],
+        "subtasks": [
+          {
+            "id": "M03-T02-ST01",
+            "title": "Criar CreateSellerProfileDto, UpdateSellerProfileDto e SellerService",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Implementar DTOs com class-validator para criação e edição do perfil de vendedor. SellerService com métodos: create(userId, dto), update(userId, dto), findById(id), findByUserId(userId), getStats(userId). Validar CNPJ format no DTO via custom validator para tipo PJ.",
+            "user_story": "Como vendedor, quero criar meu perfil com validação adequada dos meus dados para que o sistema gerencie minha loja corretamente",
+            "use_case": "UC15",
+            "functional_requirements": [
+              { "id": "RF30", "description": "Validação de storeName, type, phone, whatsapp, address, city, state" }
+            ],
+            "business_rules": [
+              { "id": "RN-M03-01", "description": "Verificar unicidade de userId antes de criar" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Criação do SellerService",
+              "TASK: Criar CreateSellerProfileDto com IsString, IsEnum(SellerType), IsOptional",
+              "TASK: Criar UpdateSellerProfileDto extends PartialType(CreateSellerProfileDto)",
+              "TASK: Implementar SellerService.create() com transaction SellerProfile + SellerStats",
+              "TASK: Implementar SellerService.update() via userId",
+              "TASK: Implementar SellerService.findPublicProfile(id) sem dados sensíveis",
+              "END EVENT: Service e DTOs prontos"
+            ],
+            "acceptance_criteria": [
+              "DTO rejeita storeName vazio ou < 3 caracteres",
+              "DTO rejeita type fora de ['PF', 'PJ']",
+              "create() usa prisma.$transaction para SellerProfile + SellerStats",
+              "findPublicProfile() não retorna userId, cnpj completo nem campos internos"
+            ],
+            "tech_notes": "UpdateSellerProfileDto: `class UpdateSellerProfileDto extends PartialType(CreateSellerProfileDto) {}` do @nestjs/mapped-types. Validação de WhatsApp: `@Matches(/^\\+55\\d{10,11}$/, { message: 'WhatsApp deve estar no formato +5511999999999' })`. openHours: `@IsOptional() @IsObject()` com shape `{ [day: string]: string }`. CNPJ: validar apenas se type === 'PJ' via custom class-validator decorator `@ValidateIf(o => o.type === 'PJ') @IsCnpj()`."
+          },
+          {
+            "id": "M03-T02-ST02",
+            "title": "Upload de logo do vendedor via Supabase Storage",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 4,
+            "description": "Implementar upload de logo do vendedor via presigned URL do Supabase Storage. Endpoint POST /sellers/me/logo retorna URL presigned para upload direto do app. App faz upload do arquivo diretamente ao Storage. API atualiza SellerProfile.logo com a URL pública após confirmação.",
+            "user_story": "Como vendedor, quero fazer upload da logo da minha loja para que compradores reconheçam minha marca no app",
+            "use_case": "UC16",
+            "functional_requirements": [
+              { "id": "RF31", "description": "Upload de logo via presigned URL do Supabase Storage" }
+            ],
+            "business_rules": [
+              { "id": "RN07", "description": "Vendedor responsável pela imagem enviada — moderação pode remover" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Vendedor solicita URL de upload",
+              "TASK (App): POST /sellers/me/logo { filename, mimeType }",
+              "TASK (API): Validar mimeType (image/jpeg ou image/png)",
+              "TASK (API): Gerar presigned URL via Supabase Storage createSignedUploadUrl()",
+              "TASK (API): Retornar { uploadUrl, publicUrl, token }",
+              "TASK (App): PUT uploadUrl com arquivo de imagem (fetch binário)",
+              "TASK (App): POST /sellers/me/logo/confirm { publicUrl }",
+              "TASK (API): prisma.sellerProfile.update({ data: { logo: publicUrl } })",
+              "END EVENT: Logo atualizada no perfil"
+            ],
+            "acceptance_criteria": [
+              "Upload suporta apenas image/jpeg e image/png",
+              "Arquivo limitado a 2MB",
+              "URL presigned expira em 5 minutos",
+              "Bucket Supabase configurado como público para leitura (perfil público)",
+              "Logo antiga deletada do Storage ao substituir"
+            ],
+            "tech_notes": "Supabase Storage: `supabase.storage.from('seller-logos').createSignedUploadUrl(path)`. Path: `sellers/{userId}/logo.{ext}`. No React Native: upload com `fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': mimeType } })`. Usar `expo-image-picker` para seleção com quality: 0.8 e allowsEditing: true (aspect [1,1]). Maxsize: verificar no backend antes de gerar presigned URL (checar Content-Length header na confirmação). Após upload: invalidar cache do perfil no Redis."
+          },
+          {
+            "id": "M03-T02-ST03",
+            "title": "Tela de perfil público do vendedor no app",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 5,
+            "description": "Implementar tela app/vendedor/[id].tsx no Expo Router com: header com logo, nome, cidade, Selo Verificado (se aplicável), estatísticas básicas, lista de anúncios ativos do vendedor usando FlashList, e botão de contato (que inicia chat via anúncio). Usar TanStack Query para busca de dados.",
+            "user_story": "Como comprador, quero visualizar o perfil completo de um vendedor para que eu possa avaliar sua credibilidade antes de negociar",
+            "use_case": "UC17",
+            "functional_requirements": [
+              { "id": "RF33", "description": "Página pública do vendedor com anúncios ativos" },
+              { "id": "RF36", "description": "Comprador visualiza perfil sem autenticação" }
+            ],
+            "business_rules": [
+              { "id": "RN13", "description": "Exibir Selo Verificado apenas quando isVerified=true" },
+              { "id": "RN-M03-02", "description": "Vendedor suspenso exibe página de perfil indisponível" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Comprador navega para /vendedor/:id",
+              "TASK (App): Expo Router carrega app/vendedor/[id].tsx",
+              "TASK (App): useQuery(['seller', id]) chama GET /sellers/:id",
+              "EXCLUSIVE GATEWAY: Resposta da API",
+              "  [404] --> TASK: Exibir tela 'Perfil não disponível'",
+              "  [200] --> TASK: Renderizar header com logo do vendedor e Selo Verificado",
+              "TASK: Exibir stats: anúncios ativos, tempo médio de resposta",
+              "TASK: useQuery(['seller', id, 'listings']) busca anúncios PUBLISHED do vendedor",
+              "TASK: FlashList renderiza cards de anúncios do vendedor",
+              "TASK: Comprador toca em anúncio → navega para app/anuncio/[id].tsx",
+              "END EVENT: Perfil exibido ao comprador"
+            ],
+            "acceptance_criteria": [
+              "Tela carrega dados via GET /sellers/:id com loading skeleton",
+              "Selo Verificado exibido como badge azul com ícone de check quando isVerified=true",
+              "FlashList renderiza anúncios do vendedor com card compacto",
+              "Tela acessível sem login (rota pública no Expo Router)",
+              "Meta tags de SEO configuradas para compartilhamento (og:title, og:image)"
+            ],
+            "tech_notes": "Expo Router: `app/vendedor/[id].tsx`. Usar `useLocalSearchParams()` para obter `id`. TanStack Query: `useQuery({ queryKey: ['seller', id], queryFn: () => sellerApi.getPublicProfile(id) })`. Seller badge: componente VerifiedBadge com ícone Ionicons 'checkmark-circle' em azul #2563EB. FlashList: `estimatedItemSize={120}` para cards de anúncio. Header: `ImageBackground` com logo e overlay escuro. Para anúncios do vendedor: endpoint GET /sellers/:id/listings com paginação cursor."
+          }
+        ]
+      },
+      {
+        "id": "M03-T03",
+        "title": "Processo de solicitação do Selo Verificado",
+        "status": "planned",
+        "priority": "P1",
+        "estimated_days": 2,
+        "epic": "E02 — Perfis de Usuário",
+        "description": "Implementar fluxo de solicitação do Selo Verificado pelo vendedor: POST /sellers/request-verification com upload de documentos. Moderador analisa via painel (M09) e aprova/rejeita. Notificação ao vendedor do resultado via M11.",
+        "user_stories": [
+          "Como vendedor, quero solicitar o Selo Verificado enviando minha documentação para que compradores confiem mais nos meus anúncios",
+          "Como moderador, quero analisar solicitações de verificação de forma organizada para que apenas vendedores legítimos recebam o Selo"
+        ],
+        "use_cases": ["UC15"],
+        "functional_requirements": [
+          { "id": "RF34", "description": "POST /sellers/request-verification com documentos" }
+        ],
+        "business_rules": [
+          { "id": "RN13", "description": "Selo concedido exclusivamente pela moderação" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Vendedor solicita verificação",
+          "TASK (App): Tela de solicitação de verificação — upload de documentos (CNPJ, comprovante de endereço, etc)",
+          "TASK (API): POST /sellers/request-verification",
+          "TASK (API): Verificar que vendedor não tem verificação PENDING ou APPROVED",
+          "TASK (API): Salvar URLs dos documentos em SellerVerification",
+          "MESSAGE FLOW (API → Moderação): Notificar fila de moderação (M09)",
+          "TASK (Moderador): Analisar documentos e decidir",
+          "EXCLUSIVE GATEWAY: Decisão do moderador?",
+          "  [APPROVED] --> TASK: prisma.$transaction — isVerified=true + SellerVerification.status=APPROVED",
+          "               MESSAGE FLOW: Notificar vendedor via M11",
+          "  [REJECTED] --> TASK: SellerVerification.status=REJECTED + notes=motivo",
+          "               MESSAGE FLOW: Notificar vendedor com motivo",
+          "END EVENT: Fluxo de verificação concluído"
+        ],
+        "acceptance_criteria": [
+          "Vendedor com verificação PENDING não pode submeter nova solicitação",
+          "Documentos armazenados no Supabase Storage em bucket privado",
+          "Aprovação atualiza SellerProfile.isVerified=true em transaction com SellerVerification",
+          "Vendedor notificado do resultado via notificação in-app e e-mail"
+        ],
+        "subtasks": [
+          {
+            "id": "M03-T03-ST01",
+            "title": "Endpoint de solicitação de verificação e upload de documentos",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 4,
+            "description": "Criar POST /sellers/request-verification que aceita upload de documentos (CNPJ, comprovante de endereço). Documentos armazenados em bucket privado do Supabase Storage. URLs salvas em SellerVerification.documentUrls. Verificar que não há solicitação PENDING ativa.",
+            "user_story": "Como vendedor, quero enviar minha documentação digitalmente para que o processo de verificação seja ágil e sem necessidade de deslocamento",
+            "use_case": "UC15",
+            "functional_requirements": [
+              { "id": "RF34", "description": "Upload de até 5 documentos (PDF ou imagem)" }
+            ],
+            "business_rules": [
+              { "id": "RN13", "description": "Apenas 1 solicitação PENDING por vez" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: POST /sellers/request-verification",
+              "TASK: Verificar que não há SellerVerification PENDING para este seller",
+              "TASK: Gerar presigned URLs para upload de até 5 documentos",
+              "TASK: Retornar URLs ao app",
+              "TASK: App faz upload dos documentos",
+              "TASK: POST /sellers/request-verification/confirm { documentUrls[] }",
+              "TASK: Criar SellerVerification com status PENDING",
+              "END EVENT: Solicitação registrada"
+            ],
+            "acceptance_criteria": [
+              "Máximo 5 documentos por solicitação",
+              "Formatos aceitos: PDF, JPEG, PNG (até 5MB cada)",
+              "Bucket privado — URLs não acessíveis publicamente",
+              "Moderadores acessam via URL assinada gerada no backend"
+            ],
+            "tech_notes": "Supabase Storage bucket 'verification-docs' como privado (sem policy pública). Para o moderador visualizar: `supabase.storage.from('verification-docs').createSignedUrl(path, 3600)`. No app: `expo-document-picker` para seleção de PDFs e `expo-image-picker` para fotos. Upload paralelo via `Promise.all([...])`. SellerVerification.documentUrls: `['sellers/{userId}/doc1.pdf', 'sellers/{userId}/doc2.jpg']` (armazenar path, não URL assinada)."
+          },
+          {
+            "id": "M03-T03-ST02",
+            "title": "Tela de solicitação de verificação no app do vendedor",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Criar tela app/(seller)/solicitar-verificacao.tsx com explicação do processo, lista de documentos necessários, upload de arquivos (PDF ou foto) e status atual da solicitação (PENDING/APPROVED/REJECTED). Exibir badge 'Em análise' quando PENDING.",
+            "user_story": "Como vendedor, quero uma tela clara que me guie no processo de verificação para que eu saiba exatamente o que enviar e o status da minha solicitação",
+            "use_case": "UC15",
+            "functional_requirements": [
+              { "id": "RF34", "description": "Tela de solicitação com status e upload" }
+            ],
+            "business_rules": [
+              { "id": "RN13", "description": "Exibir status atual da verificação" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Vendedor acessa tela de verificação",
+              "TASK: useQuery(['seller', 'verification-status']) busca status atual",
+              "EXCLUSIVE GATEWAY: Status atual?",
+              "  [NONE] --> TASK: Exibir formulário de solicitação com lista de documentos",
+              "  [PENDING] --> TASK: Exibir badge 'Em análise' com data de envio",
+              "  [APPROVED] --> TASK: Exibir Selo Verificado com data de aprovação",
+              "  [REJECTED] --> TASK: Exibir motivo e botão 'Solicitar novamente'",
+              "END EVENT: Tela renderizada conforme status"
+            ],
+            "acceptance_criteria": [
+              "Cada status exibe UI distinta (cores e ícones diferentes)",
+              "Documentos necessários listados com checkbox de confirmação",
+              "Upload de cada documento com preview antes de enviar",
+              "Botão de envio desabilitado até pelo menos 1 documento adicionado"
+            ],
+            "tech_notes": "Expo Router: `app/(seller)/solicitar-verificacao.tsx`. Status colors: PENDING = amarelo #F59E0B, APPROVED = verde #10B981, REJECTED = vermelho #EF4444. expo-document-picker: `DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], multiple: true })`. Preview de PDF: usar `expo-file-system` para ler base64 e exibir via WebView se necessário. useMutation para submissão do formulário de verificação."
+          },
+          {
+            "id": "M03-T03-ST03",
+            "title": "Cálculo assíncrono de SellerStats via BullMQ",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 4,
+            "description": "Criar job BullMQ 'update-seller-stats' que recalcula SellerStats de um vendedor: contar anúncios PUBLISHED, calcular média de tempo de resposta de chat (ChatMessage), total vendido (status SOLD). Job disparado após eventos relevantes (novo anúncio publicado, anúncio marcado como vendido).",
+            "user_story": "Como sistema de qualidade, quero atualizar as estatísticas do vendedor de forma assíncrona para que o perfil exiba dados precisos sem impactar a performance das operações principais",
+            "use_case": "UC15",
+            "functional_requirements": [
+              { "id": "RF35", "description": "SellerStats calculados por job assíncrono via BullMQ" }
+            ],
+            "business_rules": [
+              { "id": "RN-M03-03", "description": "Stats calculados assincronamente — não em tempo real" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Evento disparado (anúncio publicado, vendido, chat respondido)",
+              "TASK (API): Adicionar job 'update-seller-stats' na fila BullMQ com { sellerId }",
+              "TASK (Worker): Bull Worker processa job update-seller-stats",
+              "PARALLEL GATEWAY: Queries paralelas de stats",
+              "  --> TASK (Prisma): COUNT anúncios PUBLISHED do seller",
+              "  --> TASK (Prisma): COUNT total de anúncios SOLD do seller",
+              "  --> TASK (Prisma): Calcular avg do tempo de resposta (ChatMessage timestamps)",
+              "TASK (Prisma): prisma.sellerStats.update({ where: { sellerProfileId }, data: { activeListings, totalSold, avgResponseTimeMinutes } })",
+              "END EVENT: SellerStats atualizado"
+            ],
+            "acceptance_criteria": [
+              "Job disparado automaticamente após publicação ou venda de anúncio",
+              "Queries de stats executadas em paralelo (Promise.all)",
+              "Job com retry automático em caso de falha (maxAttempts 3)",
+              "SellerStats atualizado dentro de 30 segundos do evento"
+            ],
+            "tech_notes": "BullMQ: `@InjectQueue('seller-stats') private statsQueue: Queue`. Adicionar job: `this.statsQueue.add('update-seller-stats', { sellerId }, { attempts: 3, backoff: { type: 'exponential', delay: 1000 } })`. QueueModule: configurar Redis Upstash como connection. Worker (@Processor('seller-stats')): `@Process('update-seller-stats') async handle(job: Job<{ sellerId: string }>) { ... }`. Calcular avgResponseTime: média do tempo entre primeira mensagem de comprador e primeira resposta do vendedor por ChatRoom."
+          }
+        ]
+      },
+      {
+        "id": "M03-T04",
+        "title": "Tela de gestão do perfil do vendedor no app",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E02 — Perfis de Usuário",
+        "description": "Implementar telas app/(seller)/perfil.tsx (visão do próprio perfil com estatísticas) e app/(seller)/perfil-editar.tsx (formulário de edição). Usar React Hook Form + Zod para edição. Integrar com PUT /sellers/me. Exibir badge de verificação e estatísticas em tempo real.",
+        "user_stories": [
+          "Como vendedor, quero ver e editar meu perfil de loja diretamente no app para que eu possa manter minhas informações atualizadas"
+        ],
+        "use_cases": ["UC16"],
+        "functional_requirements": [
+          { "id": "RF32", "description": "Tela de edição de perfil com formulário validado" },
+          { "id": "RF35", "description": "Exibição de estatísticas do vendedor na tela de perfil próprio" }
+        ],
+        "business_rules": [
+          { "id": "RN13", "description": "Exibir status de verificação (Em análise / Verificado / Não verificado)" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Vendedor acessa aba de perfil no app",
+          "TASK (App): useQuery(['seller', 'me']) chama GET /sellers/me",
+          "TASK (App): Renderizar tela de perfil com: logo, nome, Selo, stats",
+          "TASK (Vendedor): Tocar em 'Editar perfil'",
+          "TASK (App): Navegar para app/(seller)/perfil-editar.tsx",
+          "TASK (App): Preencher formulário com dados atuais (defaultValues do useForm)",
+          "TASK (Vendedor): Editar campos desejados",
+          "TASK (App): useMutation chama PUT /sellers/me",
+          "TASK (App): onSuccess → invalidateQueries(['seller', 'me']) → voltar para perfil",
+          "END EVENT: Perfil atualizado e exibido"
+        ],
+        "acceptance_criteria": [
+          "Formulário de edição pré-preenchido com dados atuais",
+          "Alterações salvas com feedback visual (toast de sucesso)",
+          "Estatísticas exibidas com ícones e valores formatados",
+          "Tela de perfil próprio acessível apenas para usuários SELLER ou BOTH autenticados"
+        ],
+        "subtasks": [
+          {
+            "id": "M03-T04-ST01",
+            "title": "Implementar tela app/(seller)/perfil.tsx",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar tela de perfil do vendedor (própria visão) com: header com logo e nome da loja, badge de verificação, cards de estatísticas (anúncios ativos, total vendido, tempo de resposta), links para edição e solicitação de verificação.",
+            "user_story": "Como vendedor, quero visualizar meu perfil completo com estatísticas para que eu possa monitorar o desempenho da minha loja",
+            "use_case": "UC16",
+            "functional_requirements": [
+              { "id": "RF35", "description": "Cards de estatísticas: anúncios ativos, vendidos, tempo resposta" }
+            ],
+            "business_rules": [
+              { "id": "RN13", "description": "Badge de verificação com status correto" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Tela perfil.tsx montada",
+              "TASK: useQuery(['seller', 'me']) → GET /sellers/me",
+              "TASK: Renderizar avatar/logo com initials se sem logo",
+              "TASK: Exibir VerifiedBadge se isVerified=true",
+              "TASK: Renderizar 3 cards de stats (activeListings, totalSold, avgResponseTime)",
+              "TASK: Botão 'Editar Perfil' → navegar para /perfil-editar",
+              "TASK: Se !isVerified → exibir banner 'Solicitar Verificação'",
+              "END EVENT: Tela renderizada"
+            ],
+            "acceptance_criteria": [
+              "Logo exibida com fallback de initials do storeName",
+              "Stats formatados: tempo em minutos/horas, contadores com separadores",
+              "Banner de verificação exibido apenas se !isVerified",
+              "Tela inclusa no layout de tabs do vendedor: app/(seller)/(tabs)/perfil.tsx"
+            ],
+            "tech_notes": "Initials fallback: `storeName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)`. Stats cards: componentes reutilizáveis `StatCard` com icon (Ionicons), label e value. Formatação: `avgResponseTimeMinutes < 60 ? ${avg}min : ${Math.round(avg/60)}h`. Usar `react-native-shimmer-placeholder` ou SkeletonView durante loading."
+          },
+          {
+            "id": "M03-T04-ST02",
+            "title": "Implementar formulário de edição de perfil",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar tela app/(seller)/perfil-editar.tsx com formulário React Hook Form + Zod. Campos: storeName, phone, whatsapp, address, city, state, description, openHours. Integrar com PUT /sellers/me via useMutation. Invalidar cache após sucesso.",
+            "user_story": "Como vendedor, quero editar os dados da minha loja de forma simples e validada para que compradores tenham informações precisas sobre mim",
+            "use_case": "UC16",
+            "functional_requirements": [
+              { "id": "RF32", "description": "Formulário de edição de todos os campos do perfil" }
+            ],
+            "business_rules": [
+              { "id": "RN07", "description": "Vendedor responsável pela veracidade das informações" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Tela perfil-editar.tsx montada",
+              "TASK: useQuery(['seller', 'me']) busca dados atuais para defaultValues",
+              "TASK: useForm({ resolver: zodResolver(updateSellerSchema), defaultValues: sellerData })",
+              "TASK (Vendedor): Editar campos",
+              "TASK: handleSubmit → useMutation PUT /sellers/me",
+              "TASK: onSuccess → queryClient.invalidateQueries(['seller', 'me']) + toast.success + router.back()",
+              "END EVENT: Perfil salvo"
+            ],
+            "acceptance_criteria": [
+              "Todos os campos editáveis pré-preenchidos com dados atuais",
+              "Validação Zod inline com mensagens em português",
+              "Botão 'Salvar' desabilitado se formulário não foi alterado (isDirty=false)",
+              "Toast de sucesso após salvamento bem-sucedido"
+            ],
+            "tech_notes": "React Hook Form: `const { control, handleSubmit, formState: { isDirty, errors } } = useForm({ resolver: zodResolver(updateSellerSchema), defaultValues })`. Usar `Controller` do React Hook Form para inputs customizados. Para openHours: componente WeeklySchedulePicker com toggles por dia. City/State: seletor com lista dos estados BR e cidades via IBGE API ou lista estática. useMutation: `onError(err) => toast.error(err.message)`."
+          },
+          {
+            "id": "M03-T04-ST03",
+            "title": "Integrações e ajustes finais do módulo de vendedor",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Integrar perfil do vendedor com os demais módulos: vincular link 'Ver Perfil do Vendedor' na tela de anúncio (M05/M07), garantir que anúncios PUBLISHED aparecem no perfil público, integrar notificação de Selo Verificado com M11. Testar fluxo completo.",
+            "user_story": "Como comprador, quero navegar do anúncio para o perfil do vendedor para que eu possa ver outros veículos que ele tem disponíveis",
+            "use_case": "UC17",
+            "functional_requirements": [
+              { "id": "RF33", "description": "Link de anúncio → perfil público do vendedor funcional" }
+            ],
+            "business_rules": [
+              { "id": "RN-M03-02", "description": "Perfil suspenso não aparece em nenhuma navegação" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Integração do perfil com outros módulos",
+              "TASK: Adicionar botão 'Ver Loja' na tela de anúncio (M07) → navegar para /vendedor/:id",
+              "TASK: Garantir endpoint GET /sellers/:id/listings retorna apenas anúncios PUBLISHED",
+              "TASK: Testar fluxo: busca → anúncio → perfil → outros anúncios → chat",
+              "TASK: Integrar notificação de verificação com NotificationService (M11)",
+              "END EVENT: Fluxo de navegação completo e testado"
+            ],
+            "acceptance_criteria": [
+              "Navegação anúncio → perfil do vendedor funciona corretamente",
+              "Perfil do vendedor exibe apenas anúncios PUBLISHED (não PENDING, SOLD, EXPIRED)",
+              "Notificação enviada ao vendedor quando verificação é aprovada/rejeitada",
+              "Deep link /vendedor/:id pode ser compartilhado externamente"
+            ],
+            "tech_notes": "GET /sellers/:id/listings: query com `where: { sellerId: sellerProfile.id, status: 'PUBLISHED' }` + paginação cursor-based. Deep link externo: configurar `intentFilters` no app.json para suporte a universal links (iOS) e App Links (Android). Notificação: `notificationService.send({ userId: sellerId, type: 'VERIFICATION_APPROVED', content: 'Sua loja recebeu o Selo Verificado!' })`. Testar com dados reais usando seed de staging."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,406 @@
+{
+  "module": {
+    "id": "M11",
+    "name": "Notificações",
+    "slug": "notificacoes",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P0",
+    "epic_ref": "E11",
+    "estimated_sprint": "Sprint 6",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "queue": "BullMQ (processamento e envio de notificações)",
+      "push": "Expo Push Notifications (FCM + APNs)",
+      "email": "Resend API (e-mails transacionais)",
+      "realtime": "Supabase Realtime (notificações in-app em tempo real)",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo centralizador de todas as notificações do PECAÊ: push notifications (via Expo/FCM/APNs), e-mails transacionais (via Resend API) e notificações in-app em tempo real (via Supabase Realtime). Outros módulos chamam NotificationService para disparar notificações. Respeita preferências de canal configuradas pelo usuário (M02).",
+    "goals": [
+      "Centralizar o envio de notificações de todos os módulos via NotificationService",
+      "Suportar três canais: push, e-mail e in-app",
+      "Persistir histórico de notificações in-app para exibição na central de notificações",
+      "Respeitar preferências de canal configuradas no M02",
+      "Enviar e-mails transacionais via Resend API para eventos críticos"
+    ],
+    "actors": [
+      "Usuário (recebe notificações)",
+      "Módulos PECAÊ (disparam notificações via NotificationService)",
+      "Sistema (BullMQ processa e entrega notificações)"
+    ],
+    "dependencies": {
+      "modules": ["M01", "M02", "M03", "M05", "M08", "M_favoritos_alertas"],
+      "external_services": ["Expo Push Notifications API", "Resend API (e-mails)", "Supabase Realtime", "BullMQ"]
+    },
+    "module_flow": {
+      "description": "Fluxo central de notificações — recepção, persistência e entrega multi-canal",
+      "pools": [
+        { "name": "Módulo Origem", "lanes": ["M03, M05, M08, M09, MFA — disparam notificações"] },
+        { "name": "NotificationService", "lanes": ["NestJS — centraliza e persiste"] },
+        { "name": "BullMQ", "lanes": ["PushWorker", "EmailWorker"] },
+        { "name": "Canais", "lanes": ["Expo Push API", "Resend Email API", "Supabase Realtime"] },
+        { "name": "App Mobile", "lanes": ["Centro de Notificações (app/(tabs)/notificacoes.tsx)"] }
+      ],
+      "bpmn_text": [
+        "START EVENT: Módulo chama notificationService.send({ userId, type, title, body, data })",
+        "TASK (NotificationService): Buscar NotificationPreferences do userId",
+        "TASK: prisma.notification.create({ userId, type, title, body, data, isRead: false })",
+        "TASK (Supabase Realtime): INSERT em notification dispara evento para app via CDC",
+        "PARALLEL GATEWAY: Enviar por canais habilitados",
+        "  --> TASK: Se pushEnabled: bullmq.add('send-push', { userId, title, body, data, notificationId })",
+        "  --> TASK: Se emailEnabled e type.requiresEmail: bullmq.add('send-email', { userId, type, data })",
+        "TASK (PushWorker): Buscar PushToken do userId, enviar via Expo API",
+        "TASK (EmailWorker): Chamar Resend API com template baseado em type",
+        "TASK (App): Supabase Realtime listener recebe notification → exibir badge no tab",
+        "END EVENT: Notificação entregue nos canais configurados"
+      ],
+      "message_flows": [
+        "NotificationService → BullMQ: Jobs de entrega por canal",
+        "BullMQ → Expo Push API: Push notifications",
+        "BullMQ → Resend API: E-mails transacionais",
+        "Supabase Realtime → App: Notificações in-app em tempo real"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF90", "description": "Sistema deve persistir todas as notificações no banco (histórico in-app)", "priority": "P0" },
+      { "id": "RF91", "description": "Sistema deve enviar push notifications via Expo API para notificações críticas", "priority": "P0" },
+      { "id": "RF92", "description": "Sistema deve enviar e-mails via Resend API para eventos críticos (aprovação de anúncio, verificação)", "priority": "P1" },
+      { "id": "RF93", "description": "App deve exibir central de notificações com histórico e marcar como lida", "priority": "P0" },
+      { "id": "RF94", "description": "Sistema deve respeitar preferências de canal do usuário (M02)", "priority": "P0" },
+      { "id": "RF95", "description": "Tab de notificações deve exibir badge com contagem de não lidas", "priority": "P0" }
+    ],
+    "business_rules": [
+      { "id": "RN-M11-01", "description": "Notificações são persistidas independentemente do canal habilitado (histórico sempre salvo)" },
+      { "id": "RN-M11-02", "description": "Push é enviado apenas se PushToken registrado e pushEnabled=true" },
+      { "id": "RN-M11-03", "description": "E-mail é enviado apenas para tipos que requerem e-mail (tipo crítico) e emailEnabled=true" },
+      { "id": "RN-M11-04", "description": "Rate limit de notificações push: máximo 10 por usuário por hora (exceto chat)" }
+    ],
+    "notification_types": [
+      { "type": "LISTING_PUBLISHED", "trigger": "M09 aprova anúncio", "channels": ["push", "email", "in-app"], "critical": true },
+      { "type": "LISTING_REJECTED", "trigger": "M09 rejeita anúncio", "channels": ["push", "email", "in-app"], "critical": true },
+      { "type": "VERIFICATION_APPROVED", "trigger": "M03 Selo Verificado concedido", "channels": ["push", "email", "in-app"], "critical": true },
+      { "type": "VERIFICATION_REJECTED", "trigger": "M03 verificação negada", "channels": ["push", "email", "in-app"], "critical": true },
+      { "type": "CHAT_NEW_MESSAGE", "trigger": "M08 nova mensagem no chat", "channels": ["push", "in-app"], "critical": false },
+      { "type": "SAVED_SEARCH_ALERT", "trigger": "MFA novo anúncio compatível", "channels": ["push", "in-app"], "critical": false },
+      { "type": "LISTING_EXPIRING", "trigger": "Sistema: anúncio expira em 7 dias", "channels": ["push", "in-app"], "critical": false }
+    ],
+    "use_cases": [
+      {
+        "id": "UC45",
+        "name": "Receber notificação de anúncio aprovado",
+        "actors": ["Vendedor", "Sistema"],
+        "preconditions": ["Listing aprovado pela moderação (M09)"],
+        "main_flow": [
+          "1. Moderação aprova listing (M09)",
+          "2. M09 chama notificationService.send({ type: 'LISTING_PUBLISHED', userId: sellerId })",
+          "3. Notificação persistida no banco",
+          "4. Push e e-mail enfileirados no BullMQ",
+          "5. Vendedor recebe push com 'Seu anúncio foi publicado!'",
+          "6. E-mail enviado com detalhes do anúncio"
+        ],
+        "alternative_flows": [],
+        "postconditions": ["Vendedor notificado de publicação via push e e-mail"]
+      },
+      {
+        "id": "UC46",
+        "name": "Visualizar central de notificações",
+        "actors": ["Usuário"],
+        "preconditions": ["Usuário autenticado"],
+        "main_flow": [
+          "1. Usuário acessa aba Notificações",
+          "2. Sistema exibe lista de notificações com data e status de leitura",
+          "3. Usuário toca em notificação → navega para contexto (anúncio, chat, etc)",
+          "4. Notificação marcada como lida automaticamente ao tocar"
+        ],
+        "alternative_flows": [],
+        "postconditions": ["Notificações lidas, badge zerado"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M11-T01",
+        "title": "Schema Prisma — Notification e NotificationLog",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 0.5,
+        "epic": "E11 — Notificações",
+        "description": "Criar model Notification (histórico in-app) e NotificationLog (log de entregas por canal) no Prisma. Notification é a entidade principal persistida para o histórico do usuário. NotificationLog rastreia resultado de envio por canal (push/email).",
+        "user_stories": [
+          "Como sistema, quero persistir notificações no banco para exibição no histórico in-app do usuário"
+        ],
+        "use_cases": ["UC45", "UC46"],
+        "functional_requirements": [
+          { "id": "RF90", "description": "Notification persistida independentemente do canal" }
+        ],
+        "business_rules": [
+          { "id": "RN-M11-01", "description": "Histórico sempre salvo" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Schema de notificações",
+          "TASK: Declarar enum NotificationType com todos os tipos",
+          "TASK: model Notification (id, userId, type, title, body, data Json?, isRead, createdAt)",
+          "TASK: model NotificationLog (id, notificationId, channel enum (PUSH/EMAIL/IN_APP), status, error?, sentAt)",
+          "TASK: @@index([userId, isRead]) no Notification para query de não lidas",
+          "TASK: Executar migration",
+          "END EVENT: Schema pronto"
+        ],
+        "acceptance_criteria": [
+          "NotificationType enum com todos os tipos definidos",
+          "@@index([userId, isRead]) para query eficiente de badge",
+          "data como Json para payload customizado por tipo",
+          "NotificationLog com status enum (SENT/FAILED/SKIPPED)"
+        ],
+        "subtasks": [
+          {
+            "id": "M11-T01-ST01",
+            "title": "Escrever models Notification e NotificationLog",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Adicionar ao schema.prisma: enum NotificationType com todos os tipos, model Notification (id, userId FK→User, type, title, body, data Json?, isRead Boolean @default(false), createdAt), model NotificationLog (id, notificationId FK, channel NotificationChannel, status NotificationStatus, error String?, sentAt DateTime?).",
+            "user_story": "Como desenvolvedor, quero schema de notificações tipado para que o histórico seja rastreável por canal",
+            "use_case": "UC46",
+            "functional_requirements": [
+              { "id": "RF90", "description": "Model Notification com data Json para payload customizado" }
+            ],
+            "business_rules": [
+              { "id": "RN-M11-01", "description": "Notification criado antes de tentar envio por canal" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Escrever models de notificação",
+              "TASK: enum NotificationType { LISTING_PUBLISHED LISTING_REJECTED VERIFICATION_APPROVED VERIFICATION_REJECTED CHAT_NEW_MESSAGE SAVED_SEARCH_ALERT LISTING_EXPIRING }",
+              "TASK: enum NotificationChannel { PUSH EMAIL IN_APP }",
+              "TASK: enum NotificationStatus { SENT FAILED SKIPPED }",
+              "TASK: model Notification com @@index([userId, isRead])",
+              "TASK: model NotificationLog com status e error",
+              "END EVENT: Models validados"
+            ],
+            "acceptance_criteria": [
+              "Todos os tipos de notificação no enum NotificationType",
+              "@@index([userId, isRead, createdAt]) para query de paginação não lidas",
+              "data Json para armazenar { listingId, roomId, etc } por tipo",
+              "Migration executada sem erros"
+            ],
+            "tech_notes": "model Notification: `@@map('notification')`. data: `Json?` — armazenar contexto de navegação: `{ listingId: 'uuid' }`, `{ roomId: 'uuid' }`, `{ sellerProfileId: 'uuid' }`. Supabase Realtime: habilitar para tabela notification via Dashboard para CDC in-app. @@index: `@@index([userId, isRead])` para `WHERE userId=? AND isRead=false COUNT`. Adicionar também `@@index([userId, createdAt])` para paginação do histórico."
+          }
+        ]
+      },
+      {
+        "id": "M11-T02",
+        "title": "NotificationService — centro de envio multi-canal",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E11 — Notificações",
+        "description": "Implementar NotificationModule com NotificationService.send() que: persiste Notification no banco, emite via Supabase Realtime (CDC automático), e enfileira jobs BullMQ para push e e-mail conforme preferências do usuário e tipo da notificação.",
+        "user_stories": [
+          "Como módulo PECAÊ, quero chamar notificationService.send() com uma interface simples para que eu não precise me preocupar com os detalhes do canal de entrega"
+        ],
+        "use_cases": ["UC45"],
+        "functional_requirements": [
+          { "id": "RF91", "description": "Job BullMQ para push conforme pushEnabled" },
+          { "id": "RF92", "description": "Job BullMQ para email conforme emailEnabled e tipo crítico" }
+        ],
+        "business_rules": [
+          { "id": "RN-M11-01", "description": "Notification sempre persistida antes de tentar envio" },
+          { "id": "RN-M11-02", "description": "Push apenas se pushEnabled e PushToken disponível" },
+          { "id": "RN-M11-04", "description": "Rate limit: 10 push/hora (exceto CHAT_NEW_MESSAGE)" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: notificationService.send({ userId, type, title, body, data? })",
+          "TASK: Buscar NotificationPreferences do userId (cache Redis 5min)",
+          "TASK: prisma.notification.create({ userId, type, title, body, data, isRead: false })",
+          "TASK: Supabase Realtime: INSERT dispara CDC para app automaticamente",
+          "PARALLEL GATEWAY: Processar canais habilitados",
+          "  [Push] --> TASK: Se prefs.pushEnabled → notificationsQueue.add('send-push', { notificationId, userId, title, body, data })",
+          "  [Email] --> TASK: Se prefs.emailEnabled AND type in CRITICAL_TYPES → notificationsQueue.add('send-email', { notificationId, userId, type, data })",
+          "TASK: Retornar notificationId",
+          "END EVENT: Notification criada e jobs enfileirados"
+        ],
+        "acceptance_criteria": [
+          "NotificationService.send() é uma única interface chamada por todos os módulos",
+          "Notification persistida mesmo se push/email falhar",
+          "Push respeitaa prefs.pushEnabled",
+          "Email apenas para CRITICAL_TYPES: LISTING_PUBLISHED, LISTING_REJECTED, VERIFICATION_APPROVED, VERIFICATION_REJECTED",
+          "NotificationLog atualizado pelo worker após tentativa de envio"
+        ],
+        "subtasks": [
+          {
+            "id": "M11-T02-ST01",
+            "title": "Implementar NotificationService.send() com persistência e BullMQ",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar NotificationModule com NotificationService.send(dto). Persistir Notification. Verificar NotificationPreferences (com cache Redis). Enfileirar jobs BullMQ para canais habilitados. Implementando send() como método assíncrono que não bloqueia o módulo chamador.",
+            "user_story": "Como módulo PECAÊ, quero NotificationService.send() assíncrono e não bloqueante para que a notificação não impacte a performance da operação principal",
+            "use_case": "UC45",
+            "functional_requirements": [
+              { "id": "RF90", "description": "Persistência atômica antes de enfileirar canais" }
+            ],
+            "business_rules": [
+              { "id": "RN-M11-01", "description": "Persistência sempre; canais opcionais" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: send(dto) chamado",
+              "TASK: cacheManager.getOrSet('prefs:{userId}', () => buscar do banco, { ttl: 300 })",
+              "TASK: prisma.notification.create()",
+              "TASK: Se pushEnabled: queue.add('send-push', payload)",
+              "TASK: Se emailEnabled e tipo crítico: queue.add('send-email', payload)",
+              "TASK: Retornar { notificationId }",
+              "END EVENT: Processamento assíncrono iniciado"
+            ],
+            "acceptance_criteria": [
+              "send() retorna rapidamente sem aguardar entrega dos canais",
+              "Cache de preferências reduz queries repetidas ao banco",
+              "CRITICAL_TYPES: const definida no módulo para tipos que enviam email",
+              "Lançar exceção apenas se prisma.create() falhar — canais são best-effort"
+            ],
+            "tech_notes": "SendNotificationDto: interface `{ userId: string; type: NotificationType; title: string; body: string; data?: Record<string, string>; }`. CRITICAL_TYPES: `const CRITICAL_TYPES = new Set([NotificationType.LISTING_PUBLISHED, NotificationType.LISTING_REJECTED, NotificationType.VERIFICATION_APPROVED, NotificationType.VERIFICATION_REJECTED])`. NestJS: exportar NotificationService para injeção em outros módulos: `exports: [NotificationService]`. Cache: `@InjectCacheManager() private cacheManager: Cache` do @nestjs/cache-manager."
+          },
+          {
+            "id": "M11-T02-ST02",
+            "title": "Worker de push notifications e worker de e-mail (Resend)",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Implementar dois workers BullMQ: SendPushWorker (busca PushToken, envia via Expo Push API, atualiza NotificationLog) e SendEmailWorker (busca dados do usuário, seleciona template por tipo, envia via Resend API, atualiza NotificationLog).",
+            "user_story": "Como sistema, quero workers dedicados para push e e-mail com logging de resultado para que falhas de entrega sejam rastreáveis",
+            "use_case": "UC45",
+            "functional_requirements": [
+              { "id": "RF91", "description": "SendPushWorker com Expo Push API" },
+              { "id": "RF92", "description": "SendEmailWorker com Resend API e templates por tipo" }
+            ],
+            "business_rules": [
+              { "id": "RN-M11-02", "description": "Push skipped se sem token" },
+              { "id": "RN-M11-03", "description": "Email apenas para tipos críticos" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Job send-push ou send-email processado",
+              "PARALLEL_GATEWAY: Worker específico",
+              "  [send-push] --> TASK: Buscar PushTokens do userId",
+              "               TASK: expo.sendPushNotificationsAsync([messages])",
+              "               TASK: prisma.notificationLog.create({ channel: PUSH, status: result })",
+              "  [send-email] --> TASK: Buscar User email do userId",
+              "                  TASK: Selecionar template HTML por tipo via switch",
+              "                  TASK: resend.emails.send({ from, to, subject, html })",
+              "                  TASK: prisma.notificationLog.create({ channel: EMAIL, status })",
+              "END EVENT: Log atualizado"
+            ],
+            "acceptance_criteria": [
+              "PushToken não encontrado: log SKIPPED, sem erro",
+              "Expo API DeviceNotRegistered: remover PushToken do banco",
+              "Resend API: template HTML para cada NotificationType crítico",
+              "NotificationLog atualizado com status SENT ou FAILED após cada tentativa"
+            ],
+            "tech_notes": "Expo Push SDK: `import Expo from 'expo-server-sdk'; const expo = new Expo()`. Templates de email: arquivos HTML em `src/notifications/templates/{type}.html` com variáveis Handlebars. Resend: `resend.emails.send({ from: 'PECAÊ <noreply@pecae.com.br>', to: user.email, subject: titles[type], html: compiledTemplate })`. Rate limit extra: `@Throttle(10, 3600)` no worker ou via Redis para push críticos."
+          }
+        ]
+      },
+      {
+        "id": "M11-T03",
+        "title": "Central de notificações no app (aba Notificações)",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E11 — Notificações",
+        "description": "Implementar tela app/(tabs)/notificacoes.tsx com lista de notificações do usuário, badge de não lidas no tab, marcação de lida ao tocar, e integração Supabase Realtime para novas notificações em tempo real.",
+        "user_stories": [
+          "Como usuário, quero uma central de notificações clara e organizada para acompanhar todas as atividades relevantes do meu perfil"
+        ],
+        "use_cases": ["UC46"],
+        "functional_requirements": [
+          { "id": "RF93", "description": "Lista de notificações com data e status de leitura" },
+          { "id": "RF95", "description": "Badge de não lidas no tab de notificações" }
+        ],
+        "business_rules": [
+          { "id": "RN-M11-01", "description": "Histórico de notificações sem limite de visualização" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Aba Notificações acessada",
+          "TASK: useQuery(['notifications']) → GET /notifications",
+          "TASK: Subscription Supabase Realtime 'notification:{userId}' para atualizações em tempo real",
+          "TASK: FlatList renderiza NotificationItem para cada notificação",
+          "TASK: NotificationItem: ícone por tipo, título, body, data relativa, ponto azul se não lida",
+          "TASK (Usuário): Tocar na notificação",
+          "TASK: PUT /notifications/:id/read (marcar como lida)",
+          "TASK: Navegar para contexto: data.listingId → /anuncio/:id, data.roomId → /chat/:id",
+          "TASK: Badge no TabBar: queryClient.invalidateQueries(['notifications', 'unread-count'])",
+          "END EVENT: Notificação lida e usuário navegado para contexto"
+        ],
+        "acceptance_criteria": [
+          "Lista ordenada por createdAt desc (mais recente primeiro)",
+          "Ponto azul à esquerda para notificações não lidas",
+          "Badge no tab badge com count de não lidas (GET /notifications/unread-count)",
+          "Notificações novas aparecem em tempo real via Supabase Realtime",
+          "Marcar todas como lidas via PUT /notifications/read-all"
+        ],
+        "subtasks": [
+          {
+            "id": "M11-T03-ST01",
+            "title": "NotificationController — endpoints de listagem e leitura",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Criar NotificationController com: GET /notifications (lista paginada), GET /notifications/unread-count (badge), PUT /notifications/:id/read, PUT /notifications/read-all. Todos protegidos com JwtAuthGuard. Usar cursor pagination.",
+            "user_story": "Como app, quero endpoints simples para listar e gerenciar notificações do usuário autenticado",
+            "use_case": "UC46",
+            "functional_requirements": [
+              { "id": "RF93", "description": "CRUD básico de notificações" },
+              { "id": "RF95", "description": "GET /unread-count para badge no tab" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Endpoints de notificações",
+              "TASK: GET /notifications → lista paginada cursor WHERE userId=req.user.id",
+              "TASK: GET /notifications/unread-count → COUNT WHERE userId AND isRead=false",
+              "TASK: PUT /:id/read → update isRead=true WHERE id AND userId (ownership check)",
+              "TASK: PUT /read-all → updateMany WHERE userId AND isRead=false",
+              "END EVENT: Endpoints implementados"
+            ],
+            "acceptance_criteria": [
+              "Listagem retorna apenas notificações do usuário autenticado",
+              "unread-count retorna { count: N }",
+              "read/:id verifica que notificação pertence ao req.user.id",
+              "read-all atualiza todas as não lidas em uma query"
+            ],
+            "tech_notes": "GET /notifications: `prisma.notification.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 20, ...(cursor && { cursor: { id: cursor }, skip: 1 }) })`. unread-count: `prisma.notification.count({ where: { userId, isRead: false } })`. read-all: `prisma.notification.updateMany({ where: { userId, isRead: false }, data: { isRead: true } })`. BadgeCount: cachear no Redis por 5 min para reduzir queries."
+          },
+          {
+            "id": "M11-T03-ST02",
+            "title": "Tela de notificações com Realtime e navegação contextual",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar tela app/(tabs)/notificacoes.tsx com FlatList de NotificationItem. Subscription Supabase Realtime para novas notificações. Ao tocar: marcar como lida e navegar para contexto baseado no type e data da notificação.",
+            "user_story": "Como usuário, quero uma central de notificações que atualize em tempo real e me leve diretamente ao contexto de cada notificação",
+            "use_case": "UC46",
+            "functional_requirements": [
+              { "id": "RF93", "description": "NotificationItem com navegação contextual" },
+              { "id": "RF95", "description": "Badge atualizado via Realtime" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Tela montada",
+              "TASK: useQuery(['notifications'])",
+              "TASK: Realtime subscription 'notification:{userId}' → prepend nova notificação",
+              "TASK: FlatList de NotificationItem",
+              "TASK: Tocar → useMutation PUT /:id/read + navegar para contexto",
+              "TASK: 'Marcar tudo como lido' no header → PUT /read-all",
+              "END EVENT: Tela interativa renderizada"
+            ],
+            "acceptance_criteria": [
+              "Nova notificação aparece no topo da lista em tempo real",
+              "Badge no tab atualizado ao receber nova notificação",
+              "NotificationItem exibe ícone específico por NotificationType",
+              "Swipe to delete (DELETE /notifications/:id) para descartar"
+            ],
+            "tech_notes": "Ícones por tipo: `{ LISTING_PUBLISHED: 'checkmark-circle', LISTING_REJECTED: 'close-circle', VERIFICATION_APPROVED: 'shield-checkmark', CHAT_NEW_MESSAGE: 'chatbubble', SAVED_SEARCH_ALERT: 'notifications', LISTING_EXPIRING: 'time' }` (Ionicons). Navegação contextual: `switch(notification.type) { case 'CHAT_NEW_MESSAGE': router.push(`/chat/${data.roomId}`); ... }`. Realtime: `supabase.channel('notification:${userId}').on('postgres_changes', { event: 'INSERT', filter: `user_id=eq.${userId}` }, handler)`. Badge no tab: atualizado via queryClient ao receber evento Realtime."
+          }
+        ]
+      }
+    ]
+  }
+}

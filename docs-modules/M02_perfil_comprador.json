@@ -1,0 +1,665 @@
+{
+  "module": {
+    "id": "M02",
+    "name": "Perfil do Comprador",
+    "slug": "perfil_comprador",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P1",
+    "epic_ref": "E01",
+    "estimated_sprint": "Sprint 2",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "storage": "Supabase Storage (avatar do comprador)",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo responsável pelo perfil pessoal do comprador: dados básicos, avatar, acesso ao histórico de favoritos, buscas salvas, conversas de chat e preferências de notificação. Perfil simples e centrado na experiência de busca e negociação.",
+    "goals": [
+      "Permitir que o comprador visualize e edite seus dados pessoais",
+      "Centralizar acesso a favoritos, buscas salvas e histórico de chats",
+      "Gerenciar preferências de notificação por canal (push, e-mail, in-app)",
+      "Permitir upload de avatar pessoal"
+    ],
+    "actors": [
+      "Comprador",
+      "Sistema (calcula histórico de atividade)"
+    ],
+    "dependencies": {
+      "modules": ["M01"],
+      "external_services": ["Supabase Storage (avatar)"]
+    },
+    "module_flow": {
+      "description": "Fluxo de gestão do perfil do comprador — dados pessoais, favoritos e preferências",
+      "pools": [
+        { "name": "Comprador", "lanes": ["Usuário"] },
+        { "name": "App Mobile", "lanes": ["Expo Router / Telas do Comprador"] },
+        { "name": "API NestJS", "lanes": ["BuyerController", "BuyerService"] },
+        { "name": "Infraestrutura", "lanes": ["Supabase Storage", "Supabase PostgreSQL"] }
+      ],
+      "bpmn_text": [
+        "START EVENT: Comprador acessa aba de Perfil no app",
+        "TASK (App): useQuery(['buyer', 'me']) → GET /buyers/me",
+        "TASK (App): Renderizar tela de perfil com: avatar, nome, e-mail, telefone",
+        "TASK (App): Exibir atalhos: Meus Favoritos, Buscas Salvas, Conversas, Configurações",
+        "EXCLUSIVE GATEWAY: Ação do comprador?",
+        "  [Editar Perfil] --> TASK (App): Navegar para app/(buyer)/perfil-editar.tsx",
+        "                    TASK (Comprador): Editar nome, telefone ou avatar",
+        "                    TASK (API): PUT /buyers/me → atualizar BuyerProfile",
+        "  [Ver Favoritos] --> TASK (App): Navegar para app/(buyer)/favoritos.tsx",
+        "                    TASK (API): GET /favorites → listar anúncios favoritados",
+        "  [Ver Buscas Salvas] --> TASK (App): Navegar para app/(buyer)/buscas-salvas.tsx",
+        "                        TASK (API): GET /saved-searches",
+        "  [Ver Conversas] --> TASK (App): Navegar para app/(tabs)/mensagens.tsx (M06)",
+        "  [Configurações] --> TASK (App): Navegar para app/(buyer)/configuracoes.tsx",
+        "                    TASK (Comprador): Editar preferências de notificação",
+        "                    TASK (API): PUT /notifications/preferences",
+        "END EVENT: Ação concluída e perfil atualizado"
+      ],
+      "message_flows": [
+        "API → Supabase Storage: Upload de avatar via presigned URL",
+        "API → App: Retornar BuyerProfile atualizado"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF10", "description": "Comprador deve poder visualizar seu perfil com nome, e-mail verificado e telefone", "priority": "P0" },
+      { "id": "RF11", "description": "Comprador deve poder editar nome e telefone", "priority": "P0" },
+      { "id": "RF12", "description": "Comprador deve poder fazer upload de avatar", "priority": "P2" },
+      { "id": "RF13", "description": "Comprador deve ter acesso centralizado a favoritos, buscas salvas e conversas", "priority": "P0" },
+      { "id": "RF14", "description": "Comprador deve poder configurar preferências de notificação por canal (push, e-mail, in-app)", "priority": "P1" },
+      { "id": "RF15", "description": "Comprador deve poder excluir conta e dados pessoais (LGPD)", "priority": "P1" }
+    ],
+    "business_rules": [
+      { "id": "RN07", "description": "Comprador responsável pela veracidade de seus dados pessoais" },
+      { "id": "RN-M02-01", "description": "E-mail do comprador só pode ser alterado mediante reverificação via link enviado ao novo e-mail" },
+      { "id": "RN-M02-02", "description": "Exclusão de conta é soft delete: User.status = DELETED, dados pessoais anonimizados após 30 dias (LGPD)" },
+      { "id": "RN-M02-03", "description": "Comprador pode ter múltiplas buscas salvas, mas máximo 10 ativas simultaneamente" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC05",
+        "name": "Visualizar e editar perfil pessoal",
+        "actors": ["Comprador"],
+        "preconditions": ["Comprador autenticado com status ACTIVE"],
+        "main_flow": [
+          "1. Comprador acessa aba Perfil no app",
+          "2. Visualiza dados pessoais e estatísticas de uso",
+          "3. Toca em 'Editar Perfil'",
+          "4. Edita campos desejados",
+          "5. Salva alterações"
+        ],
+        "alternative_flows": [
+          "A1. E-mail: exibido como somente leitura com botão 'Alterar E-mail' que inicia fluxo de reverificação"
+        ],
+        "postconditions": ["BuyerProfile atualizado"]
+      },
+      {
+        "id": "UC06",
+        "name": "Gerenciar preferências de notificação",
+        "actors": ["Comprador"],
+        "preconditions": ["Comprador autenticado"],
+        "main_flow": [
+          "1. Comprador acessa Configurações de Notificação",
+          "2. Ativa/desativa canais: push, e-mail, in-app",
+          "3. Sistema salva preferências",
+          "4. M11 usa preferências ao enviar notificações"
+        ],
+        "alternative_flows": [],
+        "postconditions": ["Preferências de notificação salvas e respeitadas pelo M11"]
+      },
+      {
+        "id": "UC07",
+        "name": "Excluir conta (LGPD)",
+        "actors": ["Comprador"],
+        "preconditions": ["Comprador autenticado"],
+        "main_flow": [
+          "1. Comprador acessa 'Excluir Conta' nas configurações",
+          "2. Confirma com senha atual",
+          "3. Sistema realiza soft delete e agenda anonimização",
+          "4. Todos os refresh tokens revogados"
+        ],
+        "alternative_flows": [
+          "A1. Vendedor: deve encerrar anúncios ativos antes de excluir conta"
+        ],
+        "postconditions": ["Conta soft-deleted, dados agendados para anonimização em 30 dias, sessão encerrada"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M02-T01",
+        "title": "Schema Prisma — BuyerProfile e NotificationPreferences",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 1,
+        "epic": "E01 — Gestão de Contas",
+        "description": "Criar model BuyerProfile (dados pessoais do comprador além do User base) e NotificationPreferences (preferências por canal) no Prisma. Garantir relação 1:1 com User.",
+        "user_stories": [
+          "Como desenvolvedor, quero BuyerProfile como entidade separada do User para que dados de persona de comprador sejam extensíveis sem afetar o schema de identidade"
+        ],
+        "use_cases": ["UC05"],
+        "functional_requirements": [
+          { "id": "RF10", "description": "BuyerProfile com name, avatar, userId @unique" },
+          { "id": "RF14", "description": "NotificationPreferences com booleans por canal" }
+        ],
+        "business_rules": [
+          { "id": "RN-M02-01", "description": "E-mail gerenciado pelo User base, nunca duplicado no BuyerProfile" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Schema do perfil do comprador",
+          "TASK: Escrever model BuyerProfile (id, userId @unique, name, avatar?)",
+          "TASK: Escrever model NotificationPreferences (id, userId @unique, pushEnabled, emailEnabled, inAppEnabled)",
+          "TASK: Executar migration",
+          "END EVENT: Schema criado"
+        ],
+        "acceptance_criteria": [
+          "BuyerProfile.userId @unique (1:1 com User)",
+          "NotificationPreferences com defaults true para todos os canais",
+          "Migration executada sem erros"
+        ],
+        "subtasks": [
+          {
+            "id": "M02-T01-ST01",
+            "title": "Escrever model BuyerProfile no Prisma",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Adicionar model BuyerProfile ao schema.prisma com: id (UUID), userId (FK @unique → User), name (String), avatar (String?), createdAt, updatedAt. Criar também NotificationPreferences (id, userId @unique, pushEnabled Boolean @default(true), emailEnabled Boolean @default(true), inAppEnabled Boolean @default(true)).",
+            "user_story": "Como desenvolvedor, quero BuyerProfile no Prisma para que dados do comprador sejam persistidos de forma type-safe",
+            "use_case": "UC05",
+            "functional_requirements": [
+              { "id": "RF10", "description": "Campos básicos do comprador no BuyerProfile" }
+            ],
+            "business_rules": [
+              { "id": "RN-M02-01", "description": "userId @unique garantindo 1 perfil por comprador" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Escrever models do comprador",
+              "TASK: model BuyerProfile com userId @unique",
+              "TASK: model NotificationPreferences com userId @unique e defaults true",
+              "TASK: npx prisma validate",
+              "END EVENT: Models válidos"
+            ],
+            "acceptance_criteria": [
+              "BuyerProfile e NotificationPreferences no schema.prisma",
+              "Relação User → BuyerProfile e User → NotificationPreferences bidirecionais",
+              "npx prisma validate sem erros"
+            ],
+            "tech_notes": "model BuyerProfile: `@@map('buyer_profile')`. model NotificationPreferences: `@@map('notification_preferences')`. onDelete: Cascade nas relações (se User deletado, profiles removidos). NotificationPreferences criada automaticamente ao criar BuyerProfile via service. Adicionar relações inversas no model User: `buyerProfile BuyerProfile?` e `notificationPreferences NotificationPreferences?`."
+          },
+          {
+            "id": "M02-T01-ST02",
+            "title": "Migration e criação automática de BuyerProfile no registro",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Executar migration das entidades do comprador. Modificar AuthService.register() para criar BuyerProfile e NotificationPreferences automaticamente em transaction ao criar User com type BUYER ou BOTH.",
+            "user_story": "Como sistema, quero que BuyerProfile seja criado automaticamente no cadastro para que todo comprador tenha perfil disponível imediatamente",
+            "use_case": "UC05",
+            "functional_requirements": [
+              { "id": "RF10", "description": "BuyerProfile criado automaticamente no cadastro" }
+            ],
+            "business_rules": [
+              { "id": "RN-M02-01", "description": "Automação no cadastro garante integridade" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Usuário do tipo BUYER/BOTH cadastra-se",
+              "TASK: prisma.$transaction([createUser, createBuyerProfile, createNotificationPreferences])",
+              "TASK: NotificationPreferences criadas com todos os canais habilitados",
+              "END EVENT: Usuário, BuyerProfile e NotificationPreferences criados atomicamente"
+            ],
+            "acceptance_criteria": [
+              "Migration aplicada no Supabase",
+              "Registro de novo BUYER cria BuyerProfile automaticamente",
+              "NotificationPreferences criadas com pushEnabled=true, emailEnabled=true, inAppEnabled=true",
+              "Transaction garante seja tudo criado ou nada"
+            ],
+            "tech_notes": "No AuthService.register(): expandir `prisma.$transaction([createUser, ...])` para incluir `prisma.buyerProfile.create()` e `prisma.notificationPreferences.create()` condicionais ao tipo. Para SELLER sem BOTH: criar apenas SellerProfile no M03. Para BOTH: criar buyer E seller profiles."
+          },
+          {
+            "id": "M02-T01-ST03",
+            "title": "Implementar BuyerController com endpoints GET e PUT /buyers/me",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Criar BuyerModule com BuyerController e BuyerService. Endpoints: GET /buyers/me (retorna perfil completo incluindo notificationPreferences) e PUT /buyers/me (atualiza name e avatar). Protegidos com JwtAuthGuard.",
+            "user_story": "Como comprador autenticado, quero um endpoint para ver e editar meu perfil para que eu mantenha meus dados atualizados",
+            "use_case": "UC05",
+            "functional_requirements": [
+              { "id": "RF10", "description": "GET /buyers/me retorna BuyerProfile + notificationPreferences" },
+              { "id": "RF11", "description": "PUT /buyers/me atualiza name" }
+            ],
+            "business_rules": [
+              { "id": "RN-M02-01", "description": "E-mail não editável via PUT /buyers/me" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: GET /buyers/me",
+              "TASK: JwtAuthGuard verifica token",
+              "TASK: BuyerService.getMyProfile(userId) — busca User + BuyerProfile + NotificationPreferences",
+              "TASK: Retornar { id, name, email, emailVerified, phoneVerified, avatar, notificationPreferences }",
+              "END EVENT: Perfil retornado"
+            ],
+            "acceptance_criteria": [
+              "GET /buyers/me retorna 200 com perfil completo",
+              "PUT /buyers/me aceita apenas name e avatar (whitelist via DTO)",
+              "E-mail não pode ser alterado via este endpoint",
+              "passwordHash nunca incluído na resposta"
+            ],
+            "tech_notes": "BuyerService.getMyProfile(): `prisma.user.findUnique({ where: { id: userId }, include: { buyerProfile: true, notificationPreferences: true }, select: { id: true, email: true, emailVerified: true, buyerProfile: true, notificationPreferences: true } })`. DTO UpdateBuyerDto: `@IsOptional() @IsString() @MinLength(2) name`, `@IsOptional() @IsUrl() avatar`. Nunca incluir passwordHash via `select`."
+          }
+        ]
+      },
+      {
+        "id": "M02-T02",
+        "title": "Telas de perfil do comprador no app",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E01 — Gestão de Contas",
+        "description": "Implementar telas app/(buyer)/perfil.tsx e app/(buyer)/perfil-editar.tsx com React Hook Form + Zod. Tela principal exibe dados pessoais e atalhos para favoritos, buscas salvas e conversas. Tela de edição permite alterar nome e avatar.",
+        "user_stories": [
+          "Como comprador, quero uma tela de perfil organizada com acesso rápido a todas as minhas atividades para que eu possa gerenciar minha conta facilmente"
+        ],
+        "use_cases": ["UC05"],
+        "functional_requirements": [
+          { "id": "RF13", "description": "Atalhos para Favoritos, Buscas Salvas e Conversas na tela de perfil" }
+        ],
+        "business_rules": [],
+        "bpmn_flow": [
+          "START EVENT: Comprador acessa aba Perfil",
+          "TASK (App): useQuery(['buyer', 'me']) chama GET /buyers/me",
+          "TASK (App): Renderizar avatar, nome, e-mail com badges de verificação",
+          "TASK (App): Grade de atalhos: Favoritos (contador), Buscas Salvas (contador), Conversas (contador não lidas)",
+          "TASK (Comprador): Tocar em 'Editar Perfil'",
+          "TASK (App): Navegar para /perfil-editar com dados pré-preenchidos",
+          "END EVENT: Perfil exibido"
+        ],
+        "acceptance_criteria": [
+          "Avatar exibido com fallback de initials",
+          "Badges de verificação de e-mail e telefone visíveis",
+          "Contadores em atalhos atualizados via queries TanStack",
+          "Tela incluída no layout de tabs do comprador"
+        ],
+        "subtasks": [
+          {
+            "id": "M02-T02-ST01",
+            "title": "Tela app/(buyer)/perfil.tsx — visão principal do comprador",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar tela principal de perfil do comprador com: header com avatar e informações básicas, badges de verificação de e-mail e telefone, grade de atalhos com contadores (Favoritos, Buscas Salvas, Conversas), e menu de configurações.",
+            "user_story": "Como comprador, quero ver todas as minhas informações e atividades em uma única tela de perfil para facilitar a navegação",
+            "use_case": "UC05",
+            "functional_requirements": [
+              { "id": "RF10", "description": "Exibir nome, e-mail, avatar e status de verificação" },
+              { "id": "RF13", "description": "Grade de atalhos com contadores para favoritos, buscas e conversas" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Tela perfil.tsx renderizada",
+              "TASK: useQuery(['buyer', 'me'])",
+              "TASK: Renderizar header com avatar (Image ou initials View)",
+              "TASK: Badge emailVerified (verde check) e phoneVerified (verde check)",
+              "TASK: Grade 2x2: Favoritos (coração), Buscas Salvas (relógio), Conversas (chat), Notificações (sino)",
+              "TASK: Section de configurações: Editar Perfil, Alterar Senha, Configurar Notificações, Excluir Conta",
+              "TASK: Botão Sair (logout)",
+              "END EVENT: Tela renderizada"
+            ],
+            "acceptance_criteria": [
+              "Avatar com placeholder de initials quando sem foto",
+              "Ícones de verificação em verde quando verificados",
+              "Grade de atalhos com contadores reais",
+              "Botão Sair chama POST /auth/logout e limpa SecureStore"
+            ],
+            "tech_notes": "Avatar: componente AvatarImage com fallback: `user.avatar ? <Image src={avatar} /> : <View><Text>{initials}</Text></View>`. Contadores: `useQuery(['favorites', 'count'])`, `useQuery(['saved-searches', 'count'])`, `useQuery(['chats', 'unread-count'])`. Grade: `FlatList` com `numColumns={2}` ou componente de Grid. Logout: `useMutation(authApi.logout, { onSuccess: () => { secureStore.clear(); router.replace('/(auth)/login') } })`."
+          },
+          {
+            "id": "M02-T02-ST02",
+            "title": "Tela de edição de perfil e upload de avatar",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Criar tela app/(buyer)/perfil-editar.tsx com formulário React Hook Form para edição de nome. Implementar fluxo de upload de avatar via expo-image-picker e presigned URL do Supabase Storage. Bug comum: validar que nome tenha ao menos 2 caracteres.",
+            "user_story": "Como comprador, quero editar meu nome e foto de perfil para que eu me identifique melhor na plataforma",
+            "use_case": "UC05",
+            "functional_requirements": [
+              { "id": "RF11", "description": "Edição de nome via formulário validado" },
+              { "id": "RF12", "description": "Upload de avatar via expo-image-picker" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Tela perfil-editar.tsx aberta",
+              "TASK: Carregar dados atuais como defaultValues no useForm",
+              "TASK (Comprador): Tocar no avatar → expo-image-picker abre câmera/galeria",
+              "TASK: Selecionar imagem → resize e crop para quadrado",
+              "TASK: POST /buyers/me/avatar { filename, mimeType } → receber presigned URL",
+              "TASK: PUT presignedUrl com imagem selecionada",
+              "TASK: POST /buyers/me/avatar/confirm { publicUrl }",
+              "TASK: Editar nome no campo de texto",
+              "TASK: handleSubmit → PUT /buyers/me { name }",
+              "END EVENT: Perfil atualizado"
+            ],
+            "acceptance_criteria": [
+              "Formulário rejeita nome com menos de 2 caracteres",
+              "Avatar preview imediato após seleção (antes do upload)",
+              "Imagem redimensionada para 200x200px no app antes do upload",
+              "Loading state durante upload do avatar"
+            ],
+            "tech_notes": "expo-image-picker: `ImagePicker.launchImageLibraryAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.8, base64: false })`. Redimensionar: `expo-image-manipulator` com `resize({ width: 200, height: 200 })`. Upload: mesmo padrão de presigned URL do M03 (logo do vendedor). Supabase bucket: 'buyer-avatars' público para leitura. Path: `buyers/{userId}/avatar.jpg`. Após upload, invalidar query ['buyer', 'me']."
+          },
+          {
+            "id": "M02-T02-ST03",
+            "title": "Tela de configurações de notificação do comprador",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 2,
+            "description": "Criar tela app/(buyer)/configuracoes.tsx com toggles para preferências de notificação (push, e-mail, in-app). Integrar com PUT /notifications/preferences. Solicitar permissão de push caso necessário via Expo Notifications.",
+            "user_story": "Como comprador, quero controlar quais tipos de notificação recebo para que eu não seja incomodado por alertas irrelevantes",
+            "use_case": "UC06",
+            "functional_requirements": [
+              { "id": "RF14", "description": "Toggles de preferência de notificação por canal" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Tela de configurações de notificação",
+              "TASK: useQuery(['notification-preferences']) → GET /notifications/preferences",
+              "TASK: Renderizar Switch para pushEnabled, emailEnabled, inAppEnabled",
+              "TASK (Comprador): Toggle switch",
+              "EXCLUSIVE GATEWAY: pushEnabled ativado?",
+              "  [Sim e permissão não concedida] --> TASK: Expo.requestPermissionsAsync() → solicitar permissão de push",
+              "  [Permissão negada] --> TASK: Exibir instrução para ativar nas configurações do SO",
+              "TASK: useMutation PUT /notifications/preferences com novo estado",
+              "END EVENT: Preferências salvas"
+            ],
+            "acceptance_criteria": [
+              "Toggles refletem estado atual das preferências carregadas da API",
+              "Ao ativar push: solicitar permissão do sistema operacional",
+              "Alterações salvas automaticamente ao mudar toggle (debounce 500ms)",
+              "Feedback visual de erro se API falhar ao salvar"
+            ],
+            "tech_notes": "Expo Notifications: `await Notifications.requestPermissionsAsync()`. Checar: `const { status } = await Notifications.getPermissionsAsync()`. Se status !== 'granted': mostrar Alert nativo com instrução para abrir configurações. Switch: componente Switch do React Native com trackColor e thumbColor customizados. Debounce: `useCallback` com `setTimeout` de 500ms antes de chamar a mutation. Integrar com NotificationModule (M11) que usa essas preferências ao enviar."
+          }
+        ]
+      },
+      {
+        "id": "M02-T03",
+        "title": "Favoritos e buscas salvas do comprador",
+        "status": "planned",
+        "priority": "P1",
+        "estimated_days": 2,
+        "epic": "E10 — Favoritos e Alertas",
+        "description": "Implementar funcionalidade de favoritar anúncios (Favorite) e salvar buscas (SavedSearch) no perfil do comprador. Endpoints: POST/DELETE /favorites/:listingId, GET /favorites, POST /saved-searches, GET /saved-searches, DELETE /saved-searches/:id. Telas de listagem no app.",
+        "user_stories": [
+          "Como comprador, quero favoritar um anúncio para que eu possa encontrá-lo facilmente depois",
+          "Como comprador, quero salvar minha busca atual para que eu seja notificado quando novos anúncios compatíveis forem publicados"
+        ],
+        "use_cases": ["UC05"],
+        "functional_requirements": [
+          { "id": "RF13", "description": "Favoritar e desfavoritar anúncios com feedback imediato" },
+          { "id": "RF16", "description": "Salvar buscas com filtros atuais e ativar alertas de novos anúncios" }
+        ],
+        "business_rules": [
+          { "id": "RN-M02-03", "description": "Máximo 10 buscas salvas ativas por comprador" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Comprador toca no ícone de coração em um anúncio",
+          "TASK (App): POST /favorites/:listingId — toggle favorite (criar ou deletar)",
+          "TASK (API): Verificar existência de Favorite { userId, listingId }",
+          "EXCLUSIVE GATEWAY: Já favoritado?",
+          "  [Sim] --> TASK: DELETE /favorites/:listingId — remover",
+          "  [Não] --> TASK: prisma.favorite.create({ userId, listingId })",
+          "TASK (App): Atualizar ícone de coração (cheio/vazio) via optimistic update",
+          "PARALLEL GATEWAY: Acesso às listas",
+          "  --> TASK: GET /favorites → lista de anúncios favoritados",
+          "  --> TASK: POST /saved-searches { query, filters, alertActive } → salvar busca",
+          "  --> TASK: GET /saved-searches → listar buscas salvas",
+          "END EVENT: Favorito ou busca salva registrada"
+        ],
+        "acceptance_criteria": [
+          "Toggle de favorito responde instantaneamente via optimistic update",
+          "GET /favorites retorna lista de anúncios favoritados com dados do veículo",
+          "SavedSearch com alertActive=true gera notificação quando novo anúncio compatível é publicado",
+          "Máximo 10 buscas salvas: 11ª retorna 422 com mensagem clara"
+        ],
+        "subtasks": [
+          {
+            "id": "M02-T03-ST01",
+            "title": "Implementar endpoints de favoritos (Favorite CRUD)",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Criar FavoritesController com: POST /favorites/:listingId (favoritar), DELETE /favorites/:listingId (desfavoritar), GET /favorites (listar com dados do anúncio). Usar upsert ou verificação de existência para toggle. Retornar lista com dados completos do listing incluindo veículo e foto.",
+            "user_story": "Como comprador, quero favoritar anúncios para criar uma lista pessoal de veículos de interesse",
+            "use_case": "UC05",
+            "functional_requirements": [
+              { "id": "RF13", "description": "CRUD de favoritos com resposta imediata" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: POST /favorites/:listingId",
+              "TASK: JwtAuthGuard verifica token",
+              "TASK: Verificar que Listing com status PUBLISHED existe",
+              "TASK: prisma.favorite.upsert ou create",
+              "TASK: Retornar { favorited: true, count: updatedCount }",
+              "TASK: GET /favorites → include listing.vehicle.photos",
+              "END EVENT: Favorito processado"
+            ],
+            "acceptance_criteria": [
+              "POST /favorites retorna 201 com favorited:true",
+              "DELETE /favorites retorna 200 com favorited:false",
+              "GET /favorites retorna anúncios com thumbnail, título e localização",
+              "Anúncio não encontrado ou não PUBLISHED retorna 404"
+            ],
+            "tech_notes": "GET /favorites: `prisma.favorite.findMany({ where: { userId }, include: { listing: { include: { vehicle: { include: { photos: { take: 1, orderBy: { order: 'asc' } }, version: { include: { model: { include: { brand: true } } } } } } } } }, orderBy: { createdAt: 'desc' } })`. Toggle: usar `prisma.favorite.deleteMany({ where: { userId, listingId } })` e verificar count para determinar se foi removido. TanStack Query optimistic update: `useMutation({ onMutate: (listingId) => { queryClient.setQueryData([...], updater) }, onError: rollback })`."
+          },
+          {
+            "id": "M02-T03-ST02",
+            "title": "Implementar endpoints de buscas salvas (SavedSearch)",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Criar SavedSearchController com: POST /saved-searches (salvar busca atual com filtros como JSON), GET /saved-searches (listar), DELETE /saved-searches/:id. PATCH /saved-searches/:id/alert (ativar/desativar alerta). Validar máximo de 10 buscas salvas por comprador.",
+            "user_story": "Como comprador, quero salvar minha busca de 'Fiat Uno 2015 em São Paulo' para que eu seja avisado quando aparecerem novos anúncios compatíveis",
+            "use_case": "UC05",
+            "functional_requirements": [
+              { "id": "RF16", "description": "CRUD de buscas salvas com filtros JSON e flag de alerta" }
+            ],
+            "business_rules": [
+              { "id": "RN-M02-03", "description": "Máximo 10 buscas salvas por comprador" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: POST /saved-searches",
+              "TASK: Contar buscas salvas existentes do usuário",
+              "EXCLUSIVE GATEWAY: count >= 10?",
+              "  [Sim] --> INTERMEDIATE EVENT (Error): 422 Unprocessable Entity",
+              "  [Não] --> TASK: prisma.savedSearch.create({ userId, query, filters, alertActive })",
+              "TASK: Retornar 201 com savedSearch criado",
+              "END EVENT: Busca salva registrada"
+            ],
+            "acceptance_criteria": [
+              "POST /saved-searches com 10 existentes retorna 422",
+              "filters armazenado como JSON válido com campos: brandId, modelId, city, state, yearMin, yearMax",
+              "alertActive default false na criação",
+              "PATCH /:id/alert toggle o campo alertActive"
+            ],
+            "tech_notes": "SavedSearch.filters: `Json` type no Prisma, armazenar como: `{ brandId?: string, modelId?: string, versionId?: string, yearMin?: number, yearMax?: number, city?: string, state?: string, q?: string }`. CreateSavedSearchDto: `@IsString() @IsOptional() query`, `@IsObject() filters`, `@IsBoolean() @IsOptional() alertActive`. O job de alertas (M_favoritos_alertas) usa esses filtros para matching com novos anúncios."
+          },
+          {
+            "id": "M02-T03-ST03",
+            "title": "Telas de favoritos e buscas salvas no app",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 4,
+            "description": "Criar telas app/(buyer)/favoritos.tsx (lista de anúncios favoritados com FlashList) e app/(buyer)/buscas-salvas.tsx (lista de buscas com filtros resumidos, toggle de alerta e botão de repetir busca). Ambas com swipe to delete e empty states.",
+            "user_story": "Como comprador, quero ver minha lista de favoritos de forma organizada para que eu possa revisitar anúncios de interesse a qualquer momento",
+            "use_case": "UC05",
+            "functional_requirements": [
+              { "id": "RF13", "description": "Tela de favoritos com FlashList e swipe to delete" },
+              { "id": "RF16", "description": "Tela de buscas salvas com toggle de alerta e repetir busca" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Comprador acessa Favoritos",
+              "TASK: useQuery(['favorites']) chama GET /favorites",
+              "EXCLUSIVE GATEWAY: Lista vazia?",
+              "  [Sim] --> TASK: Exibir EmptyState com CTA 'Explorar anúncios'",
+              "  [Não] --> TASK: FlashList renderiza ListingCard para cada favorito",
+              "TASK: Swipe left → botão Delete → DELETE /favorites/:listingId",
+              "END EVENT: Lista de favoritos exibida"
+            ],
+            "acceptance_criteria": [
+              "FlashList com estimatedItemSize=150 para ListingCard",
+              "Swipe to delete com confirmação via Alert nativo",
+              "Empty state com imagem e CTA atraente",
+              "Pull to refresh com RefreshControl",
+              "Tela de buscas: botão 'Repetir busca' navega para busca com filtros pré-preenchidos"
+            ],
+            "tech_notes": "FlashList: `@shopify/flash-list`. Swipe: `react-native-swipeable` ou `react-native-gesture-handler` GestureDetector com Swipeable. Empty state: componente EmptyState reutilizável com SVG ilustrativo. Repetir busca: `router.push({ pathname: '/(tabs)/busca', params: { brandId, modelId, city, state } })`. Toggle alerta: switch inline no card de busca salva com useMutation PATCH."
+          }
+        ]
+      },
+      {
+        "id": "M02-T04",
+        "title": "Exclusão de conta e conformidade LGPD",
+        "status": "planned",
+        "priority": "P1",
+        "estimated_days": 1,
+        "epic": "E01 — Gestão de Contas",
+        "description": "Implementar fluxo de exclusão de conta para o comprador com soft delete, revogação de tokens, e agendamento de anonimização via BullMQ após 30 dias. Garantir conformidade com a LGPD (Lei 13.709/2018).",
+        "user_stories": [
+          "Como comprador, quero excluir minha conta e ter meus dados removidos para exercer meu direito ao esquecimento conforme a LGPD"
+        ],
+        "use_cases": ["UC07"],
+        "functional_requirements": [
+          { "id": "RF15", "description": "Exclusão de conta com anonimização de dados pessoais em 30 dias" }
+        ],
+        "business_rules": [
+          { "id": "RN-M02-02", "description": "Soft delete imediato; anonimização em 30 dias" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Comprador solicita exclusão de conta",
+          "TASK (App): Exibir tela de confirmação com aviso sobre dados e atividades",
+          "TASK (Comprador): Confirmar com senha atual",
+          "TASK (API): DELETE /buyers/me com { currentPassword }",
+          "TASK (API): Verificar senha atual com bcrypt.compare",
+          "TASK (API): prisma.user.update({ status: 'DELETED', deletedAt: now() })",
+          "TASK (API): Revogar todos os refresh tokens",
+          "TASK (BullMQ): Agendar job 'anonymize-user-data' para +30 dias",
+          "TASK (API): Retornar 200 OK",
+          "TASK (App): Limpar SecureStore e redirecionar para tela de boas-vindas",
+          "END EVENT: Conta marcada para exclusão; sessão encerrada"
+        ],
+        "acceptance_criteria": [
+          "User.status = DELETED e deletedAt preenchido imediatamente",
+          "Todos os refresh tokens revogados (revokedAt = now())",
+          "Job BullMQ agendado com delay de 30 dias para anonimização",
+          "App limpa SecureStore e navega para tela inicial",
+          "Dados anonimizados: email → 'anon-{uuid}@deleted.pecae.com', name → 'Usuário Removido'"
+        ],
+        "subtasks": [
+          {
+            "id": "M02-T04-ST01",
+            "title": "Endpoint DELETE /buyers/me e soft delete",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Implementar DELETE /buyers/me que verifica senha, realiza soft delete do User (status=DELETED, deletedAt=now()), revoga todos os refresh tokens e agenda job de anonimização via BullMQ com delay de 30 dias.",
+            "user_story": "Como comprador, quero excluir minha conta de forma segura confirmando com minha senha atual",
+            "use_case": "UC07",
+            "functional_requirements": [
+              { "id": "RF15", "description": "Soft delete com confirmação de senha" }
+            ],
+            "business_rules": [
+              { "id": "RN-M02-02", "description": "Soft delete + job de anonimização em 30 dias" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: DELETE /buyers/me { currentPassword }",
+              "TASK: bcrypt.compare(currentPassword, user.passwordHash)",
+              "EXCLUSIVE GATEWAY: Senha correta?",
+              "  [Não] --> INTERMEDIATE EVENT (Error): 401 Unauthorized",
+              "  [Sim] --> TASK: prisma.$transaction([softDeleteUser, revokeAllTokens])",
+              "TASK: bullmq.add('anonymize-user', { userId }, { delay: 30 * 24 * 60 * 60 * 1000 })",
+              "TASK: Retornar 200 OK",
+              "END EVENT: Conta soft-deleted"
+            ],
+            "acceptance_criteria": [
+              "Senha incorreta retorna 401",
+              "User.status=DELETED e deletedAt=now() em transaction com revogação de tokens",
+              "Job BullMQ com delay de 30 dias agendado com sucesso",
+              "Endpoint protegido com JwtAuthGuard"
+            ],
+            "tech_notes": "Job 'anonymize-user': `{ userId }` com delay: `30 * 24 * 60 * 60 * 1000` ms. Worker processa: `prisma.user.update({ where: { id }, data: { email: anon-${userId}@deleted.pecae.com, name: 'Usuário Removido', phone: null, avatar: null } })`. Soft delete não remove dados de AuditLog (manter para conformidade). Considerar email do User na constraint @unique: adicionar campo separado `originalEmail String?` para manter rastreabilidade pós-anonimização."
+          },
+          {
+            "id": "M02-T04-ST02",
+            "title": "Tela de exclusão de conta no app",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 2,
+            "description": "Criar fluxo de exclusão de conta no app: item de menu 'Excluir Conta' em configurações, tela de confirmação com aviso sobre dados (favoritos, conversas, histórico), input de senha atual, botão de confirmação com texto 'Excluir minha conta definitivamente'.",
+            "user_story": "Como comprador, quero um fluxo claro e seguro para excluir minha conta para que eu não faça isso acidentalmente",
+            "use_case": "UC07",
+            "functional_requirements": [
+              { "id": "RF15", "description": "Fluxo de exclusão com confirmação explícita" }
+            ],
+            "business_rules": [
+              { "id": "RN-M02-02", "description": "Aviso claro sobre anonimização em 30 dias" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Comprador toca 'Excluir Conta'",
+              "TASK: Exibir Modal de aviso: 'Ao excluir sua conta, você perderá acesso a todos os seus favoritos, buscas salvas e conversas.'",
+              "TASK (Comprador): Confirmar ciência",
+              "TASK: Navegar para tela de confirmação com input de senha",
+              "TASK (Comprador): Digitar senha e tocar 'Excluir definitivamente'",
+              "TASK: useMutation DELETE /buyers/me { currentPassword }",
+              "TASK: onSuccess → clearSecureStore() → router.replace('/(auth)/login')",
+              "END EVENT: Conta excluída, usuário na tela de login"
+            ],
+            "acceptance_criteria": [
+              "Dois passos de confirmação (modal de aviso + input de senha)",
+              "Botão de exclusão em vermelho com texto explícito",
+              "Erro de senha incorreta exibido inline",
+              "Loading state durante chamada à API"
+            ],
+            "tech_notes": "Tela: `app/(buyer)/excluir-conta.tsx`. Botão vermelho: `backgroundColor: '#EF4444'`. Texto do botão: 'Excluir minha conta definitivamente'. Input de senha com `secureTextEntry`. useMutation com onSuccess: `await SecureStore.deleteItemAsync('access_token'); await SecureStore.deleteItemAsync('refresh_token'); router.replace('/(auth)/login')`. Zustand clearAuth() chamado também para limpar estado global."
+          },
+          {
+            "id": "M02-T04-ST03",
+            "title": "Worker BullMQ para anonimização de dados de usuários excluídos",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Implementar worker BullMQ para o job 'anonymize-user' que anonimiza dados pessoais do usuário após 30 dias da exclusão. Anonimizar: email, name, phone, avatar no User e BuyerProfile. Registrar ação no AuditLog. Garantir idempotência do job.",
+            "user_story": "Como sistema de conformidade LGPD, quero processar automaticamente a anonimização de dados de contas excluídas para cumprir o direito ao esquecimento",
+            "use_case": "UC07",
+            "functional_requirements": [
+              { "id": "RF15", "description": "Anonimização automática após 30 dias via BullMQ" }
+            ],
+            "business_rules": [
+              { "id": "RN-M02-02", "description": "Dados anonimizados após 30 dias; histórico anônimo mantido" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Job 'anonymize-user' processado pelo worker (delay 30 dias)",
+              "TASK: Verificar que User.status === 'DELETED' (job idempotente)",
+              "EXCLUSIVE GATEWAY: Usuário com status DELETED?",
+              "  [Não] --> TASK: Log warning e concluir job sem ação (conta reativada?)",
+              "  [Sim] --> TASK: prisma.$transaction([anonymizeUser, anonymizeBuyerProfile, createAuditLog])",
+              "TASK: User: email=anon-{uuid}@deleted.pecae.com, name='Usuário Removido', phone=null, avatar=null",
+              "TASK: BuyerProfile: name='Usuário Removido', avatar=null",
+              "TASK: AuditLog: action='USER_ANONYMIZED', actorId=system, targetId=userId",
+              "END EVENT: Dados anonimizados e registrados no AuditLog"
+            ],
+            "acceptance_criteria": [
+              "Job idempotente: verificar User.status antes de anonimizar",
+              "Transaction garante atomicidade da anonimização",
+              "AuditLog registra ação de anonimização com timestamp",
+              "Job com retry em caso de falha (maxAttempts 5, backoff exponencial)",
+              "Dados de ChatMessage e Report mantidos (apenas campos globais anonimizados)"
+            ],
+            "tech_notes": "BullMQ Worker: `@Processor('user-management') @Process('anonymize-user') async anonymize(job: Job<{ userId: string }>) { ... }`. Idempotência: `const user = await prisma.user.findUnique({ where: { id: userId } }); if (user.status !== 'DELETED') return;`. AuditLog actor: usar ID de sistema fictício ou null para actorId quando ação é automatizada. Considerar manter ChatRoom/ChatMessage com userId existente mas dados do User anonimizados (comprador aparece como 'Usuário Removido' no histórico)."
+          }
+        ]
+      }
+    ]
+  }
+}

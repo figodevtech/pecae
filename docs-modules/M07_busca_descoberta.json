@@ -1,0 +1,692 @@
+{
+  "module": {
+    "id": "M07",
+    "name": "Busca e Descoberta",
+    "slug": "busca_descoberta",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P0",
+    "epic_ref": "E05",
+    "estimated_sprint": "Sprint 4",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL Full-Text Search — MVP) + Prisma ORM",
+      "cache": "Redis via Upstash (cache de resultados de busca frequentes)",
+      "search_phase2": "OpenSearch (Fase 2)",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo responsável pela busca e descoberta de sucatas no PECAÊ. Comprador pesquisa por veículo (marca → modelo → ano) e opcionalmente por localização e texto livre (nome da peça). Resultados retornam SEMPRE sucatas completas (veículos), nunca peças avulsas. Usa PostgreSQL Full-Text Search no MVP e migração para OpenSearch na Fase 2.",
+    "goals": [
+      "Permitir busca de sucatas por cascata de veículo (marca, modelo, ano)",
+      "Filtrar resultados por localização (cidade, estado) e peças disponíveis",
+      "Exibir resultados de forma eficiente com FlashList e paginação cursor-based",
+      "Permitir salvar busca atual e criar alertas para novos anúncios compatíveis"
+    ],
+    "actors": [
+      "Comprador (busca e filtra)",
+      "Visitante (busca sem autenticação)",
+      "Sistema (indexação e cache de resultados frequentes)"
+    ],
+    "dependencies": {
+      "modules": ["M01", "M04", "M05"],
+      "external_services": ["Redis via Upstash (cache de busca)"]
+    },
+    "module_flow": {
+      "description": "Fluxo de busca de sucatas por veículo com filtros de localização e peças",
+      "pools": [
+        { "name": "Usuário", "lanes": ["Comprador / Visitante"] },
+        { "name": "App Mobile", "lanes": ["Telas de Busca (Expo Router)"] },
+        { "name": "API NestJS", "lanes": ["SearchController", "SearchService", "CacheService"] },
+        { "name": "Infraestrutura", "lanes": ["Supabase PostgreSQL (FTS)", "Redis Upstash"] }
+      ],
+      "bpmn_text": [
+        "START EVENT: Comprador acessa aba Busca no app",
+        "TASK (App): Renderizar tela app/(tabs)/busca.tsx com VehicleSelector em modo search",
+        "TASK (Comprador): Selecionar Marca em cascata (opcionalmente Modelo e Ano)",
+        "TASK (Comprador): Opcionalmente preencher cidade, estado ou texto livre",
+        "TASK (Comprador): Tocar em 'Buscar'",
+        "TASK (App): Navegar para app/resultados.tsx com parâmetros da busca",
+        "TASK (API): GET /search?brand=&model=&yearMin=&yearMax=&city=&state=&q=&cursor=",
+        "TASK (API - SearchService): Verificar cache Redis para query idêntica",
+        "EXCLUSIVE GATEWAY: Cache hit?",
+        "  [Sim] --> MESSAGE FLOW (Redis → API): Retornar resultados cacheados",
+        "  [Não] --> TASK (Prisma): Query PostgreSQL com filtros em cascata",
+        "           TASK: Salvar resultado no Redis (TTL 5 minutos)",
+        "TASK (App): FlashList renderiza ListingCard para cada resultado",
+        "EXCLUSIVE GATEWAY: Resultados encontrados?",
+        "  [Sim] --> TASK (App): Exibir lista de sucatas com paginação cursor",
+        "  [Não] --> TASK (App): Exibir EmptyState com sugestão 'Salvar busca para ser avisado'",
+        "           TASK (Comprador): Tocar 'Salvar busca e criar alerta' (M02/M_favoritos)",
+        "TASK (Comprador): Tocar em ListingCard → navegar para app/anuncio/[id].tsx",
+        "END EVENT: Comprador visualiza detalhes da sucata e pode iniciar chat (M06)"
+      ],
+      "message_flows": [
+        "Redis → API: Cache hit de resultados de busca frequentes",
+        "API → App: Página de resultados com cursor para próxima página",
+        "App → M02: Criação de SavedSearch ao salvar busca"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF50", "description": "Sistema deve permitir busca de sucatas por marca, modelo e faixa de ano", "priority": "P0" },
+      { "id": "RF51", "description": "Sistema deve filtrar resultados por cidade e/ou estado", "priority": "P0" },
+      { "id": "RF52", "description": "Sistema deve suportar busca por texto livre (nome de peça) com debounce de 300ms", "priority": "P1" },
+      { "id": "RF53", "description": "Resultados devem ser paginados via cursor (não offset) para performance", "priority": "P0" },
+      { "id": "RF54", "description": "Sistema deve exibir autocomplete de marca e modelo no campo de texto", "priority": "P1" },
+      { "id": "RF55", "description": "Tela de detalhe do anúncio deve exibir galeria de fotos, peças disponíveis (sem preços) e dados do vendedor", "priority": "P0" },
+      { "id": "RF56", "description": "Sistema deve sugerir 'Salvar busca' quando resultados retornam zero", "priority": "P1" },
+      { "id": "RF57", "description": "Busca deve retornar exclusivamente sucatas (veículos completos) com status PUBLISHED", "priority": "P0" }
+    ],
+    "business_rules": [
+      { "id": "RN03", "description": "Busca retorna SEMPRE veículos/sucatas completas, NUNCA peças avulsas independentes" },
+      { "id": "RN04", "description": "Resultados e detalhe do anúncio NUNCA exibem preço — negociação via chat" },
+      { "id": "RN08", "description": "Placa exibida mascarada no detalhe do anúncio: ABC-****" },
+      { "id": "RN11", "description": "Chat só pode ser iniciado em anúncios com status PUBLISHED" },
+      { "id": "RN-M07-01", "description": "Busca sempre filtra por Listing.status = PUBLISHED (nunca retorna PENDING, REJECTED, SOLD, EXPIRED)" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC25",
+        "name": "Buscar sucatas por veículo",
+        "actors": ["Comprador", "Visitante"],
+        "preconditions": ["Catálogo com dados (M04) e anúncios PUBLISHED (M05)"],
+        "main_flow": [
+          "1. Usuário acessa tela de busca",
+          "2. Seleciona marca, modelo e/ou ano",
+          "3. Opcionalmente define localização e texto livre",
+          "4. Sistema retorna sucatas PUBLISHED compatíveis",
+          "5. Usuário visualiza resultados e acessa detalhe"
+        ],
+        "alternative_flows": [
+          "A1. Zero resultados: sugerir salvar busca como alerta",
+          "A2. Cache hit: retornar resultado sem query ao banco"
+        ],
+        "postconditions": ["Lista de sucatas exibida"]
+      },
+      {
+        "id": "UC26",
+        "name": "Visualizar detalhe de sucata",
+        "actors": ["Comprador", "Visitante"],
+        "preconditions": ["Listing com status PUBLISHED"],
+        "main_flow": [
+          "1. Comprador toca em card de sucata nos resultados",
+          "2. Sistema exibe galeria de fotos, dados do veículo, peças disponíveis e dados públicos do vendedor",
+          "3. Comprador toca em 'Entrar em contato' para iniciar chat (M06)"
+        ],
+        "alternative_flows": [
+          "A1. Anúncio não PUBLISHED: exibir 404 ou mensagem de indisponibilidade"
+        ],
+        "postconditions": ["Comprador informado e pode iniciar chat ou favoritar"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M07-T01",
+        "title": "SearchController e SearchService com PostgreSQL Full-Text Search",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 3,
+        "epic": "E05 — Busca e Descoberta",
+        "description": "Implementar SearchModule no NestJS com GET /search endpoint. Usar Prisma para queries PostgreSQL otimizadas com filtros em cascata (brandId, modelId, yearMin, yearMax, city, state) e busca por texto livre (FTS nas observações e nome do modelo). Paginação cursor-based. Resultados sempre filtrados por Listing.status=PUBLISHED.",
+        "user_stories": [
+          "Como comprador, quero buscar sucatas por veículo específico para encontrar peças para meu carro",
+          "Como sistema, quero queries de busca eficientes para que a experiência seja responsiva mesmo com grande volume de dados"
+        ],
+        "use_cases": ["UC25"],
+        "functional_requirements": [
+          { "id": "RF50", "description": "Filtros: brand/model/yearMin/yearMax" },
+          { "id": "RF51", "description": "Filtro de localização: city e state" },
+          { "id": "RF53", "description": "Paginação cursor com limit e cursor params" },
+          { "id": "RF57", "description": "Apenas status PUBLISHED nos resultados" }
+        ],
+        "business_rules": [
+          { "id": "RN03", "description": "Query sempre sobre Listing → Vehicle, nunca sobre PartCategory diretamente" },
+          { "id": "RN04", "description": "Resposta nunca inclui campo de preço" },
+          { "id": "RN-M07-01", "description": "where: { listing: { status: 'PUBLISHED' } } em todas as queries" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: GET /search com query params",
+          "TASK (SearchService): Construir where clause Prisma com filtros recebidos",
+          "TASK: Adicionar clause listing.status = PUBLISHED obrigatório",
+          "TASK: Adicionar filtros opcionais: brandId via vehicle.version.model.brandId",
+          "TASK: Adicionar cursor: id > cursor se cursor present",
+          "TASK: Verificar cache Redis key = hash dos params",
+          "EXCLUSIVE GATEWAY: Cache hit?",
+          "  [Sim] --> TASK: Retornar resultado cacheado",
+          "  [Não] --> TASK: prisma.vehicle.findMany com includes necessários",
+          "           TASK: Mapear resultado para ListingResponseDto (sem preço)",
+          "           TASK: Salvar no Redis com TTL 5 minutos",
+          "TASK: Calcular nextCursor (id do último resultado)",
+          "TASK: Retornar { data: [], nextCursor, hasMore }",
+          "END EVENT: Resultados retornados ao app"
+        ],
+        "acceptance_criteria": [
+          "GET /search retorna apenas Listings status=PUBLISHED",
+          "Filtro por brandId correto: JOIN vehicle → vehicleVersion → vehicleModel → vehicleBrand",
+          "Paginação cursor retorna hasMore: true quando próxima página existe",
+          "Resposta nunca contém campo price, valor ou similar",
+          "Resposta contém: thumbnail (foto capa), título, cidade, estado, peças disponíveis (lista de nomes), sellerId"
+        ],
+        "subtasks": [
+          {
+            "id": "M07-T01-ST01",
+            "title": "Implementar SearchService com queries Prisma e filtros em cascata",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 5,
+            "description": "Criar SearchService com método search(filters: SearchFiltersDto): BuildQuery Prisma dinamicamente com filtros opcionais (brandId, modelId, versionId, yearMin, yearMax, city, state, q, cursor, limit). Garantir que where clause sempre inclui listing.status='PUBLISHED'. Implementar paginação cursor-based.",
+            "user_story": "Como API, quero montar queries Prisma dinâmicas de busca para que os filtros possam ser combinados de qualquer forma sem SQL hardcoded",
+            "use_case": "UC25",
+            "functional_requirements": [
+              { "id": "RF50", "description": "Filtros dinâmicos por cascata de veículo" },
+              { "id": "RF53", "description": "Paginação cursor-based" }
+            ],
+            "business_rules": [
+              { "id": "RN-M07-01", "description": "Status PUBLISHED sempre na where clause" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: search(filters) chamado",
+              "TASK: Construir where object com { listing: { status: 'PUBLISHED' } } como base",
+              "TASK: Se brandId: adicionar version.model.brandId = brandId no where",
+              "TASK: Se modelId: adicionar version.model.id = modelId",
+              "TASK: Se yearMin/yearMax: adicionar yearFab.yearFab: { gte: yearMin, lte: yearMax }",
+              "TASK: Se city: adicionar city: { contains: city, mode: 'insensitive' }",
+              "TASK: Se state: adicionar state: state.toUpperCase()",
+              "TASK: Se q: adicionar OR: [observations ILIKE, model.name ILIKE]",
+              "TASK: Se cursor: adicionar id: { gt: cursor }",
+              "TASK: prisma.vehicle.findMany({ where, include: {...}, take: limit+1, orderBy: { createdAt: 'desc' } })",
+              "TASK: Calcular nextCursor e hasMore",
+              "END EVENT: Retornar { data, nextCursor, hasMore }"
+            ],
+            "acceptance_criteria": [
+              "Busca sem filtros retorna todos os PUBLISHED paginados",
+              "Busca com brandId filtra corretamente via chain de relations",
+              "Cursor-based: pegando take: limit+1 e verificando hasMore",
+              "q busca em vehicle.observations e vehicleVersion.vehicleModel.name via ILIKE"
+            ],
+            "tech_notes": "Prisma query base: `prisma.vehicle.findMany({ where: { listing: { status: 'PUBLISHED' }, ...(brandId && { version: { model: { brandId } } }), ...(city && { city: { contains: city, mode: 'insensitive' } }), ...(cursor && { id: { gt: cursor } }) }, include: { listing: { select: { id: true, title: true, favoritesCount: true, publishedAt: true } }, photos: { where: { order: 0 }, take: 1 }, version: { include: { model: { include: { brand: true } } } }, sellerProfile: { select: { id: true, storeName: true, city: true, state: true, isVerified: true } } }, take: limit + 1, orderBy: { listing: { publishedAt: 'desc' } } })`. Cursor = último ID da página anterior."
+          },
+          {
+            "id": "M07-T01-ST02",
+            "title": "Cache Redis para resultados de busca frequentes",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Implementar cache de busca no Redis com TTL de 5 minutos para queries frequentes. Cache key = hash SHA256 dos parâmetros de busca normalizados. Invalidar cache ao publicar novo anúncio (via BullMQ após moderação M09).",
+            "user_story": "Como sistema de performance, quero cachear buscas frequentes por 5 minutos para que queries repetidas não impactem o banco de dados",
+            "use_case": "UC25",
+            "functional_requirements": [
+              { "id": "RF53", "description": "Cache de resultados para reduzir latência" }
+            ],
+            "business_rules": [
+              { "id": "RN-M07-01", "description": "Cache key inclui status=PUBLISHED para não servir dados stale" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: SearchService.search() chamado",
+              "TASK: Normalizar params (sort keys, lowercase)",
+              "TASK: Hash SHA256 dos params normalizados como cache key",
+              "TASK: cacheManager.get('pecae:search:{hash}')",
+              "EXCLUSIVE GATEWAY: Cache hit?",
+              "  [Sim] --> TASK: Retornar dados cacheados (sem query Prisma)",
+              "  [Não] --> TASK: Executar query Prisma",
+              "           TASK: cacheManager.set('pecae:search:{hash}', result, { ttl: 300 })",
+              "TASK: Retornar resultado",
+              "END EVENT: Resultado retornado com ou sem cache"
+            ],
+            "acceptance_criteria": [
+              "TTL exato de 5 minutos (300 segundos)",
+              "Cache key SHA256 garante unicidade por combinação de filtros",
+              "Novo anúncio publicado invalida cache de buscas compatíveis via BullMQ",
+              "Cache miss registrado em logs (Pino) para monitoramento"
+            ],
+            "tech_notes": "Cache key: `crypto.createHash('sha256').update(JSON.stringify(sortedParams)).digest('hex')`. Key prefix: `pecae:search:{hash}`. Invalidação: job BullMQ 'invalidate-search-cache' disparado pelo M09 ao publicar novo listing. Como o padrão de chave é por hash de params, invalidação por pattern: `redis.keys('pecae:search:*')` + `redis.del(...keys)` — aceitar falso positivos (invalidar tudo em buscas novas). Alternativa: usar tag-based cache invalidation."
+          },
+          {
+            "id": "M07-T01-ST03",
+            "title": "Endpoint de sugestões de autocomplete de busca",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Implementar GET /search/suggestions?q=&type=brand|model que retorna sugestões de autocomplete. Integrar com o CatalogService do M04. No app, ativar após debounce de 300ms e mínimo 2 caracteres. Usar cache Redis de 1h para queries frequentes.",
+            "user_story": "Como comprador, quero ver sugestões automáticas enquanto digito para encontrar rapidamente o veículo que procuro",
+            "use_case": "UC25",
+            "functional_requirements": [
+              { "id": "RF54", "description": "Autocomplete com debounce 300ms e mínimo 2 caracteres" }
+            ],
+            "business_rules": [
+              { "id": "RN03", "description": "Autocomplete sugere veículos/modelos, não peças avulsas" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: App dispara GET /search/suggestions?q=polo&type=model",
+              "TASK (API): Verificar query.length >= 2",
+              "EXCLUSIVE GATEWAY: Comprimento válido?",
+              "  [Não] --> TASK: Retornar [] sem query ao banco",
+              "  [Sim] --> TASK: Verificar cache 'pecae:suggestions:{type}:{q}'",
+              "           TASK: prisma.vehicleModel.findMany({ where: { name: { contains: q, mode: 'insensitive' } }, take: 10 })",
+              "           TASK: Cachear resultado por 1h",
+              "TASK: Retornar array de { id, name, brandName } com máximo 10 itens",
+              "END EVENT: Sugestões retornadas"
+            ],
+            "acceptance_criteria": [
+              "Sugestões com menos de 2 caracteres retornam [] sem query",
+              "Máximo 10 sugestões por chamada",
+              "result inclui brandName para contexto visual (ex: 'Polo — Volkswagen')",
+              "Cache de 1h para queries frequentes"
+            ],
+            "tech_notes": "GET /search/suggestions reutiliza CatalogService.searchByName(q, type). No Expo: `useDeferredValue(query)` ou hook `useDebounce(query, 300)`. TanStack Query: `useQuery({ enabled: query.length >= 2, staleTime: 60000 })`. Resultado no app: FlatList de SuggestionItem que ao tocar preenche o VehicleSelector com o modelo selecionado."
+          }
+        ]
+      },
+      {
+        "id": "M07-T02",
+        "title": "Telas de busca e resultados no app React Native",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 3,
+        "epic": "E05 — Busca e Descoberta",
+        "description": "Implementar tela principal de busca app/(tabs)/busca.tsx com VehicleSelector em modo search, tela de resultados app/resultados.tsx com FlashList e paginação infinita, e tela de detalhe app/anuncio/[id].tsx com galeria de fotos, peças disponíveis e botão de chat.",
+        "user_stories": [
+          "Como comprador, quero uma experiência de busca fluida e visualmente atraente para encontrar a sucata que preciso de forma eficiente"
+        ],
+        "use_cases": ["UC25", "UC26"],
+        "functional_requirements": [
+          { "id": "RF50", "description": "Tela de busca com VehicleSelector em modo cascata" },
+          { "id": "RF55", "description": "Detalhe do anúncio com galeria, peças e dados do vendedor" }
+        ],
+        "business_rules": [
+          { "id": "RN04", "description": "Tela de detalhe sem campo de preço em nenhum lugar" },
+          { "id": "RN08", "description": "Placa mascarada no detalhe" },
+          { "id": "RN11", "description": "Botão de chat desabilitado se anúncio não for PUBLISHED" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Comprador acessa aba Busca",
+          "TASK: Renderizar tela busca.tsx com VehicleSelector em modo 'search'",
+          "TASK (Comprador): Selecionar cascata e filtros opcionais",
+          "TASK (App): Navegar para resultados.tsx com params da busca",
+          "TASK: useInfiniteQuery(['search', params]) chama GET /search",
+          "TASK: FlashList renderiza ListingCard para cada resultado",
+          "TASK (Comprador): Tocar em Card → navegar para anuncio/[id].tsx",
+          "TASK: useQuery(['listing', id]) → GET /listings/:id com todos os dados",
+          "TASK: Exibir galeria de fotos (FlatList horizontal)",
+          "TASK: Exibir peças disponíveis como chips (sem preços — RN04)",
+          "TASK: Exibir dados públicos do vendedor (storeName, cidade, Selo Verificado)",
+          "TASK: Botão 'Entrar em Contato' → iniciar chat M06",
+          "END EVENT: Detalhe exibido e opção de chat disponível"
+        ],
+        "acceptance_criteria": [
+          "Tela de resultados carrega primeira página em < 1s (com cache)",
+          "FlashList suporta scroll infinito (useInfiniteQuery + onEndReached)",
+          "Tela de detalhe renderiza galeria de fotos em scroll horizontal",
+          "Chips de peças disponíveis SEM preço associado (RN04)",
+          "Placa exibida como 'ABC-****' no detalhe (RN08)"
+        ],
+        "subtasks": [
+          {
+            "id": "M07-T02-ST01",
+            "title": "Tela de busca (app/(tabs)/busca.tsx) com filtros",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar tela principal de busca com VehicleSelector em modo search, inputs de cidade/estado e campo de texto livre. Tela organizada em: VehicleSelector (cascata), expansor de filtros avançados (cidade/estado), campo de busca textual, e botão de busca. Deep link support para navigation com params.",
+            "user_story": "Como comprador, quero uma tela de busca clara e intuitiva para selecionar o veículo cujas peças preciso",
+            "use_case": "UC25",
+            "functional_requirements": [
+              { "id": "RF50", "description": "VehicleSelector em cascata com filtros de localização" },
+              { "id": "RF52", "description": "Campo de texto livre com debounce 300ms" }
+            ],
+            "business_rules": [
+              { "id": "RN03", "description": "Busca orientada a veículo/sucata, não a peça avulsa" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Aba Busca ativa",
+              "TASK: Renderizar VehicleSelector em modo 'search' (sem steps, apenas seleção)",
+              "TASK: Seção de filtros opcionais (collapsible): cidade, estado, busca textual",
+              "TASK (Comprador): Fazer seleções e preencher filtros",
+              "TASK: Botão 'Buscar' ativo quando ao menos uma seleção feita",
+              "TASK: Ao tocar Buscar → router.push({ pathname: '/resultados', params: buildSearchParams() })",
+              "END EVENT: Navegação para resultados com params"
+            ],
+            "acceptance_criteria": [
+              "VehicleSelector ocupa o topo da tela como passo principal",
+              "Filtros avançados colapsáveis (cidade, estado, texto) abaixo do selector",
+              "Botão 'Buscar' desabilitado enquanto nenhuma seleção feita",
+              "Deep link /busca?brandId=X&modelId=Y reconstruído corretamente"
+            ],
+            "tech_notes": "Tela: `app/(tabs)/busca.tsx`. VehicleSelector em modo search: não usa Stepper, exibe seleções como chips horizontais (ex: 'Fiat × > Uno × > 2015 ×'). Chips clicáveis para resetar nível. Filtro por cidade: TextInput com autocomplete de cidades BR (lista estática ou IBGE API). Estado: Picker com siglas BR. Zustand store `useSearchFilters` para persistir filtros durante sessão."
+          },
+          {
+            "id": "M07-T02-ST02",
+            "title": "Tela de resultados com FlashList e paginação infinita",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar tela app/resultados.tsx com FlashList para exibir ListingCards. Usar useInfiniteQuery do TanStack Query para paginação cursor-based. Implementar onEndReached para carregar próxima página. Header com resumo dos filtros ativos e opção de editar busca.",
+            "user_story": "Como comprador, quero ver os resultados da minha busca de forma organizada com carregamento automático de mais itens ao rolar a tela",
+            "use_case": "UC25",
+            "functional_requirements": [
+              { "id": "RF53", "description": "Paginação infinita com cursor no FlashList" }
+            ],
+            "business_rules": [
+              { "id": "RN04", "description": "ListingCard nunca exibe preço" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Tela resultados.tsx carregada com params",
+              "TASK: useSearchParams() extrai filtros da URL",
+              "TASK: useInfiniteQuery chama GET /search com cursor paginado",
+              "TASK: FlashList renderiza ListingCards com FlatList-like API",
+              "TASK: onEndReached → fetchNextPage() quando > 80% scrollado",
+              "EXCLUSIVE GATEWAY: Dados retornados?",
+              "  [Sim] --> TASK: Exibir lista de resultados",
+              "  [Não / Vazio] --> TASK: EmptyState com botão 'Salvar busca e ser notificado'",
+              "TASK: FooterComponent com 'Carregando mais...' enquanto isFetchingNextPage",
+              "END EVENT: Lista exibida com paginação"
+            ],
+            "acceptance_criteria": [
+              "FlashList com estimatedItemSize=200 para ListingCard",
+              "Pull to refresh via RefreshControl reinicia a query",
+              "Paginação automática ao chegar a 80% do scroll",
+              "Skeleton loaders durante primeiro carregamento",
+              "Header: '{N} sucatas encontradas' com chip de filtros ativos"
+            ],
+            "tech_notes": "useInfiniteQuery: `{ queryKey: ['search', filters], queryFn: ({ pageParam }) => searchApi.search({ ...filters, cursor: pageParam }), getNextPageParam: (lastPage) => lastPage.nextCursor }`. FlashList: `data={flattenedData}` onde `flattenedData = pages.flatMap(p => p.data)`. onEndReached: `if (!isFetchingNextPage && hasNextPage) fetchNextPage()`. ListingCard: thumbnail 160x120px, título, cidade/estado, badges de peças (max 3 + 'e mais X'). Sem preço em parte alguma do card."
+          },
+          {
+            "id": "M07-T02-ST03",
+            "title": "Tela de detalhe do anúncio (app/anuncio/[id].tsx)",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 6,
+            "description": "Criar tela de detalhe completa com: galeria de fotos navegável (swipe horizontal), dados do veículo (marca, modelo, ano, cor, localização), placa mascarada, chips de peças disponíveis SEM preços, card do vendedor com Selo Verificado, botão 'Entrar em Contato' para iniciar chat via M06, botão de favoritar.",
+            "user_story": "Como comprador, quero ver todos os detalhes da sucata em uma tela clara e organizada para que eu possa tomar a decisão de entrar em contato",
+            "use_case": "UC26",
+            "functional_requirements": [
+              { "id": "RF55", "description": "Galeria de fotos, peças sem preços, dados do vendedor" },
+              { "id": "RF57", "description": "Botão de chat apenas para anúncios PUBLISHED" }
+            ],
+            "business_rules": [
+              { "id": "RN04", "description": "NENHUM campo de preço na tela de detalhe" },
+              { "id": "RN08", "description": "Placa exibida como ABC-**** (mascarada)" },
+              { "id": "RN11", "description": "Botão de chat desabilitado/oculto para anúncios não PUBLISHED" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: app/anuncio/[id].tsx carregada",
+              "TASK: useQuery(['listing', id]) → GET /listings/:id com Vehicle, Photos, Seller",
+              "TASK: Renderizar galeria horizontal (FlatList/ScrollView horizontal de Fotos)",
+              "TASK: Exibir dados do veículo: Marca, Modelo, Ano, Cor, Localização",
+              "TASK: Exibir placa mascarada: plate.slice(0,3) + '-****'",
+              "TASK: Exibir chips de peças disponíveis (apenas nome — SEM preço)",
+              "TASK: Card do vendedor: logo, nome, Selo Verificado, cidade",
+              "TASK: Header com botão de Favoritar e Compartilhar",
+              "TASK: Botão fixo no rodapé: 'Entrar em Contato'",
+              "TASK (Comprador): Tocar em 'Entrar em Contato' → POST /chat/rooms { listingId }",
+              "END EVENT: Chat iniciado (M06)"
+            ],
+            "acceptance_criteria": [
+              "Galeria com swipe horizontal e indicador de paginação (1/6)",
+              "Chips de peças exibem apenas nome da categoria, SEM preço",
+              "Placa sempre mascarada: 'ABC-****' (nunca a placa completa)",
+              "Botão 'Entrar em Contato' navega para ChatRoom (M06)",
+              "Botão de favoritar com optimistic update",
+              "NENHUM campo de preço, valor, custo em qualquer parte da tela"
+            ],
+            "tech_notes": "Galeria: `FlatList horizontal showsHorizontalScrollIndicator={false}` com snapToInterval={width} para snap. Indicadores: componente PaginationDots. Placa mascarada: API retorna placa parcial ou app aplica máscara: `plate ? plate.substring(0,3) + '-****' : 'Não informada'`. Chips de peças: usar GET /catalog/part-categories para resolver nomes a partir dos IDs do availableParts. Botão flutuante: `position: absolute, bottom: 20, left: 16, right: 16`. Endpoint: GET /listings/:id no ListingController que retorna dados do Listing com Vehicle+Photos+Seller. Sem campo price em nenhum serializer/DTO de resposta."
+          }
+        ]
+      },
+      {
+        "id": "M07-T03",
+        "title": "ListingController e endpoint de detalhe",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 1,
+        "epic": "E05 — Busca e Descoberta",
+        "description": "Implementar ListingController com GET /listings/:id que retorna dados completos de um anúncio para a tela de detalhe. Incluir Vehicle, VehiclePhotos, SellerProfile (dados públicos) e PartCategory names. Endpoint público (@Public()).",
+        "user_stories": [
+          "Como app mobile, quero um endpoint de detalhe completo de listing para carregar todos os dados necessários para a tela de anúncio em uma única chamada"
+        ],
+        "use_cases": ["UC26"],
+        "functional_requirements": [
+          { "id": "RF55", "description": "GET /listings/:id com todos os dados para tela de detalhe" }
+        ],
+        "business_rules": [
+          { "id": "RN04", "description": "Response DTO nunca inclui campo de preço" },
+          { "id": "RN08", "description": "Placa mascarada no response (apenas 3 primeiros chars)" },
+          { "id": "RN11", "description": "Retornar 404 para listings não-PUBLISHED" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: GET /listings/:id",
+          "TASK: @Public() — sem autenticação necessária",
+          "TASK: ListingService.findPublicById(id)",
+          "TASK: Verificar listing.status === 'PUBLISHED' ou retornar 404",
+          "TASK: Include: vehicle (+ photos, version->model->brand), sellerProfile",
+          "TASK: Incrementar listing.views += 1 assincronamente (BullMQ job)",
+          "TASK: Mascarar plate na resposta: plate?.substring(0,3)",
+          "TASK: Resolver part_category names a partir de vehicle.availableParts IDs",
+          "TASK: Retornar ListingDetailResponseDto",
+          "END EVENT: Dados retornados sem dados sensíveis"
+        ],
+        "acceptance_criteria": [
+          "GET /listings/:id com ID inexistente ou não-PUBLISHED retorna 404",
+          "Response inclui: listing, vehicle, photos[], seller (dados públicos), partCategoryNames[]",
+          "plate retornada apenas com 3 primeiros caracteres (mascarada)",
+          "views incrementado assincronamente (sem bloquear resposta)",
+          "Nenhum campo de preço no response"
+        ],
+        "subtasks": [
+          {
+            "id": "M07-T03-ST01",
+            "title": "Implementar GET /listings/:id e ListingDetailResponseDto",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar ListingModule no NestJS com ListingController e ListingService. Endpoint GET /listings/:id busca Listing com Vehicle, VehiclePhotos, SellerProfile. Mascarar plate. Resolver nomes de PartCategory a partir de IDs em availableParts. Response DTO exclusi campo price.",
+            "user_story": "Como comprador, quero acessar todos os detalhes de uma sucata via único endpoint para uma experiência de carregamento eficiente",
+            "use_case": "UC26",
+            "functional_requirements": [
+              { "id": "RF55", "description": "Endpoint único de detalhe com todos os dados" }
+            ],
+            "business_rules": [
+              { "id": "RN04", "description": "Response DTO sem price, valor, custo" },
+              { "id": "RN08", "description": "plate mascarada na resposta" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: GET /listings/:id",
+              "TASK: prisma.listing.findUnique inclui vehicle.photos e sellerProfile",
+              "TASK: Verificar status PUBLISHED",
+              "TASK: Buscar PartCategory names para IDs em availableParts",
+              "TASK: Mascarar plate",
+              "TASK: Retornar ListingDetailResponseDto",
+              "END EVENT: Response enviada"
+            ],
+            "acceptance_criteria": [
+              "Listing não PUBLISHED retorna 404 NotFoundException",
+              "availableParts resolvidos para { id, name, icon }[]",
+              "plate: null ou primeiro 3 chars (nunca completa)",
+              "sellerProfile inclui apenas dados públicos (não cnpj, não userId)"
+            ],
+            "tech_notes": "ListingDetailResponseDto: `@Exclude() private plate_full: string`. Método getter: `get plateDisplay() { return this.vehicle.plate ? this.vehicle.plate.substring(0,3) + '-****' : null }`. Para resolver partCategory names: `prisma.partCategory.findMany({ where: { id: { in: vehicle.availableParts as string[] } } })`. Usar interceptor ClassSerializerInterceptor com @Exclude e @Expose para controle granular do response. Views increment: `bullmq.add('increment-listing-views', { listingId: id })` com worker de low priority."
+          },
+          {
+            "id": "M07-T03-ST02",
+            "title": "Incremento assíncrono de views e contagem de favoritos",
+            "status": "planned",
+            "priority": "P2",
+            "estimated_hours": 2,
+            "description": "Implementar job BullMQ 'increment-listing-views' para incrementar o contador de views de forma assíncrona sem bloquear o endpoint de detalhe. Adicionar debounce por IP (não incrementar views do mesmo IP em menos de 1 hora para o mesmo anúncio).",
+            "user_story": "Como vendedor, quero ver quantas pessoas visualizaram meu anúncio para entender o interesse no meu veículo",
+            "use_case": "UC26",
+            "functional_requirements": [
+              { "id": "RF55", "description": "Contador de views por anúncio" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Job increment-listing-views processado",
+              "TASK: Verificar Redis key 'view:{listingId}:{ip}' (debounce 1h)",
+              "EXCLUSIVE GATEWAY: IP já contabilizado na última hora?",
+              "  [Sim] --> TASK: Ignorar — não incrementar",
+              "  [Não] --> TASK: prisma.listing.update({ data: { views: { increment: 1 } } })",
+              "           TASK: SET Redis 'view:{listingId}:{ip}' EX 3600",
+              "END EVENT: Views incrementado"
+            ],
+            "acceptance_criteria": [
+              "Mesmo IP não incrementa views do mesmo anúncio 2x em 1h",
+              "Incremento não bloqueia response do GET /listings/:id",
+              "Job com low priority na fila BullMQ"
+            ],
+            "tech_notes": "BullMQ: adicionar com `priority: 10` (baixa). Redis debounce: `redis.set('view:${listingId}:${ip}', '1', 'EX', 3600, 'NX')` — retorna null se key já existe. Prisma: `prisma.listing.update({ where: { id: listingId }, data: { views: { increment: 1 } } })`."
+          },
+          {
+            "id": "M07-T03-ST03",
+            "title": "Compartilhamento de anúncios e deep links",
+            "status": "planned",
+            "priority": "P2",
+            "estimated_hours": 2,
+            "description": "Implementar compartilhamento de link de anúncio via Share API do React Native. Configurar deep links para que link externo abra diretamente a tela app/anuncio/[id].tsx no app. Configurar og:tags no endpoint para pré-visualização em redes sociais.",
+            "user_story": "Como comprador, quero compartilhar o link de um anúncio para que eu possa enviar para alguém interessado via WhatsApp ou redes sociais",
+            "use_case": "UC26",
+            "functional_requirements": [
+              { "id": "RF55", "description": "Compartilhamento de anúncio via Share API nativa" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Comprador toca botão de Compartilhar",
+              "TASK (App): Share.share({ message: 'Veja esta sucata: ${title}', url: 'pecae://anuncio/${id}' })",
+              "TASK (SO): Abre sheet nativa de compartilhamento (WhatsApp, etc)",
+              "TASK (Destinatário): Toca no link recebido",
+              "TASK (App): Deep link handler redireciona para app/anuncio/[id]",
+              "END EVENT: Tela de detalhe aberta pelo destinatário"
+            ],
+            "acceptance_criteria": [
+              "Share sheet nativa exibe título, URL e thumbnail do anúncio",
+              "Deep link pecae://anuncio/:id abre corretamente no app",
+              "Universal link https://pecae.com/anuncio/:id redireciona para app se instalado"
+            ],
+            "tech_notes": "React Native Share: `Share.share({ title: listing.title, message: '${listing.title}\\n${listing.seller.storeName} — ${listing.seller.city}\\nVeja: pecae.com/anuncio/${listing.id}', url: 'pecae.com/anuncio/${listing.id}' })`. Deep link Expo: configurar no app.json `scheme: 'pecae'` e `intentFilters` para Android e `associatedDomains` para iOS Universal Links. No API: GET /listings/:id pode incluir header `og:title`, `og:image` via response middleware para crawlers sociais."
+          }
+        ]
+      },
+      {
+        "id": "M07-T04",
+        "title": "Preparação para migração para OpenSearch (Fase 2)",
+        "status": "planned",
+        "priority": "P2",
+        "estimated_days": 1,
+        "epic": "E05 — Busca e Descoberta",
+        "description": "Documentar a estratégia de migração do PostgreSQL Full-Text Search para OpenSearch na Fase 2. Definir índices OpenSearch, mapping de campos e estratégia de sincronização. Preparar SearchService para suportar ambas as implementações via Strategy Pattern.",
+        "user_stories": [
+          "Como arquiteto, quero a SearchService preparada para troca de backend de busca para que a migração para OpenSearch na Fase 2 não quebre nada"
+        ],
+        "use_cases": ["UC25"],
+        "functional_requirements": [
+          { "id": "RF50", "description": "Search Service desacoplado do backend de busca via interface" }
+        ],
+        "business_rules": [],
+        "bpmn_flow": [
+          "START EVENT: Planejamento de migração para OpenSearch",
+          "TASK: Criar interface ISearchStrategy com método search(filters): Promise<SearchResult>",
+          "TASK: Criar PostgresSearchStrategy implementando ISearchStrategy (MVP)",
+          "TASK: Criar OpenSearchStrategy (stub — implementar na Fase 2)",
+          "TASK: SearchService usa ISearchStrategy via DI (config toggle por env var)",
+          "TASK: Documentar índice OpenSearch necessário (mapping de campos Vehicle + Listing)",
+          "END EVENT: Service preparada para migração incremental"
+        ],
+        "acceptance_criteria": [
+          "ISearchStrategy com métodos search(filters) e suggest(q) definidos",
+          "PostgresSearchStrategy implementada e funcionando como padrão",
+          "OpenSearchStrategy com TODO markers claros para implementação Fase 2",
+          "Variável de ambiente SEARCH_BACKEND = 'postgres' | 'opensearch' para toggle"
+        ],
+        "subtasks": [
+          {
+            "id": "M07-T04-ST01",
+            "title": "Definir interface ISearchStrategy e padrão Strategy no SearchService",
+            "status": "planned",
+            "priority": "P2",
+            "estimated_hours": 3,
+            "description": "Criar interface ISearchStrategy com métodos search() e suggest(). Refatorar SearchService para usar DI de strategy baseado em variável de ambiente. Criar PostgresSearchStrategy como implementação MVP. Stub OpenSearchStrategy com comentários de TODO.",
+            "user_story": "Como desenvolvedor, quero SearchService desacoplada do backend para facilitar migração para OpenSearch sem reescrita",
+            "use_case": "UC25",
+            "functional_requirements": [
+              { "id": "RF50", "description": "Strategy Pattern para backends de busca intercambiáveis" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Refatoração do SearchService",
+              "TASK: Criar interface ISearchStrategy",
+              "TASK: Extrair lógica Prisma para PostgresSearchStrategy",
+              "TASK: Criar OpenSearchStrategy (stub)",
+              "TASK: SearchModule provê strategy baseada em SEARCH_BACKEND env var",
+              "END EVENT: Service desacoplada"
+            ],
+            "acceptance_criteria": [
+              "Interface ISearchStrategy com tipagem completa",
+              "PostgresSearchStrategy passa todos os testes existentes",
+              "OpenSearchStrategy retorna dados mockados (para testes)",
+              "Toggle por env var sem restart necessário"
+            ],
+            "tech_notes": "NestJS DI: `{ provide: 'SEARCH_STRATEGY', useClass: process.env.SEARCH_BACKEND === 'opensearch' ? OpenSearchStrategy : PostgresSearchStrategy }`. ISearchStrategy: `interface ISearchStrategy { search(filters: SearchFiltersDto): Promise<PaginatedResult<ListingSearchResult>>; suggest(q: string, type: 'brand'|'model'): Promise<Suggestion[]>; }`. OpenSearch mapping (documentar): vehicle_id, listing_id, brand_name, model_name, year_fab, city, state, observations_fts, available_part_names[], status."
+          },
+          {
+            "id": "M07-T04-ST02",
+            "title": "Estratégia de sincronização com OpenSearch (documento de arquitetura)",
+            "status": "planned",
+            "priority": "P2",
+            "estimated_hours": 2,
+            "description": "Documentar estratégia de sincronização entre PostgreSQL e OpenSearch para Fase 2: job BullMQ 'index-listing' disparado após publicação de novo anúncio, update do índice ao editar, remoção ao marcar SOLD. Definir mapping de campos no índice OS.",
+            "user_story": "Como arquiteto, quero estratégia de sincronização documentada para que a equipe possa implementar OpenSearch na Fase 2 sem design adicional",
+            "use_case": "UC25",
+            "functional_requirements": [
+              { "id": "RF50", "description": "Estratégia de sync Postgres → OpenSearch documentada" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Documentar estratégia OS",
+              "TASK: Definir mapping de campos OS: vehicle_id, listing_id, brand_name, model_name, year_fab, city, state, available_part_names, full_text_field",
+              "TASK: Definir job BullMQ 'index-listing': on PUBLISHED, UPDATE, SOLD",
+              "TASK: Definir full reindex job para migração inicial (bulk indexing via scroll API)",
+              "TASK: Criar ADR (Architecture Decision Record) para a mudança",
+              "END EVENT: Estratégia documentada"
+            ],
+            "acceptance_criteria": [
+              "Mapping de campos OS documentado com tipos corretos",
+              "Pipeline de sincronização event-driven via BullMQ documentado",
+              "ADR escrito com tradeoffs: PostgreSQL FTS vs OpenSearch",
+              "Estimativa de threshold de registros para trigger da migração"
+            ],
+            "tech_notes": "OpenSearch index mapping: `{ settings: { analysis: { analyzer: { portuguese: { type: 'custom', tokenizer: 'standard', filter: ['lowercase', 'portuguese_stemmer'] } } } }, mappings: { properties: { brandName: { type: 'keyword' }, modelName: { type: 'keyword' }, yearFab: { type: 'integer' }, city: { type: 'keyword' }, state: { type: 'keyword' }, fullText: { type: 'text', analyzer: 'portuguese' }, availablePartNames: { type: 'keyword' }, status: { type: 'keyword' } } } }`. Threshold sugerido: > 50k listings ativos considera migração para OS."
+          },
+          {
+            "id": "M07-T04-ST03",
+            "title": "Testes de performance da busca PostgreSQL (baseline)",
+            "status": "planned",
+            "priority": "P2",
+            "estimated_hours": 3,
+            "description": "Criar testes de performance do SearchService com PostgreSQL usando dados sintéticos (seed de 10k listings). Medir tempo de resposta com diferentes combinações de filtros. Identificar queries lentas via EXPLAIN ANALYZE. Benchmark estabelece baseline para comparação com OpenSearch.",
+            "user_story": "Como engenheiro de performance, quero métricas de baseline da busca PostgreSQL para saber quando migrar para OpenSearch",
+            "use_case": "UC25",
+            "functional_requirements": [
+              { "id": "RF53", "description": "Busca deve responder em < 200ms para 95° percentil" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Executar testes de performance",
+              "TASK: Criar seed de 10.000 listings sintéticos distribuídos por marcas e cidades",
+              "TASK: Executar 100 queries com filtros variados e medir P50, P95, P99",
+              "TASK: Rodar EXPLAIN ANALYZE nas queries mais lentas",
+              "TASK: Ajustar índices se P95 > 200ms",
+              "TASK: Documentar resultados no ADR",
+              "END EVENT: Baseline estabelecido"
+            ],
+            "acceptance_criteria": [
+              "P50 < 50ms para búsca simples por brand/model",
+              "P95 < 200ms para busca com todos os filtros ativos",
+              "Índices revisados e ajustados conforme EXPLAIN ANALYZE",
+              "Resultados documentados para comparação futura com OpenSearch"
+            ],
+            "tech_notes": "Seed de performance: script separado `prisma/seed-performance.ts` que gera 10k vehicles/listings com distribuição realista. Ferramenta de benchmark: `autocannon` ou script Node com `Promise.all` de 100 requests paralelas. EXPLAIN ANALYZE: executar via Supabase SQL Editor nas queries identificadas. Índices adicionais a considerar: `GIN` index em available_parts para busca por peça específica."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,667 @@
+{
+  "module": {
+    "id": "M08",
+    "name": "Chat e Negociação",
+    "slug": "chat_negociacao",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P0",
+    "epic_ref": "E06",
+    "estimated_sprint": "Sprint 4-5",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "realtime": "Supabase Realtime (WebSocket — PostgreSQL CDC)",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "push": "Expo Push Notifications (FCM + APNs) via BullMQ",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo de comunicação em tempo real entre comprador e vendedor usando Supabase Realtime. Toda negociação ocorre exclusivamente via chat vinculado a um anúncio específico. Não há preços, transações financeiras ou pagamentos no chat — é apenas a interface de negociação textual. Chat só pode ser iniciado em anúncios com status PUBLISHED (RN11).",
+    "goals": [
+      "Permitir que comprador inicie conversa diretamente a partir de um anúncio PUBLISHED",
+      "Garantir que chat usa Supabase Realtime para mensagens em tempo real",
+      "Notificar usuários de novas mensagens via push notification quando app em background",
+      "Garantir que apenas comprador e vendedor do anúncio acessem o chat (RN11)"
+    ],
+    "actors": [
+      "Comprador (inicia chat via anúncio)",
+      "Vendedor (responde ao interesse)",
+      "Sistema (entrega push notifications e calcula tempo de resposta)"
+    ],
+    "dependencies": {
+      "modules": ["M01", "M05", "M07", "M11"],
+      "external_services": ["Supabase Realtime", "Expo Push Notifications (FCM + APNs)"]
+    },
+    "module_flow": {
+      "description": "Fluxo completo do chat — criação da sala, envio de mensagens em tempo real e notificações",
+      "pools": [
+        { "name": "Comprador", "lanes": ["Usuário comprando pecas"] },
+        { "name": "Vendedor", "lanes": ["Desmanche"] },
+        { "name": "App Mobile", "lanes": ["Tela de chat (Expo Router)"] },
+        { "name": "API NestJS", "lanes": ["ChatController", "ChatService"] },
+        { "name": "Supabase Realtime", "lanes": ["Subscription de mensagens"] },
+        { "name": "BullMQ", "lanes": ["NotificationWorker (push + atualização de stats)"] }
+      ],
+      "bpmn_text": [
+        "START EVENT: Comprador toca 'Entrar em Contato' na tela de anúncio",
+        "TASK (API): POST /chat/rooms { listingId }",
+        "TASK (ChatService): Verificar listing.status === 'PUBLISHED' (RN11)",
+        "EXCLUSIVE GATEWAY: ChatRoom já existe para este comprador + listingId?",
+        "  [Sim] --> TASK: Retornar ChatRoom existente (idempotente)",
+        "  [Não] --> TASK: prisma.chatRoom.create({ buyerId, sellerId, listingId })",
+        "TASK (App): Navegar para tela app/chat/[roomId].tsx",
+        "TASK (App): useEffect → subscribir no canal Supabase Realtime 'chat:{roomId}'",
+        "TASK (App): useInfiniteQuery carrega histórico de mensagens",
+        "TASK (Comprador): Digita mensagem e toca Enviar",
+        "TASK (API): POST /chat/rooms/:roomId/messages { content }",
+        "TASK (ChatService): Verificar que req.user é membro da sala (buyerId ou sellerId)",
+        "TASK (Prisma): prisma.chatMessage.create({ roomId, senderId, content })",
+        "TASK (Supabase Realtime): Broadcast nova mensagem no canal 'chat:{roomId}'",
+        "TASK (App Vendedor): Realtime listener recebe mensagem → exibe em tempo real",
+        "TASK (BullMQ): Job 'send-push-notification' se destinatário está offline",
+        "TASK (BullMQ): Job 'update-response-time' para calcular tempo de resposta do vendedor",
+        "TASK (Comprador): Recebe resposta do vendedor em tempo real",
+        "END EVENT: Negociação em andamento via chat"
+      ],
+      "message_flows": [
+        "Supabase Realtime → App: Broadcast de novas mensagens em tempo real",
+        "BullMQ → Expo Push: Notificação de nova mensagem quando app em background",
+        "BullMQ → SellerStats: Atualização de avgResponseTimeMinutes após primeira resposta"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF60", "description": "Comprador deve poder iniciar chat a partir de anúncio PUBLISHED (uma sala por comprador por anúncio)", "priority": "P0" },
+      { "id": "RF61", "description": "Mensagens devem ser entregues em tempo real via Supabase Realtime", "priority": "P0" },
+      { "id": "RF62", "description": "Histórico de mensagens deve ser persistido no banco com paginação cursor", "priority": "P0" },
+      { "id": "RF63", "description": "Usuários devem receber push notification de novas mensagens quando o app estiver em background", "priority": "P0" },
+      { "id": "RF64", "description": "Comprador deve visualizar lista de todas as suas conversas ativas na aba Mensagens", "priority": "P0" },
+      { "id": "RF65", "description": "Vendedor deve visualizar lista de todas as conversas ativas nos seus anúncios na aba Mensagens", "priority": "P0" },
+      { "id": "RF66", "description": "Sistema deve exibir contador de mensagens não lidas por conversa", "priority": "P0" }
+    ],
+    "business_rules": [
+      { "id": "RN04", "description": "Chat é interface exclusivamente textual — sem campo de preço, sem pagamentos" },
+      { "id": "RN11", "description": "Chat só pode ser iniciado em anúncios com status PUBLISHED — anúncios SOLD, REJECTED ou EXPIRED não aceitam novas mensagens" },
+      { "id": "RN12", "description": "Apenas comprador e vendedor do anúncio podem acessar o chat específico" },
+      { "id": "RN09", "description": "Sistema deve fornecer botões de moderação rápida no chat (Denunciar mensagem), mas não interceptar automaticamente" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC30",
+        "name": "Iniciar chat com vendedor",
+        "actors": ["Comprador"],
+        "preconditions": ["Comprador autenticado, Listing com status PUBLISHED"],
+        "main_flow": [
+          "1. Comprador toca 'Entrar em Contato' no anúncio",
+          "2. Sistema cria/recupera ChatRoom para este comprador + listing",
+          "3. Comprador navega para tela de chat",
+          "4. Comprador envia primeira mensagem"
+        ],
+        "alternative_flows": [
+          "A1. Listing não PUBLISHED: botão desabilitado + toast 'Anúncio não disponível'",
+          "A2. ChatRoom já existe: abrir sala existente (idempotente)"
+        ],
+        "postconditions": ["ChatRoom aberto, vendedor notificado por push"]
+      },
+      {
+        "id": "UC31",
+        "name": "Trocar mensagens em tempo real",
+        "actors": ["Comprador", "Vendedor"],
+        "preconditions": ["ChatRoom existente e ambos os usuários ativos"],
+        "main_flow": [
+          "1. Usuário digita mensagem",
+          "2. Mensagem enviada via POST /chat/rooms/:id/messages",
+          "3. Mensagem persistida no banco",
+          "4. Supabase Realtime broadcast para o outro usuário",
+          "5. Se destinatário offline: push notification enviado via BullMQ"
+        ],
+        "alternative_flows": [
+          "A1. Erro de conexão: mensagem fica em fila local e retry automático"
+        ],
+        "postconditions": ["Mensagem entregue em tempo real ou via push"]
+      },
+      {
+        "id": "UC32",
+        "name": "Visualizar lista de conversas",
+        "actors": ["Comprador", "Vendedor"],
+        "preconditions": ["Usuário autenticado com conversas existentes"],
+        "main_flow": [
+          "1. Usuário acessa aba Mensagens",
+          "2. Sistema exibe lista de ChatRooms com última mensagem, data e contador de não lidas",
+          "3. Usuário toca em conversa para acessar chat"
+        ],
+        "alternative_flows": [
+          "A1. Sem conversas: EmptyState com CTA 'Explorar sucatas'"
+        ],
+        "postconditions": ["Usuário acessa chat desejado"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M08-T01",
+        "title": "Schema Prisma — ChatRoom, ChatMessage e ChatRead",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 1,
+        "epic": "E06 — Chat e Negociação",
+        "description": "Criar entidades ChatRoom (sala de chat 1:1 entre comprador e vendedor por anúncio), ChatMessage (mensagem individual) e ChatRead (controle de leitura por usuário para contador de não lidas) no Prisma.",
+        "user_stories": [
+          "Como desenvolvedor, quero schema de chat bem modelado para que o sistema de mensagens seja escalável e suporte leituras eficientes"
+        ],
+        "use_cases": ["UC30", "UC31"],
+        "functional_requirements": [
+          { "id": "RF60", "description": "ChatRoom com buyerId, sellerId, listingId e unique constraint" },
+          { "id": "RF62", "description": "ChatMessage com roomId, senderId, content, createdAt" },
+          { "id": "RF66", "description": "ChatRead com roomId, userId, lastReadAt para calcular não lidas" }
+        ],
+        "business_rules": [
+          { "id": "RN04", "description": "ChatMessage sem campo de preço ou valor" },
+          { "id": "RN12", "description": "ChatRoom com constraint unique (buyerId, listingId)" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Schema do chat",
+          "TASK: Escrever model ChatRoom (id, buyerId, sellerId, listingId, isActive, createdAt)",
+          "TASK: Adicionar @@unique([buyerId, listingId]) no ChatRoom",
+          "TASK: Escrever model ChatMessage (id, roomId, senderId, content String, isDeleted Boolean @default(false), createdAt)",
+          "TASK: Escrever model ChatRead (id, roomId, userId, lastReadAt, @@unique([roomId, userId]))",
+          "TASK: Adicionar índices: ChatMessage @@index([roomId, createdAt])",
+          "TASK: Executar migration",
+          "END EVENT: Schema de chat pronto"
+        ],
+        "acceptance_criteria": [
+          "@@unique([buyerId, listingId]) no ChatRoom garante 1 sala por comprador por anúncio",
+          "ChatMessage.content sem campo de preço ou tipo monetário",
+          "ChatRead.lastReadAt para calcular mensagens não lidas após esta data",
+          "Índice composto (roomId, createdAt) para paginação eficiente de mensagens"
+        ],
+        "subtasks": [
+          {
+            "id": "M08-T01-ST01",
+            "title": "Escrever models ChatRoom, ChatMessage e ChatRead",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Adicionar ao schema.prisma: ChatRoom (id, buyerId FK→User, sellerId FK→User, listingId FK→Listing, isActive Boolean @default(true), createdAt, updatedAt, @@unique([buyerId, listingId])), ChatMessage (id, roomId FK→ChatRoom, senderId FK→User, content String @db.Text, isDeleted Boolean @default(false), createdAt), ChatRead (id, roomId FK→ChatRoom, userId FK→User, lastReadAt DateTime, @@unique([roomId, userId])).",
+            "user_story": "Como sistema de mensagens, quero schema de ChatRoom e ChatMessage para persistir conversas",
+            "use_case": "UC30",
+            "functional_requirements": [
+              { "id": "RF62", "description": "Persistência de mensagens no banco" }
+            ],
+            "business_rules": [
+              { "id": "RN12", "description": "@@unique([buyerId, listingId]) garante unicidade por comprador+anúncio" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Escrever models do chat",
+              "TASK: model ChatRoom com buyerId e sellerId (ambos FK→User mas nomes distintos)",
+              "TASK: @@unique([buyerId, listingId])",
+              "TASK: model ChatMessage com content @db.Text (sem limite de 191 chars do MySQL)",
+              "TASK: model ChatRead com lastReadAt",
+              "TASK: @@index([roomId, createdAt]) em ChatMessage",
+              "END EVENT: Schema validado"
+            ],
+            "acceptance_criteria": [
+              "Dois campos FK para User no ChatRoom: buyer e seller (relações nomeadas)",
+              "@@unique([buyerId, listingId]) evita salas duplicadas",
+              "@db.Text no content para mensagens longas",
+              "ChatRead com @@unique([roomId, userId])"
+            ],
+            "tech_notes": "ChatRoom: duas relações para User com nomes distintos: `buyer User @relation('ChatBuyer', fields: [buyerId], references: [id])` e `seller User @relation('ChatSeller', fields: [sellerId], references: [id])`. Supabase Realtime: para CDC do Supabase Realtime, a tabela precisa ter `ALTER TABLE chat_message REPLICA IDENTITY FULL` — adicionar como SQL raw na migration. Ou usar publication específica no Supabase para a tabela."
+          },
+          {
+            "id": "M08-T01-ST02",
+            "title": "Configurar Supabase Realtime para tabela chat_message",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Configurar Supabase Realtime para emitir eventos INSERT na tabela chat_message. Habilitar Realtime via Supabase Dashboard (Table Editor → Enable Realtime). Configurar Row Level Security (RLS) para que apenas membros da sala recebam broadcasts.",
+            "user_story": "Como sistema de chat, quero Supabase Realtime configurado para que mensagens sejam transmitidas instantaneamente sem polling",
+            "use_case": "UC31",
+            "functional_requirements": [
+              { "id": "RF61", "description": "Mensagens em tempo real via Supabase Realtime" }
+            ],
+            "business_rules": [
+              { "id": "RN12", "description": "RLS garante que apenas membros da sala recebam mensagens" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Configurar Supabase Realtime",
+              "TASK: Supabase Dashboard → Database → Replication → Adicionar chat_message à publication supabase_realtime",
+              "TASK: Criar RLS policy em chat_message: SELECT e INSERT apenas para buyerId ou sellerId da sala",
+              "TASK: Testar broadcast via Supabase Studio → Realtime Inspector",
+              "END EVENT: Realtime configurado"
+            ],
+            "acceptance_criteria": [
+              "chat_message na publication supabase_realtime",
+              "RLS policy bloqueia usuários que não são membros da sala",
+              "Teste via Supabase Realtime Inspector confirma broadcast de evento INSERT",
+              "Latência de entrega < 100ms em rede local"
+            ],
+            "tech_notes": "Supabase Dashboard: Tables → chat_message → enable Realtime toggle. RLS policy SQL: `CREATE POLICY 'chat_members_can_read' ON chat_message FOR SELECT USING (EXISTS (SELECT 1 FROM chat_room WHERE chat_room.id = room_id AND (chat_room.buyer_id = auth.uid() OR chat_room.seller_id = auth.uid())))`. Nota: o JWT do Supabase usado para RLS deve ser o mesmo gerado pelo NestJS Auth — configurar Custom JWT no Supabase ou usar Supabase como provedor de auth secundário para RLS."
+          }
+        ]
+      },
+      {
+        "id": "M08-T02",
+        "title": "ChatController e ChatService — Endpoints REST",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E06 — Chat e Negociação",
+        "description": "Implementar ChatModule com endpoints: POST /chat/rooms (criar/buscar sala), GET /chat/rooms (listar salas do usuário), GET /chat/rooms/:id/messages (histórico paginado), POST /chat/rooms/:id/messages (enviar mensagem), PUT /chat/rooms/:id/read (marcar como lida).",
+        "user_stories": [
+          "Como comprador, quero criar uma sala de chat com um vendedor para negociar uma sucata que me interessa"
+        ],
+        "use_cases": ["UC30", "UC31", "UC32"],
+        "functional_requirements": [
+          { "id": "RF60", "description": "POST /chat/rooms idempotente para criar/retornar sala" },
+          { "id": "RF62", "description": "GET /chat/rooms/:id/messages com cursor pagination" },
+          { "id": "RF66", "description": "PUT /chat/rooms/:id/read para marcar lida" }
+        ],
+        "business_rules": [
+          { "id": "RN11", "description": "POST /chat/rooms retorna 403 se listing não for PUBLISHED" },
+          { "id": "RN12", "description": "GET /chat/rooms retorna apenas salas do usuário autenticado" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: POST /chat/rooms { listingId }",
+          "TASK: JwtAuthGuard verifica autenticação",
+          "TASK: Buscar Listing, verificar status PUBLISHED (RN11)",
+          "EXCLUSIVE GATEWAY: Listing PUBLISHED?",
+          "  [Não] --> INTERMEDIATE EVENT (Error): 403 Forbidden 'Anúncio não disponível para chat'",
+          "  [Sim] --> TASK: upsertChatRoom via prisma.chatRoom.upsert({ where: { buyerId_listingId }, create: {...}, update: {} })",
+          "TASK: Retornar { roomId, buyerId, sellerId, listingId }",
+          "PARALLEL FLOW: GET /chat/rooms/:id/messages",
+          "TASK: Verificar que req.user é membro (buyerId ou sellerId) da sala",
+          "TASK: prisma.chatMessage.findMany({ where: { roomId }, take: 20+1, cursor: { id: cursor }, orderBy: { createdAt: 'desc' } })",
+          "TASK: Calcular unreadCount para badge",
+          "END EVENT: Sala criada ou mensagens retornadas"
+        ],
+        "acceptance_criteria": [
+          "POST /chat/rooms idempotente: mesma sala retornada se já existe",
+          "POST /chat/rooms com listing SOLD/REJECTED retorna 403",
+          "GET /chat/rooms retorna apenas salas onde user é buyerId ou sellerId",
+          "GET /chat/rooms inclui lastMessage e unreadCount para exibição na lista",
+          "Middleware de membership verifica acesso em todas as rotas /:roomId"
+        ],
+        "subtasks": [
+          {
+            "id": "M08-T02-ST01",
+            "title": "Implementar POST /chat/rooms com upsert idempotente",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Criar ChatService.getOrCreateRoom(buyerId, listingId). Verificar listing.status. Usar prisma.chatRoom.upsert com where: { buyerId_listingId: { buyerId, listingId } } para criar ou recuperar sala existente. Retornar ChatRoom com dados do listing e vendedor.",
+            "user_story": "Como aplicação, quero criar sala de chat idempotente para que múltiplos toques no botão não criem salas duplicadas",
+            "use_case": "UC30",
+            "functional_requirements": [
+              { "id": "RF60", "description": "Upsert idempotente de ChatRoom" }
+            ],
+            "business_rules": [
+              { "id": "RN11", "description": "Verificar PUBLISHED antes de criar sala" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: POST /chat/rooms",
+              "TASK: Buscar Listing com status",
+              "TASK: Verificar status PUBLISHED → 403 se não",
+              "TASK: Extrair sellerId do listing.sellerId",
+              "TASK: chatRoom.upsert({ where: { buyerId_listingId: { buyerId: req.user.id, listingId } }, create: { buyerId, sellerId, listingId }, update: {} })",
+              "TASK: Retornar 200 ou 201 com ChatRoom",
+              "END EVENT: Sala criada ou existente retornada"
+            ],
+            "acceptance_criteria": [
+              "Retornar 201 na criação e 200 se já existe",
+              "listing.status !== PUBLISHED retorna 403",
+              "sellerId extraído do listing.vehicle.sellerProfile.userId",
+              "ChatRoom inclui isActive=true"
+            ],
+            "tech_notes": "CreateChatRoomDto: `@IsUUID() listingId`. Upsert: `prisma.chatRoom.upsert({ where: { buyerId_listingId: { buyerId, listingId } }, create: { buyerId, sellerId, listingId }, update: {} })`. sellerId: buscar via `listing.vehicle.sellerProfile.userId`. Checar que req.user.id !== sellerId (vendedor não pode iniciar chat no próprio anúncio). Retornar também `listing: { title, vehicle: { photos: [{ url }] } }` para header da tela de chat."
+          },
+          {
+            "id": "M08-T02-ST02",
+            "title": "Endpoint POST /messages e send de mensagem com Realtime",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Implementar POST /chat/rooms/:roomId/messages. Verificar membership na sala. Criar ChatMessage no banco. Usar Supabase Realtime — o INSERT na tabela chat_message dispara automaticamente via CDC. Enfileirar job BullMQ de push notification para o destinatário.",
+            "user_story": "Como usuário do chat, quero enviar mensagens que chegam instantaneamente ao destinatário, mesmo quando estou no celular com conexão variável",
+            "use_case": "UC31",
+            "functional_requirements": [
+              { "id": "RF61", "description": "Mensagem inserida dispara Realtime automaticamente via CDC Supabase" },
+              { "id": "RF63", "description": "Push notification enfileirado via BullMQ" }
+            ],
+            "business_rules": [
+              { "id": "RN04", "description": "content sem validação de preço (apenas MaxLength)" },
+              { "id": "RN12", "description": "Membership check antes de enviar mensagem" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: POST /chat/rooms/:roomId/messages { content }",
+              "TASK: ChatRoomMemberGuard: verificar req.user.id === room.buyerId ou room.sellerId",
+              "TASK: Validar CreateChatMessageDto: content @IsString @MinLength(1) @MaxLength(3000)",
+              "TASK: prisma.chatMessage.create({ roomId, senderId: req.user.id, content })",
+              "TASK: Supabase INSERT dispara Realtime automaticamente (CDC) para subscribers",
+              "TASK: Determinar recipientId (o outro membro da sala)",
+              "TASK: BullMQ: add job 'send-push-notification' { recipientId, roomId, preview: content.slice(0,50) }",
+              "TASK: BullMQ: add job 'update-response-time' se primeira resposta do vendedor",
+              "TASK: Retornar 201 com ChatMessage criado",
+              "END EVENT: Mensagem criada e notificação enfileirada"
+            ],
+            "acceptance_criteria": [
+              "Non-member recebe 403 Forbidden",
+              "ChatMessage criada e Realtime dispara via CDC Supabase (não precisa chamada manual)",
+              "content limitado a 3000 caracteres",
+              "Push notification enfileirada mas não bloqueia resposta 201",
+              "Job de response time só calculado para primeira mensagem do vendedor na sala"
+            ],
+            "tech_notes": "Supabase Realtime via CDC: ao inserir em chat_message, Supabase automaticamente emite evento para subscribers no canal `chat:{roomId}`. No app: `supabase.channel('chat:${roomId}').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_message', filter: `room_id=eq.${roomId}` }, handler).subscribe()`. Recipient: `const recipientId = message.senderId === room.buyerId ? room.sellerId : room.buyerId`. Push job: `{ type: 'chat_message', recipientId, data: { roomId, senderName, preview } }`."
+          },
+          {
+            "id": "M08-T02-ST03",
+            "title": "GET /chat/rooms com lista de conversas e unreadCount",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Implementar GET /chat/rooms que lista todas as ChatRooms do usuário autenticado com: última mensagem, data, unreadCount e dados resumidos do listing (thumbnail, título). Ordenar por updatedAt desc para conversas mais recentes primeiro.",
+            "user_story": "Como usuário, quero ver minha lista de conversas com as mais recentes no topo e contador de mensagens não lidas para gerenciar todos os meus chats facilmente",
+            "use_case": "UC32",
+            "functional_requirements": [
+              { "id": "RF64", "description": "Lista de conversas com lastMessage e unreadCount" },
+              { "id": "RF66", "description": "unreadCount calculado via ChatRead.lastReadAt" }
+            ],
+            "business_rules": [
+              { "id": "RN12", "description": "GET /chat/rooms filtra por buyerId ou sellerId do usuário" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: GET /chat/rooms",
+              "TASK: Buscar ChatRooms onde buyerId = req.user.id OR sellerId = req.user.id",
+              "TASK: Para cada sala, buscar lastMessage via select { messages: { orderBy: { createdAt: desc }, take: 1 } }",
+              "TASK: Para cada sala, calcular unreadCount: contar mensagens após ChatRead.lastReadAt",
+              "TASK: Ordernar por lastMessage.createdAt desc",
+              "TASK: Incluir dados do listing (title + thumbnail) para contexto",
+              "TASK: Retornar array de ChatRoomSummaryDto",
+              "END EVENT: Lista de conversas retornada"
+            ],
+            "acceptance_criteria": [
+              "Apenas salas onde usuário é membro retornadas",
+              "unreadCount calculado corretamente sem mensagens do próprio usuário",
+              "lastMessage com content, senderId e createdAt",
+              "Listing thumbnail incluso para preview visual na lista",
+              "Salas sem mensagens exibidas com content null"
+            ],
+            "tech_notes": "Query Prisma: `prisma.chatRoom.findMany({ where: { OR: [{ buyerId: userId }, { sellerId: userId }] }, include: { messages: { orderBy: { createdAt: 'desc' }, take: 1 } , listing: { include: { vehicle: { include: { photos: { where: { order: 0 }, take: 1 } } } } }, chatReads: { where: { userId } } }, orderBy: { updatedAt: 'desc' } })`. UnreadCount: `chatMessage.count({ where: { roomId, createdAt: { gt: chatRead?.lastReadAt ?? new Date(0) }, senderId: { not: userId } } })`."
+          }
+        ]
+      },
+      {
+        "id": "M08-T03",
+        "title": "Tela de chat no app React Native com Supabase Realtime",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 3,
+        "epic": "E06 — Chat e Negociação",
+        "description": "Implementar tela de chat app/chat/[roomId].tsx com: header do anúncio, lista de mensagens invertida (mais recentes embaixo), input de mensagem, integração com Supabase Realtime para receber mensagens em tempo real, paginação de histórico e marcação automática de lida.",
+        "user_stories": [
+          "Como usuário, quero uma tela de chat fluida e responsiva que entregue mensagens instantaneamente"
+        ],
+        "use_cases": ["UC31"],
+        "functional_requirements": [
+          { "id": "RF61", "description": "Mensagens em tempo real via Supabase Realtime subscription" },
+          { "id": "RF62", "description": "Paginação de histórico com scroll para cima" }
+        ],
+        "business_rules": [
+          { "id": "RN04", "description": "Sem campo de preço ou valor em nenhum elemento da tela" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Tela app/chat/[roomId].tsx montada",
+          "TASK (App): useParams → roomId",
+          "TASK (App): useInfiniteQuery(['messages', roomId]) carrega histórico paginado",
+          "TASK (App): useEffect → supabase.channel('chat:{roomId}').on('postgres_changes', handler).subscribe()",
+          "TASK (Supabase Realtime): Nova mensagem chega → appendMessage ao topo da lista",
+          "TASK: Renderizar FlatList invertida (inverted=true) com MessageBubble para cada mensagem",
+          "TASK: TextInput no rodapé com botão de enviar",
+          "TASK (Usuário): Digita e envia → POST /chat/rooms/:roomId/messages",
+          "TASK (App): Optimistic update: adicionar mensagem localmente antes da resposta da API",
+          "TASK (App): useEffect cleanup → supabase.channel.unsubscribe() ao sair da tela",
+          "TASK (App): PUT /chat/rooms/:roomId/read ao montar tela (marcar como lida)",
+          "END EVENT: Chat em tempo real funcionando"
+        ],
+        "acceptance_criteria": [
+          "Mensagens novas aparecem instantaneamente sem refresh",
+          "FlatList com inverted=true (mensagens novas embaixo)",
+          "Scroll para cima carrega mensagens mais antigas (paginação)",
+          "Cleanup de subscription ao sair da tela (sem memory leak)",
+          "Mensagens próprias alinhadas à direita; do outro alinhadas à esquerda"
+        ],
+        "subtasks": [
+          {
+            "id": "M08-T03-ST01",
+            "title": "Implementar Supabase Realtime subscription no app",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Implementar hook useChatRealtime(roomId) que gerencia o ciclo de vida da subscription Supabase Realtime. Ao receber nova mensagem via CDC INSERT, adicionar ao cache TanStack Query via queryClient.setQueryData. Cleanup ao desmontar componente.",
+            "user_story": "Como usuário, quero que novas mensagens apareçam instantaneamente no meu chat sem precisar atualizar a tela",
+            "use_case": "UC31",
+            "functional_requirements": [
+              { "id": "RF61", "description": "Subscription Supabase Realtime com cleanup" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: useChatRealtime(roomId) montado",
+              "TASK: supabase.channel('chat:{roomId}').on('postgres_changes', { event: 'INSERT', table: 'chat_message', filter: `room_id=eq.${roomId}` }, (payload) => { appendMessage(payload.new) }).subscribe()",
+              "TASK: appendMessage: queryClient.setQueryData(['messages', roomId], (old) => addMessageToFirst(old, payload.new))",
+              "TASK: useEffect cleanup: return () => { supabase.removeChannel(channel) }",
+              "END EVENT: Subscription ativa e cleanup garantido"
+            ],
+            "acceptance_criteria": [
+              "Subscription criada via supabase.channel com filter correto",
+              "Nova mensagem adicionada ao início da lista (inverted FlatList)",
+              "Sem duplicate ao receber própria mensagem via Realtime + API response",
+              "Cleanup executa ao sair da tela (useEffect return)"
+            ],
+            "tech_notes": "Hook: `export function useChatRealtime(roomId: string) { const queryClient = useQueryClient(); useEffect(() => { const channel = supabase.channel('chat:${roomId}').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_message', filter: `room_id=eq.${roomId}` }, (payload) => { queryClient.setQueryData(['messages', roomId, 'list'], (old: InfiniteData<MessagesPage>) => { /* prepend ao first page */ }) }).subscribe(); return () => { supabase.removeChannel(channel) } }, [roomId]) }`. Dedup: verificar `!old.pages[0].data.some(m => m.id === newMsg.id)` antes de adicionar."
+          },
+          {
+            "id": "M08-T03-ST02",
+            "title": "Tela de chat com FlatList invertida e MessageBubble",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 5,
+            "description": "Criar tela app/chat/[roomId].tsx com: header (thumbnail do listing + título + botão de ver anúncio), FlatList inverted com MessageBubble (próprio à direita, do outro à esquerda), input de mensagem com botão de envio, scroll automático ao receber nova mensagem, indicador de 'Digitando...' (opcional MVP+).",
+            "user_story": "Como usuário no chat, quero uma interface de mensagens profissional e fluida, similar ao WhatsApp, para negociar via texto",
+            "use_case": "UC31",
+            "functional_requirements": [
+              { "id": "RF61", "description": "FlatList invertida com mensagens próprias à direita" }
+            ],
+            "business_rules": [
+              { "id": "RN04", "description": "TextInput sem sugestão de preço (placeholder neutro)" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Tela de chat renderizada",
+              "TASK: Header com thumbnail do anúncio, título e Avatar do interlocutor",
+              "TASK: FlatList inverted com MessageBubble component",
+              "TASK: MessageBubble: `alignSelf: senderId === userId ? 'flex-end' : 'flex-start'`",
+              "TASK: Cores: próprio=azul primário, outro=cinza claro",
+              "TASK: Input fixo no rodapé com KeyboardAvoidingView",
+              "TASK: Botão enviar → useMutation POST /messages com optimistic update",
+              "TASK: onEndReachedTop → fetchPreviousPage para carregar histórico",
+              "END EVENT: Interface de chat funcional"
+            ],
+            "acceptance_criteria": [
+              "Mensagens próprias azuis à direita; do outro cinzas à esquerda",
+              "Timestamp exibido em cada mensagem (hh:mm)",
+              "KeyboardAvoidingView evita que teclado cubra o input",
+              "Scroll automático para mensagem mais recente ao entrar na tela",
+              "Placeholder do input: 'Envie uma mensagem...' (sem sugestão de preço)"
+            ],
+            "tech_notes": "FlatList: `inverted={true}` e `data={messages.reverse()}`. MessageBubble: componente com `isOwn: boolean` prop. KeyboardAvoidingView: `behavior={Platform.OS === 'ios' ? 'padding' : 'height'}`. Optimistic update: useMutation com onMutate → adicionar mensagem com id temporário `tmp-${Date.now()}`, onSuccess → substituir pelo id real, onError → remover temporário. Timestamp: `format(createdAt, 'HH:mm')` via date-fns. Header: `useQuery(['room', roomId])` para dados do listing."
+          },
+          {
+            "id": "M08-T03-ST03",
+            "title": "Tela de lista de conversas (aba Mensagens)",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Criar tela app/(tabs)/mensagens.tsx com FlatList de ChatRoomItem mostrando thumbnail do anúncio, interlocutor, última mensagem, data e badge de não lidas. Atualizar em tempo real quando nova mensagem chega (Supabase Realtime em canal global do usuário).",
+            "user_story": "Como usuário, quero ver todas as minhas conversas ativas na aba Mensagens para não perder nenhum contato de comprador ou vendedor",
+            "use_case": "UC32",
+            "functional_requirements": [
+              { "id": "RF64", "description": "Lista de conversas com badge de não lidas" },
+              { "id": "RF65", "description": "Vendedor vê conversas de todos os seus anúncios" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Aba Mensagens ativa",
+              "TASK: useQuery(['chat', 'rooms']) → GET /chat/rooms",
+              "TASK: FlatList renderiza ChatRoomItem para cada sala",
+              "TASK: ChatRoomItem: thumbnail listing, nome interlocutor, preview da última mensagem, timestamp, badge vermelho se unreadCount > 0",
+              "TASK: Subscription Supabase Realtime no canal global do usuário ('user:{userId}')",
+              "TASK: Nova mensagem em qualquer sala → invalidateQuery(['chat', 'rooms']) para atualizar lista",
+              "TASK: Tocar em conversa → navegar para app/chat/[roomId]",
+              "END EVENT: Lista de conversas exibida e atualizada"
+            ],
+            "acceptance_criteria": [
+              "Lista ordenada por última mensagem (mais recente primeiro)",
+              "Badge vermelho com número de não lidas quando unreadCount > 0",
+              "Preview da última mensagem truncado em 1 linha",
+              "Timestamp relativo: 'há 5 min', 'ontem', '23/04'",
+              "EmptyState quando sem conversas com CTA 'Explorar sucatas'"
+            ],
+            "tech_notes": "ChatRoomItem: componente com thumbnail 50x50px (Image com borderRadius 8), interlocutor nome, lastMessage.content truncado, timestamp formatado. Timestamp: `formatDistanceToNow(lastMessage.createdAt, { locale: ptBR, addSuffix: true })`. Badge: `${unreadCount > 99 ? '99+' : unreadCount}` em vermelho superposto ao thumbnail. Canal global: `supabase.channel('user:${userId}').on(...)` para invalidação genérica. Aba Mensagens: badge no TabBar com total de não lidas."
+          }
+        ]
+      },
+      {
+        "id": "M08-T04",
+        "title": "Push Notifications para mensagens de chat (via BullMQ + Expo)",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E06 — Chat e Negociação",
+        "description": "Implementar worker BullMQ 'send-push-notification' que envia push notifications via Expo Push Notification API para usuários com o app em background. Salvar Expo Push Token no banco. Respeitar preferências de notificação (NotificationPreferences do M02).",
+        "user_stories": [
+          "Como vendedor, quero receber push notification quando um comprador me enviar mensagem para não perder nenhum contato de negócio"
+        ],
+        "use_cases": ["UC31"],
+        "functional_requirements": [
+          { "id": "RF63", "description": "Push notification via Expo quando app em background" }
+        ],
+        "business_rules": [
+          { "id": "RN09", "description": "Notificações respeitam preferências do comprador/vendedor (M02)" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Job 'send-push-notification' processado",
+          "TASK: Buscar pushToken do recipientId (tabela PushToken)",
+          "EXCLUSIVE GATEWAY: PushToken existe e pushEnabled?",
+          "  [Não] --> TASK: Registrar log 'no-push-token' e concluir",
+          "  [Sim] --> TASK: Buscar NotificationPreferences.pushEnabled do recipiente",
+          "           EXCLUSIVE GATEWAY: pushEnabled = true?",
+          "             [Não] --> TASK: Concluir sem enviar",
+          "             [Sim] --> TASK: POST https://exp.host/--/api/v2/push/send {to: token, title, body, data}",
+          "TASK: Registrar resultado no banco (NotificationLog)",
+          "END EVENT: Push enviado ou skipped"
+        ],
+        "acceptance_criteria": [
+          "PushToken armazenado ao registrar dispositivo no login",
+          "Push enviada apenas se pushEnabled=true nas preferências",
+          "Título: nome do remetente, Body: preview de 50 chars da mensagem",
+          "data payload inclui roomId para deep link ao tocar na notificação",
+          "Job com retry 3x em caso de falha na Expo API"
+        ],
+        "subtasks": [
+          {
+            "id": "M08-T04-ST01",
+            "title": "Registro de PushToken ao login no app",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Após login bem-sucedido no app, registrar o Expo Push Token do dispositivo na API. Criar endpoint POST /users/push-token. Salvar PushToken no banco associado ao userId. Lidar com tokens expirados e remoção ao logout.",
+            "user_story": "Como sistema de notificações, quero o push token do dispositivo armazenado para poder enviar notificações push ao usuário",
+            "use_case": "UC31",
+            "functional_requirements": [
+              { "id": "RF63", "description": "PushToken registrado ao login para posterior uso em push" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Login bem-sucedido no app",
+              "TASK: Expo Notifications.getExpoPushTokenAsync() → obter token",
+              "TASK: Verificar permissão: requestPermissionsAsync se ainda não concedida",
+              "TASK: POST /users/push-token { token, platform: 'ios'|'android' }",
+              "TASK (API): prisma.pushToken.upsert({ where: { userId_platform }, create: {...}, update: { token } })",
+              "END EVENT: PushToken salvo no banco"
+            ],
+            "acceptance_criteria": [
+              "Token registrado após cada login (upsert para atualizar se mudou)",
+              "Platform incluso (ios/android) para debugging",
+              "Ao logout: DELETE /users/push-token para desregistrar",
+              "Permissão de notificação solicitada antes de obter token"
+            ],
+            "tech_notes": "model PushToken: `id, userId @unique não, userId + platform @@unique, token String, platform PushPlatform enum, createdAt, updatedAt`. Multiple devices: userId não é @unique (usuário pode ter iOS e Android). Expo: `const token = await Notifications.getExpoPushTokenAsync({ projectId: Constants.expoConfig.extra.eas.projectId })`. Chamar após login no AuthService do app: `await authApi.registerPushToken(token.data, Platform.OS)`."
+          },
+          {
+            "id": "M08-T04-ST02",
+            "title": "Worker BullMQ para envio de push notifications",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Implementar worker BullMQ para processar job 'send-push-notification'. Buscar PushToken e NotificationPreferences do destinatário. Enviar via Expo Push API (https://exp.host/--/api/v2/push/send). Lidar com tokens expirados (DeviceNotRegistered) removendo do banco.",
+            "user_story": "Como vendedor com app em background, quero receber push com nome do comprador e preview da mensagem para decidir se respondo agora",
+            "use_case": "UC31",
+            "functional_requirements": [
+              { "id": "RF63", "description": "Worker envia push via Expo API com retry em falha" }
+            ],
+            "business_rules": [
+              { "id": "RN09", "description": "Verificar NotificationPreferences.pushEnabled antes de enviar" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Job send-push-notification processado",
+              "TASK: Buscar PushTokens do recipientId",
+              "TASK: Buscar NotificationPreferences.pushEnabled",
+              "EXCLUSIVE GATEWAY: Habilitado?",
+              "  [Não] --> TASK: Concluir sem envio",
+              "  [Sim] --> TASK: POST Expo Push API para cada token do usuário",
+              "EXCLUSIVE GATEWAY: Response.status = DeviceNotRegistered?",
+              "  [Sim] --> TASK: prisma.pushToken.delete({ where: { token } })",
+              "  [Não] --> TASK: Registrar sucesso no NotificationLog",
+              "END EVENT: Push enviados ou tokens limpos"
+            ],
+            "acceptance_criteria": [
+              "NotificationPreferences consultada antes do envio",
+              "Multiple tokens: enviar para todos os dispositivos do usuário",
+              "DeviceNotRegistered: remover token expirado do banco automaticamente",
+              "Payload: { to, title: senderName, body: content.slice(0,50) + '...', data: { type: 'chat_message', roomId } }",
+              "Job com attempts: 3, backoff: exponential"
+            ],
+            "tech_notes": "Expo Push API via fetch: `fetch('https://exp.host/--/api/v2/push/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(messages) })`. Batch: enviar múltiplas mensagens em um request (Expo suporta array). Biblioteca: `expo-server-sdk` disponível para Node.js (`@expo/server-sdk`). Sound: `sound: 'default'`. Badge: `badge: unreadCount + 1`. Deep link via data: app recebe `data.roomId` e navega para `/chat/${roomId}`."
+          },
+          {
+            "id": "M08-T04-ST03",
+            "title": "Handler de deep link ao tocar na push notification",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Implementar handler no app para abrir a tela de chat correta ao comprador ou vendedor tocar na push notification recebida. Usar Expo Notifications.addNotificationResponseReceivedListener para capturar a ação.",
+            "user_story": "Como usuário, quando toco na push notification de mensagem, quero ir diretamente para a conversa específica sem precisar navegar manualmente",
+            "use_case": "UC31",
+            "functional_requirements": [
+              { "id": "RF63", "description": "Deep link da push para tela de chat ao tocar" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Usuário toca na push notification",
+              "TASK (App): Notifications.addNotificationResponseReceivedListener(response => { ... })",
+              "TASK: Extrair data.roomId da notificação",
+              "EXCLUSIVE GATEWAY: Usuário está autenticado?",
+              "  [Não] --> TASK: Redirecionar para login com returnUrl para o chat",
+              "  [Sim] --> TASK: router.push('/chat/${data.roomId}')",
+              "END EVENT: Tela de chat aberta"
+            ],
+            "acceptance_criteria": [
+              "Tocar na push abre a tela /chat/:roomId correta",
+              "Handler registrado no _layout.tsx raiz do Expo Router",
+              "Funciona tanto com app em background quanto fechado",
+              "Usuário não autenticado redirecionado para login e depois ao chat"
+            ],
+            "tech_notes": "No _layout.tsx raiz: `useEffect(() => { const sub = Notifications.addNotificationResponseReceivedListener(response => { const roomId = response.notification.request.content.data?.roomId; if (roomId) router.push(`/chat/${roomId}`); }); return () => sub.remove(); }, [])`. Para app fechado: Expo garante que `getLastNotificationResponseAsync()` retorna a resposta pendente ao abrir. Verificar autenticação antes da navegação."
+          }
+        ]
+      }
+    ]
+  }
+}

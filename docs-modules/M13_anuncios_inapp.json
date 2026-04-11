@@ -1,0 +1,912 @@
+{
+  "module": {
+    "id": "M13",
+    "name": "Anúncios e Publicidade In-App",
+    "slug": "anuncios_inapp",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P1",
+    "epic_ref": "E13",
+    "estimated_sprint": "Sprint 7-8",
+    "monetization_context": "Este módulo é o principal mecanismo de monetização do PECAÊ. A plataforma é 100% gratuita para vendedores (desmanches). A receita vem exclusivamente de anúncios patrocinados exibidos para compradores e vendedores dentro do app. Não há cobrança por cadastro, por anúncio ou por chat.",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "ad_network": "Google Mobile Ads SDK (AdMob) para anúncios programáticos + sistema próprio para anúncios diretos (desmanches patrocinados)",
+      "cache": "Redis via Upstash (cache de configuração de anúncios e frequência por usuário)",
+      "queue": "BullMQ (registro assíncrono de impressões e cliques — tracking de métricas)",
+      "analytics": "Integração com M12 — as métricas de anúncios alimentam o dashboard admin",
+      "storage": "Supabase Storage (banners e imagens de anúncios diretos)",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo de monetização via publicidade in-app do PECAÊ. Suporta dois tipos de anúncios: (1) Anúncios programáticos via Google AdMob (banners e intersticiais automáticos gerenciados pelo ecossistema Google), e (2) Anúncios Diretos — desmanches que pagam para ter seus anúncios destacados nas listagens de busca (Sponsored/Patrocinado). O módulo inclui painel admin para gestão de campanhas diretas, configuração de frequência e posicionamento de anúncios AdMob, e tracking de impressões e cliques para relatórios de performance.",
+    "goals": [
+      "Integrar Google AdMob para exibição de banners e intersticiais programáticos no app",
+      "Implementar sistema de Anúncios Diretos — Listings patrocinados que aparecem no topo da busca",
+      "Construir painel admin para gerenciar campanhas de anúncios diretos (criação, orçamento, período, targeting)",
+      "Registrar impressões e cliques de forma assíncrona via BullMQ para não impactar a UX",
+      "Garantir que a experiência do usuário não é degradada por excesso de anúncios (frequência capping)",
+      "Fornecer relatórios de performance de campanhas para anunciantes e admin via M12"
+    ],
+    "actors": [
+      "Comprador (visualiza anúncios nos resultados de busca e no app)",
+      "Vendedor/Desmanche Anunciante (paga para ter Listing em destaque — Sponsored)",
+      "Admin (cria e gerencia campanhas de anúncios diretos no painel)",
+      "Google AdMob (fornece anúncios programáticos automaticamente)",
+      "Sistema (registra impressões/cliques, controla frequência, seleciona anúncios)"
+    ],
+    "ad_types": {
+      "admob_banner": {
+        "description": "Banner fixo de 320x50 exibido no rodapé de telas de listagem e busca. Gerenciado 100% pelo AdMob SDK.",
+        "positions": ["rodapé da tela de resultados de busca", "rodapé da tela de detalhes do anúncio"],
+        "revenue_model": "CPM (custo por mil impressões) — pago pelo Google ao PECAÊ"
+      },
+      "admob_interstitial": {
+        "description": "Anúncio de tela cheia exibido em transições estratégicas (após X chats iniciados, ao fechar anúncio). Frequência capping: máximo 1 por sessão de 30 min.",
+        "positions": ["transição após iniciar chat", "ao retornar da tela de detalhes para lista"],
+        "revenue_model": "CPM + CPC — pago pelo Google ao PECAÊ"
+      },
+      "sponsored_listing": {
+        "description": "Anúncio de veículo/sucata patrocinado exibido no topo dos resultados de busca com badge 'Patrocinado'. É um Listing normal do banco com flag isSponsoredActive=true e configurações de campanha. Não viola RN04 (sem preços) — é apenas destaque de posição.",
+        "positions": ["primeiros 2 resultados na busca", "carrossel de destaque na tela inicial"],
+        "revenue_model": "CPC (custo por clique) ou CPM fixo — pago pelo desmanche ao PECAÊ (pagamento externo, PECAÊ registra e ativa manualmente)"
+      }
+    },
+    "dependencies": {
+      "modules": ["M01", "M05", "M07", "M09", "M12"],
+      "external_services": [
+        "Google AdMob SDK (react-native-google-mobile-ads)",
+        "BullMQ (tracking assíncrono de impressões e cliques)",
+        "Supabase Storage (imagens de campanhas diretas)",
+        "M12 (dashboard de analytics para métricas de anúncios)"
+      ]
+    },
+    "business_rules": [
+      { "id": "RN04", "description": "Anúncios patrocinados (Sponsored Listings) seguem RN04 — sem exibição de preços; destaque é apenas de posição" },
+      { "id": "RN03", "description": "Sponsored Listings são Listings de veículos completos — nunca de peças avulsas" },
+      { "id": "RN14", "description": "Sponsored Listings só podem ser ativados se o Listing base tiver status PUBLISHED (aprovado pela moderação)" },
+      { "id": "RN-M13-01", "description": "Frequência capping de AdMob Interstitial: máximo 1 por 30 minutos por usuário (controlado no cliente)" },
+      { "id": "RN-M13-02", "description": "Máximo de 2 Sponsored Listings por página de resultados (não sobrecarregar a lista com anúncios pagos)" },
+      { "id": "RN-M13-03", "description": "Sponsored Listings devem ter badge 'Patrocinado' visualmente claro e não enganoso (transparência para o usuário)" },
+      { "id": "RN-M13-04", "description": "Campanha de Sponsored Listing só é ativada após confirmação de pagamento externo pelo Admin — PECAÊ não processa pagamentos (alinha com RN01)" },
+      { "id": "RN-M13-05", "description": "Campanhas expiradas são automaticamente desativadas pelo job BullMQ de expiração (sem intervenção manual)" },
+      { "id": "RN-M13-06", "description": "AdMob não rastreia dados pessoais sem consentimento — implementar CMP (Consent Management Platform) conforme LGPD/GDPR" }
+    ],
+    "module_flow": {
+      "description": "Fluxo principal do módulo — criação de campanha Sponsored pelo Admin e exibição de ads no app",
+      "pools": [
+        { "name": "Admin", "lanes": ["Painel web de campanhas"] },
+        { "name": "API NestJS", "lanes": ["AdController", "CampaignService", "AdTrackingService"] },
+        { "name": "Banco PostgreSQL", "lanes": ["AdCampaign, AdImpression, AdClick"] },
+        { "name": "BullMQ", "lanes": ["TrackingWorker", "CampaignExpiryWorker"] },
+        { "name": "App Mobile", "lanes": ["AdBanner, AdInterstitial, SponsoredListingCard"] },
+        { "name": "Google AdMob", "lanes": ["SDK programático (automático)"] }
+      ],
+      "bpmn_text": [
+        "=== FLUXO 1: Setup AdMob (programático — automático) ===",
+        "START EVENT: App PECAÊ inicializa",
+        "TASK (App): MobileAds().initialize() — inicializar AdMob SDK",
+        "TASK (App): Solicitar consentimento de anúncios via CMP (UMP SDK Consent) — LGPD compliance",
+        "EXCLUSIVE GATEWAY: Usuário concedeu consentimento?",
+        "  [Sim] --> TASK: AdMob habilitado — carregar ads conforme posicionamentos configurados",
+        "  [Não] --> TASK: AdMob desabilitado ou non-personalized ads apenas",
+        "TASK (App - Tela de Busca): BannerAd renderizado no rodapé",
+        "TASK (App - Transição): InterstitialAd verificar lastShownAt — se > 30 min: exibir",
+        "TASK (Google): AdMob SDK seleciona e entrega anúncio programaticamente",
+        "TASK (Google): Revenue registrado no AdMob Console (automático)",
+        "END EVENT: Anúncios AdMob exibidos según configuração",
+        "",
+        "=== FLUXO 2: Campanha de Sponsored Listing (anúncio direto) ===",
+        "START EVENT: Vendedor/Desmanche contata PECAÊ fora do app para anunciar (WhatsApp, e-mail)",
+        "TASK (Admin): Negociação de campanha: modelo/cidade/período/budget fora do sistema",
+        "TASK (Admin): Confirmação de pagamento externo (PIX, transferência) registrada manualmente",
+        "TASK (Admin): Acessa painel Admin → Campanhas → Nova Campanha",
+        "TASK (Admin): POST /admin/campaigns { listingId, startDate, endDate, targetBrandId?, targetCity?, targetState?, maxImpressions? }",
+        "TASK (CampaignService): Verificar que Listing.status = PUBLISHED (RN14)",
+        "TASK (CampaignService): Verificar que Listing pertence a um SellerProfile válido",
+        "TASK (Prisma): AdCampaign.create({ listingId, startDate, endDate, status: ACTIVE, targeting: { brandId, city, state }, impressions: 0, clicks: 0 })",
+        "TASK (Prisma): Listing.isSponsoredActive = true (flag para query de busca no M07)",
+        "END EVENT: Campanha criada e ativa",
+        "",
+        "=== FLUXO 3: Exibição de Sponsored Listing na busca ===",
+        "START EVENT: Comprador realiza busca no M07",
+        "TASK (M07 → AdService): getSponsoredListings({ brandId, city, state }) — busca campanhas ativas com targeting compatível",
+        "TASK (AdService): Filtrar AdCampaigns: status=ACTIVE, startDate<=now, endDate>=now, targeting match, maxImpressions não atingido",
+        "TASK (AdService): Retornar máximo 2 Sponsored Listings (RN-M13-02) — embedados no response do M07",
+        "TASK (App): Resultado da busca renderiza SponsoredListingCard (com badge 'Patrocinado') nas 2 primeiras posições",
+        "TASK (App): Usuário vê Sponsored Listing na lista",
+        "TASK (App - Fire-and-forget): POST /ads/track/impression { campaignId, adType: 'sponsored_listing' } — não bloqueante",
+        "TASK (BullMQ TrackingWorker): Processar impressão: AdCampaign.impressions += 1 + criar AdImpression record",
+        "TASK (App): Usuário toca no SponsoredListingCard",
+        "TASK (App - Fire-and-forget): POST /ads/track/click { campaignId }",
+        "TASK (BullMQ TrackingWorker): AdCampaign.clicks += 1 + AdClick record",
+        "END EVENT: Impressão e clique rastreados assincronamente",
+        "",
+        "=== FLUXO 4: Expiração automática de campanhas ===",
+        "START EVENT: BullMQ CampaignExpiryWorker (cron diário 00:05)",
+        "TASK: Buscar AdCampaigns WHERE endDate < NOW() AND status = ACTIVE",
+        "TASK: Para cada campanha: AdCampaign.status = EXPIRED",
+        "TASK: Listing.isSponsoredActive = false (remover da posição patrocinada)",
+        "TASK: Notificar Admin via e-mail/notification: 'Campanha #{id} expirou'",
+        "END EVENT: Campanhas expiradas desativadas"
+      ],
+      "message_flows": [
+        "App → API: POST /ads/track/impression (fire-and-forget, não bloqueia UX)",
+        "App → API: POST /ads/track/click (fire-and-forget)",
+        "API → BullMQ: Job tracking-event { type, campaignId }",
+        "BullMQ → PostgreSQL: Atualizar counters de AdCampaign",
+        "M07 → AdService: injeção de SponsoredListings nos resultados de busca",
+        "BullMQ Cron → Listing: Desativar isSponsoredActive em campanhas expiradas"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF130", "description": "App deve inicializar Google AdMob SDK com consentimento CMP conforme LGPD antes de exibir anúncios", "priority": "P0" },
+      { "id": "RF131", "description": "BannerAd AdMob deve ser exibido no rodapé das telas de busca e de detalhes de anúncio", "priority": "P1" },
+      { "id": "RF132", "description": "InterstitialAd AdMob deve ser exibido em transições estratégicas com frequência capping de 30 minutos", "priority": "P1" },
+      { "id": "RF133", "description": "Sistema deve suportar criação de campanhas de Sponsored Listing pelo Admin com targeting por marca, cidade e estado", "priority": "P0" },
+      { "id": "RF134", "description": "Sponsored Listings devem aparecer no topo dos resultados de busca com badge 'Patrocinado' visualmente diferenciado", "priority": "P0" },
+      { "id": "RF135", "description": "Sistema deve registrar impressões e cliques de Sponsored Listings de forma assíncrona via BullMQ", "priority": "P0" },
+      { "id": "RF136", "description": "Campanhas expiradas devem ser automaticamente desativadas via BullMQ cron diário", "priority": "P0" },
+      { "id": "RF137", "description": "Admin deve ter painel de gestão de campanhas com metrics de CTR, impressões e cliques", "priority": "P1" },
+      { "id": "RF138", "description": "App deve implementar frequência capping local (AsyncStorage) para intersticiais AdMob", "priority": "P1" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC65",
+        "name": "Admin cria campanha de Sponsored Listing",
+        "actors": ["Admin"],
+        "preconditions": ["Listing com status PUBLISHED, pagamento externo confirmado"],
+        "main_flow": [
+          "1. Admin acessa Painel → Campanhas → Nova Campanha",
+          "2. Seleciona o Listing do vendedor/desmanche",
+          "3. Define período (startDate, endDate) e targeting (brandId?, city?, state?)",
+          "4. Define maxImpressions opcional como cap de entrega",
+          "5. Confirma criação → Campanha ACTIVE",
+          "6. Listing recebe isSponsoredActive = true imediatamente"
+        ],
+        "alternative_flows": [
+          "A1. Listing não PUBLISHED: erro 409 — campanha não pode ser criada",
+          "A2. Datas inválidas: erro 400 — endDate >= startDate obrigatório"
+        ],
+        "postconditions": ["Campanha ACTIVE, Listing aparece como Patrocinado na busca"]
+      },
+      {
+        "id": "UC66",
+        "name": "Comprador vê Sponsored Listing na busca",
+        "actors": ["Comprador"],
+        "preconditions": ["Há campanha ACTIVE com targeting compatível com a busca do comprador"],
+        "main_flow": [
+          "1. Comprador busca por marca/modelo/cidade",
+          "2. API retorna resultados com até 2 Sponsored Listings no topo",
+          "3. SponsoredListingCard exibe badge 'Patrocinado' de forma clara",
+          "4. Impressão registrada assincronamente",
+          "5. Comprador toca no card → vai para tela de detalhes do anúncio",
+          "6. Clique registrado assincronamente"
+        ],
+        "alternative_flows": [
+          "A1. Sem campanhas compatíveis: lista exibida sem sponsored (posição normal)"
+        ],
+        "postconditions": ["Impressão e clique rastreados, comprador acessa o Listing"]
+      },
+      {
+        "id": "UC67",
+        "name": "App exibe BannerAd AdMob",
+        "actors": ["Comprador/Vendedor", "Google AdMob"],
+        "preconditions": ["App inicializado, consentimento AdMob concedido"],
+        "main_flow": [
+          "1. Usuário acessa tela de resultados de busca",
+          "2. BannerAd no rodapé é carregado pelo AdMob SDK",
+          "3. Google seleciona anúncio programático relevante",
+          "4. Anúncio exibido no rodapé",
+          "5. Receita CPM registrada automaticamente no AdMob Console"
+        ],
+        "alternative_flows": [
+          "A1. Sem anúncio disponível: espaço do banner fica em branco (sem layout shift)"
+        ],
+        "postconditions": ["Banner exibido, receita gerada via AdMob"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M13-T01",
+        "title": "Schema Prisma — AdCampaign, AdImpression, AdClick e flag no Listing",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 1,
+        "epic": "E13 — Anúncios In-App",
+        "description": "Criar models de banco para o sistema de anúncios diretos: AdCampaign (campanha vinculada a um Listing), AdImpression (registro de cada impressão) e AdClick (registro de cada clique). Adicionar flag isSponsoredActive ao model Listing existente para queries eficientes de sponsored na busca.",
+        "user_stories": [
+          "Como sistema de anúncios, quero schema bem modelado para rastrear campanhas, impressões e cliques sem impactar as operações principais do marketplace",
+          "Como Admin, quero que a flag isSponsoredActive no Listing permita queries rápidas na busca sem JOIN em AdCampaign em todo request"
+        ],
+        "use_cases": ["UC65", "UC66"],
+        "functional_requirements": [
+          { "id": "RF133", "description": "AdCampaign com targeting por brandId, city, state" },
+          { "id": "RF135", "description": "AdImpression e AdClick para tracking granular" }
+        ],
+        "business_rules": [
+          { "id": "RN14", "description": "Campanha só pode ser criada para Listing PUBLISHED" },
+          { "id": "RN-M13-04", "description": "Campanha criada apenas pelo Admin após pagamento externo" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Schema de anúncios in-app",
+          "TASK: Adicionar `isSponsoredActive Boolean @default(false)` ao model Listing existente",
+          "TASK: Adicionar `@@index([isSponsoredActive, status])` ao Listing para queries de busca rápidas",
+          "TASK: enum AdCampaignStatus { ACTIVE PAUSED EXPIRED CANCELLED }",
+          "TASK: model AdCampaign (id, listingId @unique, status, startDate, endDate, targetBrandId?, targetCity?, targetState?, maxImpressions?, impressions Int @default(0), clicks Int @default(0), budgetType BudgetType enum, createdBy String FK→User, notes?, createdAt, updatedAt)",
+          "TASK: model AdImpression (id, campaignId FK→AdCampaign, userAgent?, sessionId?, createdAt) — @@index([campaignId, createdAt])",
+          "TASK: model AdClick (id, campaignId FK→AdCampaign, sessionId?, createdAt) — @@index([campaignId])",
+          "TASK: enum BudgetType { CPM CPC FLAT_PERIOD } para registrar tipo de cobrança",
+          "TASK: Executar migration",
+          "END EVENT: Schema de anúncios pronto"
+        ],
+        "acceptance_criteria": [
+          "listingId @unique no AdCampaign — um Listing tem no máximo uma campanha ativa por vez",
+          "isSponsoredActive flag no Listing para query O(1) na busca sem JOIN",
+          "@@index([isSponsoredActive, status]) garante query de busca rápida",
+          "AdImpression e AdClick com @@index([campaignId, createdAt]) para relatórios",
+          "Migration aplicada sem breaking change nos dados existentes"
+        ],
+        "subtasks": [
+          {
+            "id": "M13-T01-ST01",
+            "title": "Adicionar flag isSponsoredActive ao Listing e migration",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 1,
+            "description": "Adicionar campo `isSponsoredActive Boolean @default(false)` ao model Listing existente no Prisma e criar índice composto com status. Este campo é o marcador rápido consultado pelo M07 na busca para injetar Sponsored Listings sem precisar fazer JOIN com AdCampaign em cada request.",
+            "user_story": "Como sistema de busca (M07), quero isSponsoredActive como flag no Listing para identificar anúncios patrocinados em O(1) sem impacto de JOIN em cada query de busca",
+            "use_case": "UC66",
+            "functional_requirements": [
+              { "id": "RF134", "description": "Flag isSponsoredActive para queries rápidas de Sponsored na busca" }
+            ],
+            "business_rules": [
+              { "id": "RN14", "description": "Apenas Listings PUBLISHED podem ter isSponsoredActive=true" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Modificar schema Listing",
+              "TASK: Adicionar ao model Listing: `isSponsoredActive Boolean @default(false)`",
+              "TASK: Adicionar `@@index([isSponsoredActive, status])` ao model Listing",
+              "TASK: npx prisma migrate dev --name add-sponsored-listing-flag",
+              "END EVENT: Flag disponível no banco"
+            ],
+            "acceptance_criteria": [
+              "isSponsoredActive Boolean @default(false) no model Listing",
+              "@@index([isSponsoredActive, status]) criado na migration SQL",
+              "Todos os Listings existentes com isSponsoredActive=false (default)",
+              "Migration sem lock de tabela longa (additional column default false é O(1) no PostgreSQL 11+)"
+            ],
+            "tech_notes": "Performance: no PostgreSQL 11+, adicionar coluna com DEFAULT não reescreve a tabela — é O(1). Index migration: `@@index([isSponsoredActive, status])` gera `CREATE INDEX CONCURRENTLY` se a tabela for grande — adicionar `CREATE INDEX CONCURRENTLY` manualmente via raw SQL na migration antes de ser aplicado em produção para evitar lock. Query M07: `WHERE isSponsoredActive = true AND status = 'PUBLISHED' AND (targetBrandId IS NULL OR targetBrandId = ?) AND (targetCity IS NULL OR targetCity ILIKE ?) LIMIT 2`."
+          },
+          {
+            "id": "M13-T01-ST02",
+            "title": "Models AdCampaign, AdImpression e AdClick",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Criar models AdCampaign, AdImpression e AdClick no Prisma. AdCampaign com targeting opcional por brandId/city/state e campos de tracking (impressions, clicks). AdImpression e AdClick como tabelas de eventos granulares para relatórios detalhados.",
+            "user_story": "Como sistema de anúncios, quero models de campanha e tracking bem separados para poder calcular CTR, impressões por dia e efetividade de targeting por região",
+            "use_case": "UC65",
+            "functional_requirements": [
+              { "id": "RF133", "description": "AdCampaign com targeting configurável" },
+              { "id": "RF135", "description": "AdImpression e AdClick granulares" }
+            ],
+            "business_rules": [
+              { "id": "RN-M13-04", "description": "createdBy FK no AdCampaign (admin que criou)" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Criar models de campanha",
+              "TASK: enum AdCampaignStatus { ACTIVE PAUSED EXPIRED CANCELLED }",
+              "TASK: enum BudgetType { CPM CPC FLAT_PERIOD }",
+              "TASK: model AdCampaign com todos os campos",
+              "TASK: model AdImpression com @@index([campaignId, createdAt])",
+              "TASK: model AdClick com @@index([campaignId])",
+              "TASK: npx prisma migrate dev --name add-ad-campaigns",
+              "END EVENT: Models criados e migration aplicada"
+            ],
+            "acceptance_criteria": [
+              "AdCampaign.listingId @unique: apenas 1 campanha ativa por Listing",
+              "AdCampaign.maxImpressions Int? (null = sem limite)",
+              "targetCity e targetState como String? (null = anúncio nacional)",
+              "targetBrandId como FK opcional para targeting por marca específica",
+              "AdImpression leve: apenas campaignId + sessionId(hash) + createdAt (sem PII)",
+              "AdClick idem: tracking sem identificar o usuário diretamente (LGPD)"
+            ],
+            "tech_notes": "model AdCampaign: `listing Listing @relation(fields: [listingId], references: [id])`, `createdByUser User @relation('CampaignCreator', fields: [createdBy], references: [id])`. sessionId no AdImpression: hash da combinação userId (se autenticado) + deviceId + dia — evitar contar múltiplas impressões da mesma sessão sem armazenar dados pessoais. LGPD: não armazenar IP raw; se precisar de geolocalização de impressões, usar `country_code` derivado do IP no momento do request e descartar o IP original."
+          },
+          {
+            "id": "M13-T01-ST03",
+            "title": "AdCampaignService — lógica de expiração e verificações de criação",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Criar AdCampaignService com método validateAndCreate(dto) que verifica: Listing PUBLISHED, sem campanha ACTIVE duplicada, datas válidas. Método expireCampaigns() para o cron BullMQ. Método getSponsoredForSearch(targeting) para o M07.",
+            "user_story": "Como sistema de campanhas, quero lógica centralizada de validação para que o Admin não consiga criar campanhas inválidas (listing não publicado, datas incorretas, duplicatas)",
+            "use_case": "UC65",
+            "functional_requirements": [
+              { "id": "RF133", "description": "Validação de criação de campanha" },
+              { "id": "RF136", "description": "expireCampaigns() para cron de expiração" }
+            ],
+            "business_rules": [
+              { "id": "RN14", "description": "Listing deve ser PUBLISHED antes de criar campanha" },
+              { "id": "RN-M13-05", "description": "Expiração automática via cron" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: validateAndCreate(dto)",
+              "TASK: Buscar Listing com status",
+              "TASK: Verificar listing.status === PUBLISHED → 409 se não",
+              "TASK: Verificar AdCampaign existente para o listingId com status ACTIVE → 409 se existe",
+              "TASK: Validar endDate > startDate → 400 se inválido",
+              "TASK: prisma.$transaction: AdCampaign.create + Listing.update({ isSponsoredActive: true })",
+              "PARALLEL METHOD: expireCampaigns()",
+              "TASK: findMany WHERE status=ACTIVE AND endDate < NOW()",
+              "TASK: Para cada: $transaction: campaign.status=EXPIRED + listing.isSponsoredActive=false",
+              "PARALLEL METHOD: getSponsoredForSearch(targeting)",
+              "TASK: findMany WHERE status=ACTIVE AND now BETWEEN startDate AND endDate AND (maxImpressions IS NULL OR impressions < maxImpressions) AND targeting match",
+              "TASK: Ordenar por impressions ASC (priorizar menos entregues — pacing uniforme)",
+              "TASK: LIMIT 2",
+              "END EVENT: Serviço implementado"
+            ],
+            "acceptance_criteria": [
+              "validateAndCreate em transaction atômica (campanha + flag do Listing)",
+              "Expiração em transaction atômica (status + flag)",
+              "getSponsoredForSearch respeita maxImpressions cap",
+              "Pacing uniforme: ordenar por impressions ASC para distribuir entrega"
+            ],
+            "tech_notes": "getSponsoredForSearch query: `prisma.adCampaign.findMany({ where: { status: 'ACTIVE', startDate: { lte: new Date() }, endDate: { gte: new Date() }, ...(maxImpressions && { impressions: { lt: prisma.adCampaign.fields.maxImpressions } }), OR: [{ targetBrandId: null }, { targetBrandId: targeting.brandId }], ...(targeting.city && { OR: [{ targetCity: null }, { targetCity: { contains: targeting.city, mode: 'insensitive' } }] }) }, orderBy: { impressions: 'asc' }, take: 2, include: { listing: { include: { vehicle: { include: { photos: { where: { order: 0 }, take: 1 } } } } } } })`. Usar Redis cache de 60s para getSponsoredForSearch para evitar query em toda request de busca."
+          }
+        ]
+      },
+      {
+        "id": "M13-T02",
+        "title": "AdController — endpoints de campanha (Admin) e tracking (público)",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E13 — Anúncios In-App",
+        "description": "Implementar AdController com endpoints admin (POST /admin/campaigns, GET /admin/campaigns, PATCH /admin/campaigns/:id, DELETE /admin/campaigns/:id) e endpoints públicos de tracking (POST /ads/track/impression, POST /ads/track/click). Endpoints admin protegidos por RolesGuard ADMIN.",
+        "user_stories": [
+          "Como Admin, quero uma interface REST clara para criar e gerenciar campanhas de Sponsored Listings sem precisar de acesso direto ao banco",
+          "Como app, quero endpoints de tracking leves e não bloqueantes para registrar impressões e cliques sem impactar a performance da UX"
+        ],
+        "use_cases": ["UC65", "UC66"],
+        "functional_requirements": [
+          { "id": "RF133", "description": "POST /admin/campaigns com validação completa" },
+          { "id": "RF135", "description": "POST /ads/track/* fire-and-forget via BullMQ" },
+          { "id": "RF137", "description": "GET /admin/campaigns com métricas de CTR" }
+        ],
+        "business_rules": [
+          { "id": "RN-M13-04", "description": "Endpoints /admin/* protegidos por RolesGuard ADMIN" },
+          { "id": "RN-M13-06", "description": "Tracking sem PII — apenas sessionId hash" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: POST /admin/campaigns { listingId, startDate, endDate, targetBrandId?, targetCity?, targetState?, maxImpressions?, budgetType, notes? }",
+          "TASK: @Roles('ADMIN') RolesGuard — 403 se não admin",
+          "TASK: adCampaignService.validateAndCreate(dto, req.user.id)",
+          "TASK: Retornar 201 com AdCampaign criada",
+          "PARALLEL FLOW: POST /ads/track/impression { campaignId }",
+          "TASK: Sem auth obrigatória (tracking público)",
+          "TASK: Verificar que campaignId existe e está ACTIVE → 404 se não",
+          "TASK: Extrair sessionId: hash(userId ?? deviceHeader + day)",
+          "TASK: trackingQueue.add('impression', { campaignId, sessionId }) — fire-and-forget",
+          "TASK: Retornar 200 imediatamente (< 5ms response time)",
+          "PARALLEL FLOW: POST /ads/track/click { campaignId }",
+          "TASK: Idem ao impression mas tipo click",
+          "PARALLEL FLOW: GET /admin/campaigns",
+          "TASK: findMany com include de listing e cálculo de CTR: (clicks/impressions*100).toFixed(2)%",
+          "TASK: Filtros: status?, startDate range, listingId?",
+          "END EVENT: Endpoints implementados"
+        ],
+        "acceptance_criteria": [
+          "POST /admin/campaigns retorna 409 se campanha ACTIVE já existe para o listing",
+          "POST /admin/campaigns retorna 400 se listing não é PUBLISHED",
+          "POST /ads/track/* retorna 200 em < 10ms (tracking não bloqueia UX)",
+          "GET /admin/campaigns inclui CTR calculado: `ctr: impressions > 0 ? ((clicks/impressions)*100).toFixed(2) : '0.00'`",
+          "PATCH /admin/campaigns/:id permite pausar (PAUSED) ou cancelar (CANCELLED) campanha"
+        ],
+        "subtasks": [
+          {
+            "id": "M13-T02-ST01",
+            "title": "DTOs de campanha e endpoints Admin CRUD",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Criar CreateAdCampaignDto com validações via class-validator. Implementar GET /admin/campaigns (lista com métricas), POST /admin/campaigns, PATCH /admin/campaigns/:id (status update), GET /admin/campaigns/:id (detalhes com timeline de impressões).",
+            "user_story": "Como Admin, quero CRUD completo de campanhas com validação rigorosa para gerenciar anúncios diretos sem erros operacionais",
+            "use_case": "UC65",
+            "functional_requirements": [
+              { "id": "RF133", "description": "CRUD de AdCampaign para Admin" },
+              { "id": "RF137", "description": "GET com CTR e métricas" }
+            ],
+            "business_rules": [
+              { "id": "RN-M13-04", "description": "RolesGuard ADMIN em todos os endpoints" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Implementar endpoints admin",
+              "TASK: CreateAdCampaignDto com class-validator",
+              "TASK: UpdateAdCampaignDto (status PAUSED/CANCELLED apenas)",
+              "TASK: GET /admin/campaigns → findMany + CTR calculado",
+              "TASK: POST → validateAndCreate",
+              "TASK: PATCH → update status + se CANCELLED: isSponsoredActive=false",
+              "TASK: GET /:id → detalhes + array de impressions por dia (GROUP BY date)",
+              "END EVENT: CRUD implementado"
+            ],
+            "acceptance_criteria": [
+              "CreateAdCampaignDto: @IsUUID listingId, @IsDateString startDate/endDate, @IsOptional targetBrandId/city/state, @IsOptional @IsInt @Min(100) maxImpressions",
+              "PATCH só aceita status PAUSED ou CANCELLED (não pode reativar EXPIRED)",
+              "GET retorna campaigns com { ...campaign, ctr, listing: { title, thumbnail } }",
+              "GET /:id retorna timeline: impressions agrupados por DIA para gráfico"
+            ],
+            "tech_notes": "CreateAdCampaignDto: `@IsUUID() listingId`, `@IsDateString() startDate`, `@IsDateString() endDate`, `@IsOptional() @IsUUID() targetBrandId`, `@IsOptional() @IsString() @MaxLength(100) targetCity`, `@IsOptional() @IsString() @Length(2,2) targetState` (UF 2 chars), `@IsOptional() @IsInt() @Min(100) maxImpressions`, `@IsEnum(BudgetType) budgetType`, `@IsOptional() @IsString() @MaxLength(500) notes`. CTR calculation: `const ctr = campaign.impressions > 0 ? ((campaign.clicks / campaign.impressions) * 100).toFixed(2) : '0.00'`. DateString validation: checar startDate < endDate no @Validate customizado."
+          },
+          {
+            "id": "M13-T02-ST02",
+            "title": "Endpoints de tracking — impression e click (fire-and-forget)",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Implementar POST /ads/track/impression e POST /ads/track/click. Devem retornar 200 em < 10ms sem aguardar processamento do banco. Enfileirar job BullMQ tracking-event com sessionId hasheado para LGPD compliance. Rate limit por IP para evitar clique fraudulento.",
+            "user_story": "Como app mobile, quero endpoints de tracking ultra-rápidos que não bloqueiem a navegação do usuário mesmo que o servidor esteja sob carga",
+            "use_case": "UC66",
+            "functional_requirements": [
+              { "id": "RF135", "description": "Tracking via BullMQ fire-and-forget" }
+            ],
+            "business_rules": [
+              { "id": "RN-M13-06", "description": "sessionId hash sem PII para LGPD" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: POST /ads/track/:type { campaignId }",
+              "TASK: Verificar :type in ['impression', 'click']",
+              "TASK: @Throttle(60, 60) por IP — rate limit 60 req/min por IP",
+              "TASK: Calcular sessionId: SHA256(userId ?? 'anon' + req.ip.slice(0,8) + YYYYMMDD + HASH_SALT).substring(0,16)",
+              "TASK: trackingQueue.add('tracking-event', { type, campaignId, sessionId }, { removeOnComplete: { age: 3600 } })",
+              "TASK: return { success: true } — 200 imediatamente",
+              "END EVENT: Job enfileirado, response retornado"
+            ],
+            "acceptance_criteria": [
+              "Response em < 10ms (fire-and-forget, sem await do BullMQ)",
+              "@Throttle(60, 60) por IP evita abuso de tracking",
+              "sessionId de 16 chars derivado de dados não pessoais com HASH_SALT",
+              "campaignId inexistente ou INACTIVE retorna 404 (validação rápida via Redis cache)"
+            ],
+            "tech_notes": "Endpoint: `@Post('track/:type') @Throttle(60, 60) async track(@Param('type') type: string, @Body() dto: TrackDto, @Req() req: Request)`. TrackDto: `@IsUUID() campaignId`. Session hash: `const sessionId = createHash('sha256').update(`${req.user?.id ?? 'anon'}${req.ip?.slice(0, 8)}${format(new Date(), 'yyyyMMdd')}${process.env.AD_HASH_SALT}`).digest('hex').slice(0, 16)`. Validação de campaignId: checar Redis cache `ad:active:{campaignId}` (TTL 60s) antes de enfileirar — evitar DB hit em todo tracking request. Populate esse cache ao criar/ativar campanha."
+          },
+          {
+            "id": "M13-T02-ST03",
+            "title": "Worker BullMQ de tracking — processar impressões e cliques",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Implementar TrackingWorker que processa jobs 'tracking-event'. Para impressões: dedup por sessionId (não contar mesma sessão 2x), incrementar AdCampaign.impressions e criar AdImpression. Para cliques: dedup por sessionId + tipo click, incrementar AdCampaign.clicks e criar AdClick. Verificar maxImpressions cap.",
+            "user_story": "Como sistema de billing, quero tracking preciso e sem duplicidades para que as métricas de campanha reflitam a realidade e o faturamento seja justo",
+            "use_case": "UC66",
+            "functional_requirements": [
+              { "id": "RF135", "description": "Dedup por sessionId no worker de tracking" }
+            ],
+            "business_rules": [
+              { "id": "RN-M13-05", "description": "Verificar maxImpressions cap e pausar campanha se atingido" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Job tracking-event { type, campaignId, sessionId } processado",
+              "TASK: Verificar AdCampaign exists e status=ACTIVE",
+              "EXCLUSIVE GATEWAY: type = 'impression'?",
+              "  [Sim] --> TASK: Redis SETNX 'imp:{campaignId}:{sessionId}' 1 EX 3600 (dedup por sessão+hora)",
+              "           EXCLUSIVE GATEWAY: Key já existia?",
+              "             [Sim] --> TASK: Skip — impressão duplicada da mesma sessão",
+              "             [Não] --> TASK: prisma.$transaction: impressions += 1 + AdImpression.create",
+              "                      TASK: Se maxImpressions e impressions >= max: campaign.status=PAUSED + listing.isSponsoredActive=false",
+              "  [Não - click] --> TASK: Redis SETNX 'clk:{campaignId}:{sessionId}' 1 EX 86400 (dedup click/sessão/dia)",
+              "                   EXCLUSIVE GATEWAY: Key existia?",
+              "                     [Sim] --> Skip",
+              "                     [Não] --> TASK: prisma.$transaction: clicks += 1 + AdClick.create",
+              "TASK: Concluir job com sucesso",
+              "END EVENT: Tracking processado"
+            ],
+            "acceptance_criteria": [
+              "Dedup de impressão por sessionId por hora (SETNX Redis EX 3600)",
+              "Dedup de clique por sessionId por dia (SETNX Redis EX 86400)",
+              "maxImpressions: campanha pausada automaticamente quando atingido",
+              "Transaction atômica: incremento de counter + criação do record",
+              "Worker com concurrency: 5 para processar em paralelo sem sobrecarregar DB"
+            ],
+            "tech_notes": "Redis SETNX: `const isNew = await redis.set('imp:${campaignId}:${sessionId}', '1', 'EX', 3600, 'NX'); if (!isNew) return;`. Prisma $transaction com incremento atômico: `prisma.$transaction([prisma.adCampaign.update({ where: { id: campaignId }, data: { impressions: { increment: 1 } } }), prisma.adImpression.create({ data: { campaignId, sessionId } })])`. maxImpressions check após increment: `const updated = await prisma.adCampaign.findUnique({ where: { id: campaignId } }); if (updated.maxImpressions && updated.impressions >= updated.maxImpressions) { prisma.$transaction([prisma.adCampaign.update({ data: { status: 'PAUSED' } }), prisma.listing.update({ data: { isSponsoredActive: false } })]) }`. BullMQ worker: `@Processor('tracking') class TrackingWorker extends WorkerHost`."
+          }
+        ]
+      },
+      {
+        "id": "M13-T03",
+        "title": "Integração com M07 — injeção de Sponsored Listings nos resultados de busca",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 1,
+        "epic": "E13 — Anúncios In-App",
+        "description": "Modificar SearchService (M07) para injetar até 2 Sponsored Listings no início da resposta de busca, com base no targeting da campanha (brandId, city, state) e os filtros da busca do usuário. Usar cache Redis de 60s para o resultado de getSponsoredForSearch.",
+        "user_stories": [
+          "Como sistema de busca, quero injetar Sponsored Listings de forma transparente nos resultados orgânicos sem adicionar latência perceptível à busca do usuário"
+        ],
+        "use_cases": ["UC66"],
+        "functional_requirements": [
+          { "id": "RF134", "description": "Sponsored Listings no topo da busca com badge 'Patrocinado'" }
+        ],
+        "business_rules": [
+          { "id": "RN-M13-02", "description": "Máximo 2 Sponsored Listings por página de resultados" },
+          { "id": "RN-M13-03", "description": "Badge 'Patrocinado' no response para o app renderizar" },
+          { "id": "RN04", "description": "SponsoredListings seguem RN04 — sem preços" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Busca no M07: GET /search?brand=&model=&city=&state=",
+          "TASK (SearchService): Executar busca orgânica normalmentE",
+          "TASK (AdService): getSponsoredForSearch({ brandId, city, state }) com cache Redis 60s",
+          "TASK: Mapear SponsoredListings para { ...listing, isSponsored: true, sponsoredCampaignId: id }",
+          "TASK: Injetar sponsored no início do array: [sponsored1, sponsored2, ...organicResults]",
+          "TASK: Remover sponsored dos resultados orgânicos se aparecerem duplicados (verificar IDs)",
+          "TASK: Retornar response: { sponsored: [...], organic: [...], total, hasMore }",
+          "END EVENT: Response com sponsored e orgânicos separados"
+        ],
+        "acceptance_criteria": [
+          "Sponsored Listings marcados com `isSponsored: true` no response",
+          "Máximo 2 sponsored por busca (RN-M13-02)",
+          "Dedup: se sponsored aparece também nos orgânicos, removê-lo dos orgânicos",
+          "getSponsoredForSearch com Redis cache 60s: miss inicial consulta DB, hit retorna do cache",
+          "Sem sponsored: response mantém estrutura normal { sponsored: [], organic: [...] }"
+        ],
+        "subtasks": [
+          {
+            "id": "M13-T03-ST01",
+            "title": "getSponsoredForSearch com Redis cache e injeção no SearchService",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Implementar AdCampaignService.getSponsoredForSearch(targeting) com cache Redis de 60 segundos. Modificar SearchService para chamar getSponsoredForSearch e injetar sponsored no início do resultado. Remover duplicatas entre sponsored e orgânicos.",
+            "user_story": "Como comprador, quero que a busca carregue rápido mesmo com Sponsored Listings injetados, sem perceber latência adicional",
+            "use_case": "UC66",
+            "functional_requirements": [
+              { "id": "RF134", "description": "Injeção de sponsored no SearchService" }
+            ],
+            "business_rules": [
+              { "id": "RN-M13-02", "description": "Max 2 sponsored por busca" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: getSponsoredForSearch chamado",
+              "TASK: Cache key: Redis GET 'sponsored:{brandId}:{city}:{state}'",
+              "EXCLUSIVE GATEWAY: Cache hit?",
+              "  [Sim] --> Retornar parse do cache",
+              "  [Não] --> TASK: Query Prisma de campanhas ACTIVE com targeting match",
+              "           TASK: Redis SET 'sponsored:{...}' TTL 60 JSON.stringify(result)",
+              "           Retornar result",
+              "TASK (SearchService): Executa busca orgânica em paralelo com getSponsoredForSearch via Promise.all",
+              "TASK: Dedup: `const sponsoredIds = new Set(sponsored.map(s => s.id)); const organicFiltered = organic.filter(o => !sponsoredIds.has(o.id))`",
+              "TASK: Retornar { sponsored, organic: organicFiltered, total, hasMore }",
+              "END EVENT: Response mesclado"
+            ],
+            "acceptance_criteria": [
+              "Promise.all([searchOrganic(), getSponsoredForSearch()]) — execução em paralelo",
+              "Redis cache com TTL 60s por combinação de targeting",
+              "Cache invalidado ao criar/atualizar/expirar campanha: redis.del('sponsored:*')",
+              "dedup garante que Listing não aparece 2x (sponsored + organic)"
+            ],
+            "tech_notes": "Promise.all em paralelo: `const [organicResult, sponsored] = await Promise.all([this.searchOrganic(dto), this.adService.getSponsoredForSearch({ brandId: dto.brandId, city: dto.city, state: dto.state })])`. Cache key: `sponsored:${brandId ?? 'all'}:${city ?? 'all'}:${state ?? 'all'}` — atenção a invalidação ampla com `redis.keys('sponsored:*')` (pode ser lento em produção — preferir `redis.del` com key específica ou usar prefixo padrão). Response contract: `{ sponsored: SponsoredListingDto[], organic: SearchResultDto[], total: number, hasMore: boolean, cursor: string }`. App renderiza sponsored primeiro com `SponsoredListingCard` (badge amarelo/ouro 'Patrocinado' 🏷️) depois os orgânicos."
+          },
+          {
+            "id": "M13-T03-ST02",
+            "title": "SponsoredListingCard no app — badge e tracking de impressão",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Criar componente SponsoredListingCard no React Native que estende ListingCard com: badge 'Patrocinado' visual claro, coloração sutilmente diferente de background e chamada automática de tracking de impressão ao aparecer na tela (via onViewableItemsChanged do FlashList).",
+            "user_story": "Como comprador, quero identificar claramente anúncios patrocinados sem ser enganado, enquanto como anunciante quero que a impressão seja contada apenas quando o card realmente fica visível na tela",
+            "use_case": "UC66",
+            "functional_requirements": [
+              { "id": "RF134", "description": "Badge 'Patrocinado' claro e tracking via viewability" }
+            ],
+            "business_rules": [
+              { "id": "RN-M13-03", "description": "Badge obrigatório e visível — não enganoso" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: SponsoredListingCard renderizado",
+              "TASK: Renderizar ListingCard base com wrapper adicional",
+              "TASK: Badge 'Patrocinado' no canto superior esquerdo: View com texto e ícone",
+              "TASK: Background levemente diferente (ex: off-white #FFFBF0 vs branco dos orgânicos)",
+              "TASK: FlashList onViewableItemsChanged: ao card ficar > 50% visível por > 500ms",
+              "TASK: trackImpression(campaignId) — POST /ads/track/impression fire-and-forget",
+              "TASK: Evitar re-track: useRef(false) trackedRef para marcar já rastreado",
+              "END EVENT: Impressão registrada ao aparecer na tela"
+            ],
+            "acceptance_criteria": [
+              "Badge 'Patrocinado' sempre visível no card — contraste mínimo WCAG AA",
+              "Impressão rastreada apenas quando card fica visível (viewableItemsThreshold: 0.5, minimumViewTime: 500)",
+              "trackedRef evita rastrear o mesmo card múltiplas vezes ao rolar e voltar",
+              "Fundo sutilmente diferente dos cards orgânicos — não invasivo"
+            ],
+            "tech_notes": "FlashList viewability: `estimatedItemSize={220}` e `onViewableItemsChanged={useCallback(({ changed }) => { changed.forEach(item => { if (item.isViewable && item.item.isSponsored && !trackedRef.current.has(item.item.id)) { trackedRef.current.add(item.item.id); trackImpression(item.item.sponsoredCampaignId); } }) }, [])}`. viewabilityConfig: `{ itemVisiblePercentThreshold: 50, minimumViewTime: 500 }`. Badge: `<View style={{ backgroundColor: '#F59E0B', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}><Text style={{ color: 'white', fontSize: 10, fontWeight: '700' }}>Patrocinado</Text></View>`. trackImpression: `fetch('/ads/track/impression', { method: 'POST', body: ..., signal: AbortSignal.timeout(2000) })` — com timeout para não pendurar."
+          }
+        ]
+      },
+      {
+        "id": "M13-T04",
+        "title": "Integração Google AdMob SDK no app React Native",
+        "status": "planned",
+        "priority": "P1",
+        "estimated_days": 2,
+        "epic": "E13 — Anúncios In-App",
+        "description": "Instalar e configurar react-native-google-mobile-ads no Expo. Implementar consentimento CMP (UMP SDK) para LGPD compliance. Configurar BannerAd em telas de busca e detalhes do anúncio. Configurar InterstitialAd com frequência capping de 30 minutos via AsyncStorage.",
+        "user_stories": [
+          "Como plataforma de monetização, quero AdMob integrado de forma correta, com consentimento legal, para que os banners gerem receita sem degradar a UX e sem violar a LGPD"
+        ],
+        "use_cases": ["UC67"],
+        "functional_requirements": [
+          { "id": "RF130", "description": "AdMob inicializado com CMP antes de exibir ads" },
+          { "id": "RF131", "description": "BannerAd em telas de busca e detalhes" },
+          { "id": "RF132", "description": "InterstitialAd com frequência capping" }
+        ],
+        "business_rules": [
+          { "id": "RN-M13-01", "description": "Capping: máximo 1 intersticial por 30 minutos" },
+          { "id": "RN-M13-06", "description": "CMP obrigatório antes de AdMob" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: App inicializa (_layout.tsx raiz)",
+          "TASK: import { MobileAds } from 'react-native-google-mobile-ads'",
+          "TASK: await MobileAds().initialize() — uma única vez na inicialização",
+          "TASK: UMP (User Messaging Platform) SDK: AdsConsent.requestInfoUpdate({ testDeviceIdentifiers: [...] })",
+          "EXCLUSIVE GATEWAY: Consentimento necessário e não obtido ainda?",
+          "  [Sim] --> TASK: AdsConsent.showIfRequired() — exibir diálogo de consentimento",
+          "  [Não] --> TASK: Prosseguir (consentimento já obtido ou não necessário)",
+          "TASK: BannerAd configurado em tela de busca e detalhes do anúncio",
+          "TASK: InterstitialAd: verificar AsyncStorage 'lastInterstitialShown' antes de mostrar",
+          "EXCLUSIVE GATEWAY: lastInterstitialShown > 30 min atrás (ou null)?",
+          "  [Sim] --> TASK: interstitial.show() + AsyncStorage.setItem('lastInterstitialShown', Date.now())",
+          "  [Não] --> TASK: Não exibir (capping ativo)",
+          "END EVENT: AdMob configurado e anúncios sendo entregues"
+        ],
+        "acceptance_criteria": [
+          "MobileAds().initialize() chamado uma vez no _layout.tsx raiz antes de qualquer render de tela",
+          "CMP exibido na primeira sessão (UMP SDK)",
+          "BannerAd com adUnitId de produção do AdMob Console (env var EXPO_PUBLIC_ADMOB_BANNER_ID)",
+          "InterstitialAd com capping de 30 min via AsyncStorage",
+          "Teste em modo debug com Test Ad IDs do AdMob (nunca usar IDs de produção em dev)"
+        ],
+        "subtasks": [
+          {
+            "id": "M13-T04-ST01",
+            "title": "Instalação e configuração do react-native-google-mobile-ads no Expo",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Instalar react-native-google-mobile-ads, configurar app.json com google_app_id para iOS e Android. Inicializar MobileAds no _layout.tsx. Configurar CMP (UMP SDK) para conformidade com LGPD. Testar com Test Ad Units do AdMob.",
+            "user_story": "Como desenvolvedor, quero AdMob configurado corretamente no Expo para que os ads funcionem em produção sem crashes e com conformidade legal",
+            "use_case": "UC67",
+            "functional_requirements": [
+              { "id": "RF130", "description": "AdMob SDK instalado e inicializado com CMP" }
+            ],
+            "business_rules": [
+              { "id": "RN-M13-06", "description": "UMP SDK para LGPD" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Setup AdMob",
+              "TASK: npx expo install react-native-google-mobile-ads",
+              "TASK: Adicionar plugin ao app.json: [react-native-google-mobile-ads, { androidAppId, iosAppId, userTrackingUsageDescription }]",
+              "TASK: Adicionar ios.infoPlist no app.json: GADApplicationIdentifier",
+              "TASK: _layout.tsx: useEffect(() => { MobileAds().initialize(); }, [])",
+              "TASK: AdsConsent.requestInfoUpdate + showIfRequired na primeira abertura",
+              "TASK: Expo Prebuild (se não bare): npx expo prebuild",
+              "END EVENT: AdMob configurado"
+            ],
+            "acceptance_criteria": [
+              "app.json configurado com androidAppId e iosAppId do AdMob Console",
+              "Prebuild sem erros no iOS e Android",
+              "MobileAds().initialize() retorna sem erro em dev (com Test Ad IDs)",
+              "CMP dialog exibido na primeira sessão em dispositivo real",
+              "EXPO_PUBLIC_ADMOB_BANNER_ID_ANDROID e EXPO_PUBLIC_ADMOB_BANNER_ID_IOS em variáveis de ambiente"
+            ],
+            "tech_notes": "app.json plugin: `['react-native-google-mobile-ads', { androidAppId: 'ca-app-pub-xxx~xxx', iosAppId: 'ca-app-pub-xxx~xxx', userTrackingUsageDescription: 'Este identificador será usado para exibir anúncios relevantes para você.' }]`. Test Ad Units (DEV ONLY): Banner Android: `ca-app-pub-3940256099942544/6300978111`, Banner iOS: `ca-app-pub-3940256099942544/2934735716`. Intersticial Android: `ca-app-pub-3940256099942544/1033173712`. NUNCA usar Test IDs em produção — configurar via env: `const BANNER_ID = process.env.EXPO_PUBLIC_ADMOB_BANNER_ID ?? TestIds.BANNER`. UMP: `import { AdsConsent, AdsConsentStatus } from 'react-native-google-mobile-ads'`."
+          },
+          {
+            "id": "M13-T04-ST02",
+            "title": "BannerAd nas telas de busca e detalhes do anúncio",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 2,
+            "description": "Implementar componente AdBanner reutilizável usando BannerAd do react-native-google-mobile-ads. Posicionar no rodapé das telas de busca (app/(tabs)/busca.tsx) e de detalhes do anúncio (app/anuncio/[id].tsx). Garantir que o layout não sofre shift quando o banner carrega.",
+            "user_story": "Como usuário, quero que banners de anúncios não causem saltos de layout ou cubram conteúdo importante, mantendo a navegação confortável",
+            "use_case": "UC67",
+            "functional_requirements": [
+              { "id": "RF131", "description": "BannerAd no rodapé de telas chave" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Tela de busca renderizada",
+              "TASK: AdBanner component: <BannerAd size={BannerAdSize.BANNER} unitId={BANNER_ID} />",
+              "TASK: Posicionar como último elemento do layout — abaixo do conteúdo principal",
+              "TASK: Container com minHeight=50 reservado ANTES do banner carregar (evitar layout shift)",
+              "TASK: onAdLoaded: mostrar banner, onAdFailedToLoad: manter container vazio (sem erro visível)",
+              "END EVENT: Banner exibido sem layout shift"
+            ],
+            "acceptance_criteria": [
+              "Container de 50px de altura reservado antes do carregamento (sem layout shift)",
+              "Banner exibido no rodapé — não sobreposição ao conteúdo",
+              "onAdFailedToLoad: container simplesmente fica vazio sem mensagem de erro ao usuário",
+              "Platform.select: usar Banner ID correto para iOS e Android"
+            ],
+            "tech_notes": "AdBanner component: `export function AdBanner() { return (<View style={{ height: 50, alignItems: 'center', justifyContent: 'center' }}><BannerAd unitId={Platform.select({ ios: process.env.EXPO_PUBLIC_ADMOB_BANNER_ID_IOS, android: process.env.EXPO_PUBLIC_ADMOB_BANNER_ID_ANDROID }) ?? TestIds.BANNER} size={BannerAdSize.BANNER} requestOptions={{ requestNonPersonalizedAdsOnly: !consentGiven }} onAdFailedToLoad={() => {}} /></View>) }`. Usar context/Zustand para armazenar o estado de consentimento obtido no CMP e repassar para requestOptions. Posicionamento na tela: `<SafeAreaView style={{ flex: 1 }}><FlashList ... /><AdBanner /></SafeAreaView>`."
+          },
+          {
+            "id": "M13-T04-ST03",
+            "title": "InterstitialAd com frequência capping de 30 minutos",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 2,
+            "description": "Implementar hook useInterstitialAd que gerencia o ciclo de vida do InterstitialAd AdMob com frequência capping via AsyncStorage. O intersticial é exibido na transição de certas ações (após iniciar chat, ao sair da tela de anúncio após X segundos de leitura). Capping: máximo 1 por 30 minutos por sessão.",
+            "user_story": "Como usuário, quero que anúncios intersticiais apareçam raramente e em momentos naturais de transição, não interrompendo minha navegação de forma invasiva",
+            "use_case": "UC67",
+            "functional_requirements": [
+              { "id": "RF132", "description": "Intersticial com capping de 30 min via AsyncStorage" }
+            ],
+            "business_rules": [
+              { "id": "RN-M13-01", "description": "Máximo 1 intersticial por 30 minutos" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Evento de transição (ex: chat iniciado com sucesso)",
+              "TASK: useInterstitialAd().tryShow()",
+              "TASK: Verificar AsyncStorage 'admob:last_interstitial' timestamp",
+              "EXCLUSIVE GATEWAY: now - lastShown > 1800000ms (30 min)?",
+              "  [Não] --> TASK: Não exibir (capping ativo)",
+              "  [Sim] --> TASK: await interstitial.load() se não carregado",
+              "           EXCLUSIVE GATEWAY: isLoaded?",
+              "             [Sim] --> TASK: interstitial.show()",
+              "                      TASK: AsyncStorage.setItem('admob:last_interstitial', Date.now().toString())",
+              "             [Não] --> TASK: Não exibir (fallback gracioso)",
+              "END EVENT: Intersticial exibido ou ignorado"
+            ],
+            "acceptance_criteria": [
+              "AsyncStorage key 'admob:last_interstitial' controla o capping",
+              "Capping de 30 minutos (1800000ms)",
+              "Load antecipado do intersticial (preload) para baixa latência ao exibir",
+              "Fallback gracioso: se não carregado, não exibir (nunca crash)"
+            ],
+            "tech_notes": "Hook: `export function useInterstitialAd() { const { isLoaded, load, show, error } = useInterstitialAd(INTERSTITIAL_ID, { requestNonPersonalizedAdsOnly: !consentGiven }); const tryShow = useCallback(async () => { const last = await AsyncStorage.getItem('admob:last_interstitial'); const now = Date.now(); if (last && now - parseInt(last) < 1800000) return; if (!isLoaded) { load(); return; } show(); await AsyncStorage.setItem('admob:last_interstitial', now.toString()); }, [isLoaded, show, load]); useEffect(() => { load(); }, []); return { tryShow }; }`. Chamar tryShow() após chat iniciado com sucesso: `mutation.onSuccess(() => { router.push('/chat/...'); setTimeout(() => tryShow(), 2000); })`."
+          }
+        ]
+      },
+      {
+        "id": "M13-T05",
+        "title": "Painel Admin de Campanhas e Dashboard de Performance de Anúncios",
+        "status": "planned",
+        "priority": "P1",
+        "estimated_days": 2,
+        "epic": "E13 — Anúncios In-App",
+        "description": "Construir interface admin de gestão de campanhas de Sponsored Listings. Como o painel admin pode ser web ou mobile, implementar telas para: listar campanhas com métricas (CTR, impressões, cliques), criar nova campanha, visualizar detalhes de campanha com gráfico de impressões por dia (integrado ao M12), pausar e cancelar campanhas.",
+        "user_stories": [
+          "Como Admin, quero um painel claro de gestão de campanhas para acompanhar a performance dos anúncios diretos e tomar decisões operacionais sem precisar acessar o banco diretamente"
+        ],
+        "use_cases": ["UC65"],
+        "functional_requirements": [
+          { "id": "RF137", "description": "Dashboard admin com métricas de campanhas e CTR" }
+        ],
+        "business_rules": [
+          { "id": "RN-M13-04", "description": "Acesso restrito a Admin" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Admin acessa Painel → Anúncios",
+          "TASK: GET /admin/campaigns → lista de campanhas com kpis",
+          "TASK: Exibir CampaignTable: Listing (thumbnail+título), Status badge, Período, Impressões, Cliques, CTR%, Targeting",
+          "TASK: Filtros: status, período, busca por título",
+          "TASK: Admin toca em campanha → Detalhes",
+          "TASK: GET /admin/campaigns/:id → detalhes com impressions_per_day array",
+          "TASK: Gráfico de linha de impressões por dia (Victory Charts ou Chart.js no web)",
+          "TASK: Botões de ação: Pausar, Cancelar, Editar período",
+          "TASK: Botão 'Nova Campanha' → formulário de criação",
+          "END EVENT: Admin com visão completa das campanhas"
+        ],
+        "acceptance_criteria": [
+          "CampaignTable exibe CTR format: '12.3%' com destaque verde se CTR > 3%",
+          "Status badge por cor: ACTIVE verde, PAUSED amarelo, EXPIRED cinza, CANCELLED vermelho",
+          "Gráfico de impressões por dia disponível na tela de detalhes",
+          "Formulário de criação valida listingId (autocomplete de Listings PUBLISHED) e datas",
+          "Paginação da lista de campanhas (máx 20 por página)"
+        ],
+        "subtasks": [
+          {
+            "id": "M13-T05-ST01",
+            "title": "Endpoint GET /admin/campaigns/:id com timeline de impressões",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 2,
+            "description": "Implementar GET /admin/campaigns/:id que retorna detalhes completos da campanha incluindo array de impressões agrupadas por dia (para gráfico de linha) e array de cliques por dia. Usar Prisma groupBy ou raw SQL para aggregation de data.",
+            "user_story": "Como Admin, quero ver a evolução diária de impressões e cliques de uma campanha para entender se está performando bem ao longo do tempo",
+            "use_case": "UC65",
+            "functional_requirements": [
+              { "id": "RF137", "description": "Timeline de impressões por dia para gráfico" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: GET /admin/campaigns/:id",
+              "TASK: Buscar AdCampaign com listing e vehicle",
+              "TASK: Query de impressões por dia: GROUP BY DATE(created_at)",
+              "TASK: Query de cliques por dia: GROUP BY DATE(created_at)",
+              "TASK: Calcular CTR geral e CTR por dia",
+              "TASK: Retornar AdCampaignDetailDto",
+              "END EVENT: Detalhes com timeline retornados"
+            ],
+            "acceptance_criteria": [
+              "impressions_timeline: [{ date: 'YYYY-MM-DD', count: N }]",
+              "clicks_timeline: [{ date: 'YYYY-MM-DD', count: N }]",
+              "ctr_timeline: [{ date: 'YYYY-MM-DD', ctr: '5.2%' }]",
+              "Data range: do startDate da campanha até hoje (ou endDate se expirada)"
+            ],
+            "tech_notes": "Prisma raw query para timeline: `prisma.$queryRaw<{ date: string; count: bigint }[]>` `Prisma.sql`SELECT DATE(created_at) as date, COUNT(*) as count FROM ad_impression WHERE campaign_id = ${id} GROUP BY date ORDER BY date ASC` `. Converter bigint: `.map(r => ({ date: r.date, count: Number(r.count) }))`. Alternativamente: `prisma.adImpression.groupBy({ by: ['createdAt'], where: { campaignId: id }, _count: { id: true } })` e pós-processar para datas. AdCampaignDetailDto: `{ ...campaign, listing: { title, thumbnail }, impressions_timeline, clicks_timeline, overallCtr }`."
+          },
+          {
+            "id": "M13-T05-ST02",
+            "title": "Tela admin de lista de campanhas com busca e filtros",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Implementar tela admin de lista de campanhas (pode ser app/(admin)/campanhas.tsx no mobile ou página web separada). Exibir CampaignRow com thumbnail do Listing, período, métricas e status badge. Filtros por status e período. Ação rápida de pausar/cancelar.",
+            "user_story": "Como Admin, quero uma lista clara e filtrável de todas as campanhas ativas e históricas para ter controle operacional sem precisar decorar IDs ou acessar o banco",
+            "use_case": "UC65",
+            "functional_requirements": [
+              { "id": "RF137", "description": "Lista de campanhas com métricas e filtros" }
+            ],
+            "business_rules": [
+              { "id": "RN-M13-04", "description": "Acesso Admin apenas" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Tela de campanhas renderizada",
+              "TASK: useQuery(['admin', 'campaigns']) → GET /admin/campaigns?status=&page=",
+              "TASK: CampaignTable ou FlatList de CampaignRow",
+              "TASK: CampaignRow: thumbnail listing + título, período (dd/MM - dd/MM), status badge, impressões, cliques, CTR",
+              "TASK: FilterBar: segmented control ACTIVE / PAUSED / EXPIRED / ALL",
+              "TASK: Tocar em row → DetailModal ou navegar para /admin/campanhas/[id]",
+              "TASK: Long press ou swipe → ações: Pausar / Cancelar",
+              "END EVENT: Lista interativa renderizada"
+            ],
+            "acceptance_criteria": [
+              "CTR com destaque: texto verde se > 2%, amarelo se entre 0.5-2%, cinza se < 0.5%",
+              "Status badge com cores semânticas",
+              "FilterBar filtra localmente (sem nova query se dados já carregados)",
+              "Pull-to-refresh para atualizar lista",
+              "Botão FAB (+) para nova campanha — navega para formulário de criação"
+            ],
+            "tech_notes": "CampaignRow component: `thumbnail: 52x52px com borderRadius 8`, `status badge`: `{ ACTIVE: '#10B981', PAUSED: '#F59E0B', EXPIRED: '#6B7280', CANCELLED: '#EF4444' }`. CTR color: `ctr > 2 ? '#10B981' : ctr > 0.5 ? '#F59E0B' : '#9CA3AF'`. Período: `${format(startDate, 'dd/MM')} – ${format(endDate, 'dd/MM/yyyy')}`. Paginação: TanStack Query `useInfiniteQuery` com `getNextPageParam`. FAB: `Pressable` com sombra posicionado absolutamente no canto inferior direito."
+          },
+          {
+            "id": "M13-T05-ST03",
+            "title": "Formulário de criação de campanha com autocomplete de Listings",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Implementar formulário de criação de campanha para Admin com: campo de seleção de Listing PUBLISHED (autocomplete com busca por título), campos de data (DatePicker), campos opcionais de targeting (marca, cidade, estado), campo de maxImpressions e observações. Validar com React Hook Form + Zod.",
+            "user_story": "Como Admin, quero criar campanhas com um formulário guiado que me impede de errar configurações (como selecionar um Listing não publicado ou definir datas no passado)",
+            "use_case": "UC65",
+            "functional_requirements": [
+              { "id": "RF133", "description": "Formulário de criação com autocomplete de Listings" }
+            ],
+            "business_rules": [
+              { "id": "RN14", "description": "Autocomplete filtra apenas Listings PUBLISHED" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Admin abre formulário de nova campanha",
+              "TASK: Campo 'Anúncio' com TextInput de busca → GET /admin/campaigns/search-listings?q= (busca apenas PUBLISHED)",
+              "TASK: DateRangePicker para startDate e endDate",
+              "TASK: Campos opcionais: Marca (select do catálogo M04), Cidade, Estado (UF)",
+              "TASK: Campo opcional: Máximo de Impressões (NumberInput)",
+              "TASK: Campo: Observações (notas internas sobre o pagamento externo)",
+              "TASK: Submit → useMutation POST /admin/campaigns",
+              "TASK: onSuccess: navegar para lista de campanhas com toast 'Campanha criada!'",
+              "END EVENT: Campanha criada"
+            ],
+            "acceptance_criteria": [
+              "Autocomplete de Listings: busca por título com debounce 300ms",
+              "DatePicke: startDate não pode ser no passado (>= hoje)",
+              "endDate deve ser > startDate",
+              "Schema Zod: z.object({ listingId: z.string().uuid(), startDate: z.string().datetime(), endDate: z.string().datetime(), ... })",
+              "Confirmation modal antes do submit (resumo da campanha): 'Você deseja criar esta campanha?'"
+            ],
+            "tech_notes": "React Hook Form + Zod: `const schema = z.object({ listingId: z.string().uuid('Selecione um anúncio'), startDate: z.string().refine(d => new Date(d) >= new Date(), 'Data início não pode ser no passado'), endDate: z.string(), maxImpressions: z.number().int().min(100).optional(), targetBrandId: z.string().uuid().optional(), targetCity: z.string().max(100).optional(), targetState: z.string().length(2).optional(), budgetType: z.enum(['CPM', 'CPC', 'FLAT_PERIOD']), notes: z.string().max(500).optional() }).refine(d => new Date(d.endDate) > new Date(d.startDate), { message: 'Data fim deve ser após data início', path: ['endDate'] })`. Autocomplete endpoint: GET /admin/listings/search?q={q}&status=PUBLISHED — retorna { id, title, sellerName, thumbnail }. DatePicker: usar `@react-native-community/datetimepicker` com wrappers customizados."
+          }
+        ]
+      }
+    ]
+  }
+}

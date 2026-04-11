@@ -1,0 +1,866 @@
+{
+  "module": {
+    "id": "M01",
+    "name": "Autenticação e Cadastro",
+    "slug": "autenticacao_cadastro",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P0",
+    "epic_ref": "E01",
+    "estimated_sprint": "Sprint 1",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "auth": "Supabase Auth + JWT custom + refresh token rotativo",
+      "cache": "Redis via Upstash",
+      "queue": "BullMQ",
+      "email": "Resend / SendGrid",
+      "push": "Expo Notifications + FCM + APNs",
+      "storage": "Supabase Storage / S3/R2",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo responsável por todo o ciclo de identidade do usuário: cadastro, autenticação, verificação, recuperação de senha e gestão de sessão. É a fundação de toda a plataforma — todos os módulos dependem deste.",
+    "goals": [
+      "Permitir cadastro seguro por e-mail/senha, Google, Apple e telefone (OTP)",
+      "Garantir verificação de e-mail e telefone antes de permitir publicação",
+      "Implementar sessão stateless com JWT + refresh token rotativo",
+      "Registrar aceite de Termos, Política de Privacidade e LGPD"
+    ],
+    "actors": [
+      "Comprador",
+      "Vendedor",
+      "Sistema de Autenticação (Supabase Auth)",
+      "Serviço de E-mail (Resend)",
+      "Serviço de SMS (OTP)"
+    ],
+    "dependencies": {
+      "modules": [],
+      "external_services": ["Supabase Auth", "Google OAuth 2.0", "Apple Sign-In", "SMS Gateway"]
+    },
+    "module_flow": {
+      "description": "Fluxo completo de cadastro, verificação e autenticação no app mobile PECAÊ",
+      "pools": [
+        {
+          "name": "Usuário",
+          "lanes": ["Comprador / Vendedor"]
+        },
+        {
+          "name": "App Mobile",
+          "lanes": ["Expo Router / Telas React Native"]
+        },
+        {
+          "name": "API NestJS",
+          "lanes": ["AuthController", "AuthService", "UserService"]
+        },
+        {
+          "name": "Serviços Externos",
+          "lanes": ["Supabase Auth", "Resend (E-mail)", "SMS Gateway"]
+        }
+      ],
+      "bpmn_text": [
+        "START EVENT: Usuário abre o app pela primeira vez",
+        "TASK (App): Exibir tela de onboarding / boas-vindas",
+        "EXCLUSIVE GATEWAY: Usuário tem conta?",
+        "  [Sim] --> TASK (App): Exibir tela de login",
+        "  [Não] --> TASK (App): Exibir tela de cadastro",
+        "TASK (Usuário): Escolher método: e-mail, Google, Apple ou telefone",
+        "EXCLUSIVE GATEWAY: Método selecionado?",
+        "  [E-mail] --> TASK (Usuário): Preencher nome, e-mail, senha, tipo de conta",
+        "             TASK (API): Validar DTO → verificar duplicidade → hash senha → criar User (PENDING_VERIFICATION)",
+        "             MESSAGE FLOW (Resend): Enviar e-mail de verificação com token",
+        "             TASK (Usuário): Clicar no link → confirmar e-mail",
+        "             TASK (API): Validar token → ativar conta (ACTIVE)",
+        "  [Google]  --> TASK (App): Abrir Google OAuth 2.0",
+        "             TASK (API): Validar token Google → criar/recuperar User",
+        "  [Apple]   --> TASK (App): Abrir Apple Sign-In",
+        "             TASK (API): Validar token Apple → criar/recuperar User",
+        "  [Telefone]--> TASK (Usuário): Informar número",
+        "             MESSAGE FLOW (SMS): Enviar OTP",
+        "             TASK (Usuário): Digitar OTP",
+        "             TASK (API): Validar OTP → criar/recuperar User",
+        "TASK (Usuário): Aceitar Termos, Política de Privacidade e LGPD",
+        "TASK (API): Registrar aceite com timestamp e IP",
+        "TASK (API): Gerar access token (JWT 15min) + refresh token (7 dias)",
+        "MESSAGE FLOW (App): Retornar tokens → armazenar com segurança",
+        "TASK (App): Redirecionar para Home ou Onboarding de perfil",
+        "END EVENT: Usuário autenticado e sessão ativa"
+      ],
+      "message_flows": [
+        "API → Resend: Disparar e-mail de verificação com token único",
+        "API → SMS Gateway: Enviar OTP de 6 dígitos",
+        "API → App: Retornar access_token + refresh_token",
+        "API → Resend: Disparar e-mail de redefinição de senha"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF01", "description": "O sistema deve permitir cadastro de usuário com tipo: comprador, vendedor ou ambos", "priority": "P0" },
+      { "id": "RF02", "description": "O sistema deve permitir autenticação por e-mail e senha", "priority": "P0" },
+      { "id": "RF03", "description": "O sistema deve permitir autenticação via Google (OAuth 2.0)", "priority": "P0" },
+      { "id": "RF04", "description": "O sistema deve permitir autenticação via Apple Sign-In", "priority": "P0" },
+      { "id": "RF05", "description": "O sistema deve permitir autenticação via telefone com OTP por SMS", "priority": "P1" },
+      { "id": "RF06", "description": "O sistema deve exigir verificação de e-mail antes de permitir publicação de anúncios", "priority": "P0" },
+      { "id": "RF07", "description": "O sistema deve registrar aceite de Termos, Política de Privacidade e LGPD no cadastro", "priority": "P0" },
+      { "id": "RF08", "description": "O sistema deve permitir recuperação de senha via link seguro por e-mail", "priority": "P0" }
+    ],
+    "business_rules": [
+      { "id": "RN-M01-01", "description": "Um e-mail só pode estar associado a uma conta ativa no sistema" },
+      { "id": "RN-M01-02", "description": "Token de verificação de e-mail expira em 24 horas; token de redefinição expira em 1 hora" },
+      { "id": "RN-M01-03", "description": "Todo usuário recém-cadastrado inicia com status PENDING_VERIFICATION" },
+      { "id": "RN-M01-04", "description": "Access token expira em 15 minutos; refresh token em 7 dias com rotation obrigatória" },
+      { "id": "RN-M01-05", "description": "Apenas usuários com status ACTIVE podem publicar anúncios ou iniciar chats" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC01",
+        "name": "Cadastrar conta",
+        "actors": ["Comprador", "Vendedor"],
+        "preconditions": ["Usuário não possui conta com o e-mail informado"],
+        "main_flow": [
+          "1. Usuário acessa a tela de cadastro no app",
+          "2. Seleciona método: e-mail, Google, Apple ou telefone",
+          "3. Preenche dados obrigatórios",
+          "4. Aceita Termos, Política e LGPD",
+          "5. Sistema valida e cria conta (PENDING_VERIFICATION)",
+          "6. Sistema envia verificação",
+          "7. Usuário confirma",
+          "8. Sistema ativa conta e autentica"
+        ],
+        "alternative_flows": [
+          "A1. E-mail duplicado: informa e sugere login ou recuperação",
+          "A2. Token expirado: oferece reenvio",
+          "A3. OAuth falha: retorna para tela de cadastro com erro"
+        ],
+        "postconditions": ["Conta criada e ACTIVE", "Usuário autenticado com JWT + refresh token"]
+      },
+      {
+        "id": "UC02",
+        "name": "Autenticar-se no sistema",
+        "actors": ["Comprador", "Vendedor", "Administrador", "Moderador"],
+        "preconditions": ["Usuário possui conta ACTIVE"],
+        "main_flow": [
+          "1. Usuário informa e-mail e senha (ou usa OAuth)",
+          "2. Sistema valida credenciais",
+          "3. Sistema gera access token + refresh token",
+          "4. App armazena tokens e redireciona para Home"
+        ],
+        "alternative_flows": [
+          "A1. Senha errada: retorna 401 sem especificar qual campo está errado",
+          "A2. Conta PENDING: orienta verificação de e-mail",
+          "A3. Conta SUSPENDED/BANNED: informa situação e canal de suporte"
+        ],
+        "postconditions": ["Sessão ativa; tokens válidos armazenados no app"]
+      },
+      {
+        "id": "UC03",
+        "name": "Recuperar senha",
+        "actors": ["Comprador", "Vendedor"],
+        "preconditions": ["Usuário possui conta ACTIVE com e-mail verificado"],
+        "main_flow": [
+          "1. Usuário acessa tela de esqueci-minha-senha",
+          "2. Informa e-mail cadastrado",
+          "3. Sistema valida existência e envia link de redefinição",
+          "4. Usuário clica no link (expira em 1h)",
+          "5. Define nova senha",
+          "6. Sistema invalida token e autentica"
+        ],
+        "alternative_flows": [
+          "A1. E-mail não encontrado: retorna mensagem genérica sem revelar existência",
+          "A2. Token expirado: orienta solicitação de novo link"
+        ],
+        "postconditions": ["Senha alterada com sucesso", "Todos os refresh tokens anteriores invalidados"]
+      },
+      {
+        "id": "UC04",
+        "name": "Renovar sessão com refresh token",
+        "actors": ["Sistema (App)"],
+        "preconditions": ["Usuário possui refresh token válido e não revogado"],
+        "main_flow": [
+          "1. App detecta access token expirado",
+          "2. Envia refresh token ao endpoint /auth/refresh",
+          "3. API valida refresh token, revoga o atual e emite novo par de tokens",
+          "4. App armazena novos tokens"
+        ],
+        "alternative_flows": [
+          "A1. Refresh token inválido ou revogado: redireciona para login"
+        ],
+        "postconditions": ["Nova sessão ativa com novo par de tokens"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M01-T01",
+        "title": "Setup de banco, schema Prisma e modelo de usuário",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E01 — Gestão de Contas",
+        "description": "Definir o schema Prisma completo para as entidades de identidade (User, RefreshToken, EmailVerificationToken, PasswordResetToken, OtpCode, TermsAcceptance), criar as migrations no Supabase e configurar o cliente Prisma no NestJS.",
+        "user_stories": [
+          "Como desenvolvedor, quero um schema de banco robusto e tipado para que todas as funcionalidades de identidade sejam construídas sobre uma base sólida",
+          "Como sistema, quero armazenar usuários com papéis, status e histórico de verificações para garantir segurança e rastreabilidade"
+        ],
+        "use_cases": ["UC01", "UC02"],
+        "functional_requirements": [
+          { "id": "RF01", "description": "Suporte a múltiplos tipos de conta: BUYER, SELLER, BOTH, ADMIN, MODERATOR" },
+          { "id": "RF06", "description": "Campo emailVerified para controle de verificação" },
+          { "id": "RF07", "description": "Entidade TermsAcceptance para registrar aceite de termos com timestamp e IP" }
+        ],
+        "business_rules": [
+          { "id": "RN-M01-01", "description": "E-mail com constraint UNIQUE no banco" },
+          { "id": "RN-M01-03", "description": "Status inicial PENDING_VERIFICATION" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Início do setup de infraestrutura de identidade",
+          "TASK (Dev): Escrever schema.prisma — model User com todos os campos",
+          "TASK (Dev): Escrever model RefreshToken, EmailVerificationToken, PasswordResetToken, OtpCode",
+          "TASK (Dev): Escrever model TermsAcceptance com referência a User",
+          "TASK (Dev): Adicionar enums UserType e UserStatus",
+          "TASK (Dev): Adicionar índices em email, status, userId",
+          "TASK (Dev): Executar prisma migrate dev no Supabase",
+          "TASK (Dev): Configurar PrismaService no NestJS com injeção de dependência",
+          "TASK (Dev): Validar migrations em ambiente de CI",
+          "END EVENT: Schema e cliente Prisma prontos para uso"
+        ],
+        "acceptance_criteria": [
+          "Migration executada com sucesso no Supabase (ambiente local e staging)",
+          "Campo email com constraint UNIQUE e índice B-Tree",
+          "Enum UserType: BUYER, SELLER, BOTH, ADMIN, MODERATOR",
+          "Enum UserStatus: PENDING_VERIFICATION, ACTIVE, SUSPENDED, BANNED",
+          "passwordHash nunca retornado em queries padrão (excluído via select explícito no Prisma)",
+          "PrismaService disponível via DI em qualquer módulo NestJS",
+          "Seed básico de usuário admin funcional para desenvolvimento"
+        ],
+        "subtasks": [
+          {
+            "id": "M01-T01-ST01",
+            "title": "Escrever schema Prisma — entidades de identidade",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar schema.prisma com: User (id UUID, name, email UNIQUE, passwordHash, type UserType, status UserStatus, emailVerified Boolean, emailVerifiedAt?, phoneVerified Boolean, phoneVerifiedAt?, phone?, avatar?, createdAt, updatedAt), RefreshToken (id, userId, tokenHash, expiresAt, revokedAt?, ip, userAgent, createdAt), EmailVerificationToken (id, userId, tokenHash, expiresAt, usedAt?), PasswordResetToken (id, userId, tokenHash, expiresAt, usedAt?), OtpCode (id, phone, code, expiresAt, attempts, usedAt?), TermsAcceptance (id, userId, version, acceptedAt, ip, userAgent).",
+            "user_story": "Como desenvolvedor, quero entidades de identidade bem definidas no Prisma para que toda autenticação seja type-safe e segura",
+            "use_case": "UC01",
+            "functional_requirements": [
+              { "id": "RF01", "description": "Suporte a UserType e UserStatus como enums" },
+              { "id": "RF07", "description": "TermsAcceptance com versão, timestamp e IP" }
+            ],
+            "business_rules": [
+              { "id": "RN-M01-01", "description": "email com @unique no Prisma" },
+              { "id": "RN-M01-03", "description": "status default: PENDING_VERIFICATION" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Início da escrita do schema",
+              "TASK: Declarar enum UserType e UserStatus",
+              "TASK: Escrever model User com todos os campos e relações",
+              "TASK: Escrever models de tokens com relação userId → User",
+              "TASK: Escrever TermsAcceptance com versão e timestamp",
+              "TASK: Adicionar @@index([email]), @@index([status]) em User",
+              "TASK: Executar npx prisma validate",
+              "END EVENT: Schema válido e sem erros"
+            ],
+            "acceptance_criteria": [
+              "npx prisma validate retorna sem erros",
+              "email tem @unique no model User",
+              "passwordHash tem @map('password_hash') para snake_case no banco",
+              "Todos os campos de token têm expiresAt para controle de expiração",
+              "OtpCode tem campo attempts para limitar tentativas",
+              "TermsAcceptance tem campo version para versionamento de termos"
+            ],
+            "tech_notes": "Usar PostgreSQL UUID: `id String @id @default(uuid())`. Mapear campos camelCase para snake_case com @map e @@map. Declarar enums fora dos models. Usar `@db.Text` para tokenHash para armazenar hashes longos. Adicionar `cascade: 'onDelete'` nas relações de token → User (se User deletado, tokens deletados). Criar arquivo `prisma/seed.ts` com usuário admin de desenvolvimento."
+          },
+          {
+            "id": "M01-T01-ST02",
+            "title": "Executar migrations e configurar PrismaService no NestJS",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Executar `prisma migrate dev` no Supabase (ambiente local e staging). Criar PrismaModule e PrismaService no NestJS como módulo global com lifecycle hooks OnModuleInit e OnModuleDestroy para gestão de conexões. Configurar DATABASE_URL via ConfigModule do NestJS apontando para Supabase connection string com pooling (PgBouncer).",
+            "user_story": "Como sistema, quero que o Prisma esteja disponível em toda a aplicação NestJS para que qualquer serviço possa acessar o banco com segurança",
+            "use_case": "UC01",
+            "functional_requirements": [
+              { "id": "RF01", "description": "Banco pronto para receber cadastros de usuários" }
+            ],
+            "business_rules": [
+              { "id": "RN-M01-01", "description": "Banco com constraint de unicidade em email" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Início da configuração do Prisma no NestJS",
+              "TASK: Instalar @prisma/client e prisma como devDependency",
+              "TASK: Configurar DATABASE_URL no .env com connection string do Supabase",
+              "TASK: Executar npx prisma migrate dev --name init_identity",
+              "TASK: Criar PrismaService implementando OnModuleInit e OnModuleDestroy",
+              "TASK: Criar PrismaModule com isGlobal: true",
+              "TASK: Importar PrismaModule em AppModule",
+              "TASK: Testar conexão com query prisma.$queryRaw`SELECT 1`",
+              "END EVENT: PrismaService disponível globalmente via DI"
+            ],
+            "acceptance_criteria": [
+              "Migration 0001_init_identity aplicada com sucesso no Supabase",
+              "PrismaService injetável em qualquer módulo NestJS",
+              "Conexão com banco verificada no startup da aplicação",
+              "DATABASE_URL usa connection pooling (Session ou Transaction mode do Supabase)",
+              "Logs de query habilitados em desenvolvimento, desabilitados em produção"
+            ],
+            "tech_notes": "Supabase oferece duas connection strings: direta (porta 5432) e pooled via PgBouncer (porta 6543). Usar a pooled para a API NestJS em produção. Para migrations, usar a connection direta. Configurar no NestJS via ConfigModule: `DatabaseUrl: process.env.DATABASE_URL`. PrismaService: `async onModuleInit() { await this.$connect(); }` e `async onModuleDestroy() { await this.$disconnect(); }`. Marcar como `@Global()` no PrismaModule."
+          },
+          {
+            "id": "M01-T01-ST03",
+            "title": "Seed inicial — PartCategory (lista fixa de categorias de peças)",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Criar seed com a lista fixa de categorias de peças do sistema (PartCategory). Exemplos: Motor, Câmbio, Suspensão Dianteira, Suspensão Traseira, Freios, Lataria, Vidros, Bancos e Estofamento, Painel e Elétrica, Rodas e Pneus, Direção, Arrefecimento, Ar-Condicionado, Escapamento, Capo e Para-choque. Criar também seed de usuário admin de desenvolvimento.",
+            "user_story": "Como sistema, quero uma lista fixa de categorias de peças no banco para que vendedores possam marcar quais peças estão disponíveis no veículo sem precisar digitar texto livre",
+            "use_case": "UC01",
+            "functional_requirements": [
+              { "id": "RF24", "description": "Sistema deve exibir lista fixa de categorias de peças ao vendedor" },
+              { "id": "RF25", "description": "Vendedor marca quais categorias estão disponíveis no veículo" }
+            ],
+            "business_rules": [
+              { "id": "RN03", "description": "Anúncio representa veículo completo; peças são marcadas via lista fixa, não cadastradas individualmente" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Executar seed do banco",
+              "TASK: Criar arquivo prisma/seed.ts",
+              "TASK: Inserir registros de PartCategory com upsert (idempotente)",
+              "TASK: Inserir usuário admin de desenvolvimento com senha segura",
+              "TASK: Executar npx prisma db seed",
+              "END EVENT: Dados de seed disponíveis no banco"
+            ],
+            "acceptance_criteria": [
+              "Seed é idempotente — pode ser executado múltiplas vezes sem duplicar dados",
+              "Lista de PartCategory contém mínimo 15 categorias cobrindo os principais grupos de peças",
+              "Cada PartCategory tem: id (UUID), name, slug (kebab-case único), icon (nome do ícone)",
+              "Usuário admin de seed tem e-mail e senha definidos via variável de ambiente",
+              "Seed executado com sucesso em ambiente local e staging"
+            ],
+            "tech_notes": "Usar `prisma.partCategory.upsert({ where: { slug }, create: {...}, update: {} })` para idempotência. Executar seed via `npx prisma db seed` configurado no package.json: `\"prisma\": { \"seed\": \"ts-node prisma/seed.ts\" }`. Usar `ts-node` com `tsconfig-paths`. Senha do admin via `process.env.ADMIN_SEED_PASSWORD` — nunca hardcoded. Gerar hash com bcrypt no seed antes de inserir. Esta lista é referência chave para o M05 (Cadastro de Sucata)."
+          }
+        ]
+      },
+      {
+        "id": "M01-T02",
+        "title": "Implementar cadastro por e-mail/senha e verificação",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 3,
+        "epic": "E01 — Gestão de Contas",
+        "description": "Criar o fluxo completo de cadastro por e-mail e senha no NestJS (AuthController, AuthService, UserService) com validação de DTO via class-validator, hash de senha com bcrypt, criação de conta com status PENDING_VERIFICATION e envio de e-mail de verificação via Resend.",
+        "user_stories": [
+          "Como comprador ou vendedor, quero me cadastrar com e-mail e senha para que eu possa acessar a plataforma PECAÊ",
+          "Como sistema, quero verificar o e-mail do usuário antes de ativá-lo para garantir a validade das contas"
+        ],
+        "use_cases": ["UC01"],
+        "functional_requirements": [
+          { "id": "RF01", "description": "Cadastro com tipo de conta: BUYER, SELLER ou BOTH" },
+          { "id": "RF06", "description": "E-mail verificado antes de permitir publicação" },
+          { "id": "RF07", "description": "Aceite de termos registrado com timestamp e IP" }
+        ],
+        "business_rules": [
+          { "id": "RN-M01-01", "description": "E-mail único no sistema" },
+          { "id": "RN-M01-02", "description": "Token de verificação expira em 24h" },
+          { "id": "RN-M01-03", "description": "Status inicial PENDING_VERIFICATION" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Usuário submete formulário de cadastro no app",
+          "TASK (App): React Hook Form + Zod valida campos localmente",
+          "TASK (API - AuthController): Receber POST /auth/register com RegisterDto",
+          "TASK (API - AuthService): Verificar se e-mail já existe (UserService.findByEmail)",
+          "EXCLUSIVE GATEWAY: E-mail já cadastrado?",
+          "  [Sim] --> INTERMEDIATE EVENT (Error): Lançar ConflictException 409",
+          "  [Não] --> TASK (API): Hash senha com bcrypt (salt 12)",
+          "TASK (API): Criar registro User com status PENDING_VERIFICATION",
+          "TASK (API): Criar registro TermsAcceptance com versão, timestamp e IP",
+          "TASK (API): Gerar token de verificação seguro (crypto.randomBytes(32))",
+          "TASK (API): Salvar hash do token em EmailVerificationToken com expiresAt = +24h",
+          "MESSAGE FLOW (API → Resend): Disparar e-mail de verificação com link contendo token",
+          "TASK (API): Retornar 201 Created com mensagem de sucesso (sem tokens JWT ainda)",
+          "TASK (Usuário): Receber e-mail e clicar no link de verificação",
+          "TASK (API - AuthController): Receber GET /auth/verify-email?token=",
+          "TASK (API): Buscar EmailVerificationToken pelo hash do token",
+          "EXCLUSIVE GATEWAY: Token válido e não expirado?",
+          "  [Não] --> INTERMEDIATE EVENT (Error): Retornar 400 Bad Request",
+          "  [Sim] --> TASK (API): Marcar emailVerified=true, emailVerifiedAt=now(), status=ACTIVE",
+          "TASK (API): Marcar token como usedAt=now()",
+          "TASK (API): Gerar access token JWT (15min) + refresh token (7 dias)",
+          "TASK (API): Salvar hash do refresh token em RefreshToken com ip e userAgent",
+          "MESSAGE FLOW (App): Receber tokens → armazenar no SecureStore do Expo",
+          "TASK (App): Expo Router navega para tela Home ou Onboarding de perfil",
+          "END EVENT: Conta criada, verificada e sessão ativa"
+        ],
+        "acceptance_criteria": [
+          "POST /auth/register retorna 201 com mensagem e e-mail de verificação enviado",
+          "Tentativa de cadastro com e-mail duplicado retorna 409 Conflict",
+          "E-mail de verificação enviado via Resend com template HTML profissional",
+          "GET /auth/verify-email?token= com token válido ativa conta e retorna tokens JWT",
+          "Token de verificação expirado retorna 400 com mensagem clara",
+          "TermsAcceptance salvo com versão dos termos, timestamp ISO e IP do cliente",
+          "passwordHash nunca incluído em qualquer resposta da API"
+        ],
+        "subtasks": [
+          {
+            "id": "M01-T02-ST01",
+            "title": "Criar RegisterDto, AuthController e AuthService (cadastro e-mail)",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 5,
+            "description": "Implementar RegisterDto com class-validator (IsEmail, IsString, MinLength(8), IsEnum(UserType), IsBoolean termsAccepted). Criar AuthController com @Post('register') e @Post('verify-email'). Criar AuthService.register() que verifica duplicidade, hash a senha com bcrypt, cria User e chama o serviço de e-mail.",
+            "user_story": "Como comprador, quero me cadastrar informando e-mail, senha e tipo de conta para que eu possa usar a plataforma",
+            "use_case": "UC01",
+            "functional_requirements": [
+              { "id": "RF01", "description": "Validação de tipo de conta via enum UserType" },
+              { "id": "RF07", "description": "Campo termsAccepted obrigatório no DTO" }
+            ],
+            "business_rules": [
+              { "id": "RN-M01-01", "description": "Verificar unicidade do e-mail antes de criar" },
+              { "id": "RN-M01-03", "description": "Status inicial PENDING_VERIFICATION no service" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: POST /auth/register recebida",
+              "TASK: ValidationPipe do NestJS valida RegisterDto via class-validator",
+              "EXCLUSIVE GATEWAY: DTO válido?",
+              "  [Não] --> INTERMEDIATE EVENT (Error): 400 Bad Request com detalhes de validação",
+              "  [Sim] --> TASK: AuthService.findByEmail() verifica duplicidade no Prisma",
+              "EXCLUSIVE GATEWAY: E-mail duplicado?",
+              "  [Sim] --> INTERMEDIATE EVENT (Error): ConflictException 409",
+              "  [Não] --> TASK: bcrypt.hash(password, 12)",
+              "TASK: prisma.user.create() com todos os campos e status PENDING_VERIFICATION",
+              "TASK: prisma.termsAcceptance.create() com userId, version, ip, userAgent",
+              "TASK: Chamar MailService.sendVerification(userId, email)",
+              "TASK: Retornar { message: 'Verifique seu e-mail para continuar' }",
+              "END EVENT: Usuário criado, e-mail de verificação disparado"
+            ],
+            "acceptance_criteria": [
+              "DTO rejeita e-mails inválidos, senhas < 8 chars e type fora do enum",
+              "bcrypt usado com salt rounds 12",
+              "prisma.user.create() executado dentro de transaction com termsAcceptance",
+              "Retorno 201 com mensagem, sem dados sensíveis",
+              "ConflictException retorna 409 com mensagem amigável (sem revelar e-mails existentes)"
+            ],
+            "tech_notes": "NestJS: usar `@UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))`. Extrair IP via `@Req() req: Request` e `req.ip`. UserAgent via `req.headers['user-agent']`. Usar `@nestjs/config` para ConfigService. InstalarPacotes: `class-validator`, `class-transformer`, `bcrypt`, `@types/bcrypt`. Usar `prisma.$transaction([...])` para garantir atomicidade do create User + TermsAcceptance."
+          },
+          {
+            "id": "M01-T02-ST02",
+            "title": "Implementar serviço de e-mail de verificação via Resend",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar MailModule e MailService no NestJS usando o SDK do Resend. Implementar método sendVerificationEmail(userId, email) que gera token seguro (crypto.randomBytes(32)), salva hash no EmailVerificationToken com expiresAt +24h e envia e-mail HTML com o link de verificação apontando para o deep link do app Expo.",
+            "user_story": "Como sistema, quero enviar e-mails de verificação confiáveis para que o usuário possa ativar sua conta de forma segura",
+            "use_case": "UC01",
+            "functional_requirements": [
+              { "id": "RF06", "description": "Envio de e-mail de verificação com link seguro" }
+            ],
+            "business_rules": [
+              { "id": "RN-M01-02", "description": "Token de verificação expira em 24 horas" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: MailService.sendVerificationEmail() chamado",
+              "TASK: Gerar rawToken = crypto.randomBytes(32).toString('hex')",
+              "TASK: Calcular tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')",
+              "TASK: prisma.emailVerificationToken.create({ userId, tokenHash, expiresAt: +24h })",
+              "TASK: Construir URL de verificação: pecae://verify-email?token=rawToken",
+              "TASK: Resend.emails.send({ from, to, subject, html: template })",
+              "END EVENT: Token salvo e e-mail disparado"
+            ],
+            "acceptance_criteria": [
+              "Token gerado com crypto.randomBytes (não Math.random)",
+              "Somente o hash do token é salvo no banco (nunca o token raw)",
+              "E-mail contém link válido com deep link do Expo",
+              "expiresAt = Date.now() + 24 * 60 * 60 * 1000",
+              "Falha no envio de e-mail não interrompe o cadastro (async fire-and-forget com log de erro)"
+            ],
+            "tech_notes": "Instalar `resend` SDK. ConfigurarResendModule com `RESEND_API_KEY` via ConfigService. Template HTML inline ou usar template engine como `@nestjs-modules/mailer` com Handlebars. Deep link Expo: configurar `scheme` no app.json do Expo e usar `Linking.createURL()` no app para gerar links universais. No NestJS, a URL base do deep link vem de variável de ambiente `EXPO_DEEP_LINK_BASE`. Endpoint de verificação: GET /auth/verify-email?token=. Para reenvio: POST /auth/resend-verification com body { email }."
+          },
+          {
+            "id": "M01-T02-ST03",
+            "title": "Implementar telas de cadastro e verificação no Expo",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 6,
+            "description": "Criar telas app/(auth)/cadastro.tsx e app/(auth)/verificar-email.tsx no Expo Router. Usar React Hook Form + Zod para validação local. Integrar com AuthService via TanStack Query (useMutation). Armazenar tokens no SecureStore. Implementar deep link handler para verificação de e-mail.",
+            "user_story": "Como usuário, quero uma tela de cadastro clara e responsiva no app para que eu possa criar minha conta facilmente",
+            "use_case": "UC01",
+            "functional_requirements": [
+              { "id": "RF01", "description": "Formulário com campos: nome, e-mail, senha, confirmação de senha, tipo de conta" },
+              { "id": "RF07", "description": "Checkbox de aceite de termos obrigatório antes de submeter" }
+            ],
+            "business_rules": [
+              { "id": "RN-M01-03", "description": "App exibe tela de verificação pendente após cadastro bem-sucedido" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Usuário acessa app/(auth)/cadastro.tsx",
+              "TASK (App): Renderizar formulário com React Hook Form + Controller",
+              "TASK (Usuário): Preencher nome, e-mail, senha, tipo de conta e aceitar termos",
+              "TASK (App): useForm zodResolver valida em tempo real",
+              "TASK (Usuário): Submeter formulário",
+              "TASK (App): useMutation chama POST /auth/register via axios/fetch",
+              "EXCLUSIVE GATEWAY: Resposta da API?",
+              "  [201 Created] --> TASK (App): Navegar para app/(auth)/verificar-email.tsx",
+              "  [409 Conflict] --> TASK (App): Exibir mensagem de e-mail duplicado",
+              "  [400 Bad Request] --> TASK (App): Exibir erros de validação inline",
+              "TASK (App - verificar-email.tsx): Exibir instrução para checar e-mail",
+              "TASK (App): Escutar deep link via Expo Linking.addEventListener",
+              "EXCLUSIVE GATEWAY: Deep link de verificação recebido?",
+              "  [Sim] --> TASK (App): Chamar GET /auth/verify-email?token=",
+              "  [Não] --> TASK (App): Botão 'Reenviar e-mail' chama POST /auth/resend-verification",
+              "END EVENT: Conta verificada, tokens armazenados no SecureStore, navegar para Home"
+            ],
+            "acceptance_criteria": [
+              "Validação Zod impede submissão com campos inválidos",
+              "Loading state no botão durante chamada à API",
+              "Erros da API exibidos de forma clara e acessível",
+              "Tokens JWT armazenados via expo-secure-store (nunca AsyncStorage para dados sensíveis)",
+              "Deep link pecae://verify-email?token= capturado e processado corretamente",
+              "Tela de verificação exibe timer de expiração (24h)"
+            ],
+            "tech_notes": "Expo Router: `app/(auth)/cadastro.tsx` — o grupo (auth) usa layout sem tabs. React Hook Form: `useForm<RegisterFormData>({ resolver: zodResolver(registerSchema) })`. Zod schema: `z.object({ name: z.string().min(2), email: z.string().email(), password: z.string().min(8), confirmPassword: z.string(), type: z.enum(['BUYER', 'SELLER', 'BOTH']), termsAccepted: z.literal(true) })`. TanStack Query: `useMutation({ mutationFn: authApi.register, onSuccess, onError })`. SecureStore: `await SecureStore.setItemAsync('access_token', token)`. Deep link: `Linking.addEventListener('url', handleDeepLink)` em useEffect."
+          }
+        ]
+      },
+      {
+        "id": "M01-T03",
+        "title": "Implementar autenticação OAuth (Google e Apple) no Expo",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 3,
+        "epic": "E01 — Gestão de Contas",
+        "description": "Integrar Google Sign-In e Apple Sign-In no app React Native via expo-auth-session e @invertase/react-native-google-signin. No NestJS, criar endpoints POST /auth/google e POST /auth/apple que validam os tokens OAuth, criam ou recuperam o usuário e emitem JWT + refresh token.",
+        "user_stories": [
+          "Como comprador, quero entrar com minha conta Google para que o cadastro seja mais rápido e conveniente",
+          "Como usuário iOS, quero entrar com Apple ID para que eu possa me autenticar com segurança sem revelar meu e-mail"
+        ],
+        "use_cases": ["UC01", "UC02"],
+        "functional_requirements": [
+          { "id": "RF03", "description": "Autenticação via Google OAuth 2.0" },
+          { "id": "RF04", "description": "Autenticação via Apple Sign-In" }
+        ],
+        "business_rules": [
+          { "id": "RN-M01-03", "description": "Contas OAuth criadas com status ACTIVE (e-mail já verificado pelo provider)" },
+          { "id": "RN-M01-04", "description": "Mesma política de tokens JWT após OAuth" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Usuário toca 'Entrar com Google' ou 'Entrar com Apple'",
+          "EXCLUSIVE GATEWAY: Provedor selecionado?",
+          "  [Google] --> TASK (App): expo-auth-session abre fluxo OAuth Google",
+          "             TASK (Usuário): Seleciona conta Google e autoriza",
+          "             TASK (App): Recebe id_token do Google",
+          "             TASK (API): POST /auth/google { idToken } — validar com Google tokeninfo",
+          "  [Apple]  --> TASK (App): expo-apple-authentication.signInAsync()",
+          "             TASK (Usuário): Autenticar com Face ID / Touch ID",
+          "             TASK (App): Recebe identityToken da Apple",
+          "             TASK (API): POST /auth/apple { identityToken } — validar JWT Apple",
+          "TASK (API): Extrair email e sub (provider ID) do token validado",
+          "EXCLUSIVE GATEWAY: Usuário já existe no banco (por email ou providerId)?",
+          "  [Sim] --> TASK (API): Recuperar User existente",
+          "  [Não] --> TASK (API): Criar User com emailVerified=true, status=ACTIVE, type=BUYER",
+          "TASK (API): Gerar access token JWT (15min) + refresh token (7 dias)",
+          "MESSAGE FLOW (API → App): Retornar tokens",
+          "TASK (App): Armazenar tokens no SecureStore",
+          "TASK (App): Navegar para Home",
+          "END EVENT: Usuário autenticado via OAuth"
+        ],
+        "acceptance_criteria": [
+          "Google Sign-In funciona em Android e iOS via expo-auth-session",
+          "Apple Sign-In funciona em iOS (obrigatório pela App Store) e exibido apenas em iOS",
+          "Usuários OAuth criados com emailVerified=true automaticamente",
+          "E-mail já usado por outros providers retorna mensagem de conflito adequada",
+          "Tokens JWT emitidos seguem o mesmo padrão do cadastro por e-mail"
+        ],
+        "subtasks": [
+          {
+            "id": "M01-T03-ST01",
+            "title": "Configurar Google OAuth no Expo e NestJS",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 5,
+            "description": "Configurar expo-auth-session com Google provider no app React Native. No NestJS, implementar POST /auth/google que valida o idToken usando a lib google-auth-library e cria ou recupera o usuário no banco.",
+            "user_story": "Como comprador, quero usar minha conta Google para entrar rapidamente no PECAÊ sem criar nova senha",
+            "use_case": "UC01",
+            "functional_requirements": [
+              { "id": "RF03", "description": "Validação do idToken Google no backend" }
+            ],
+            "business_rules": [
+              { "id": "RN-M01-03", "description": "Conta Google ativa imediatamente sem verificação adicional" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Usuário toca 'Entrar com Google'",
+              "TASK (App): useAuthRequest do expo-auth-session com Google config",
+              "TASK (App): promptAsync() abre fluxo OAuth no browser",
+              "TASK (Google): Usuário seleciona conta e autoriza",
+              "TASK (App): Receber response com code",
+              "TASK (App): Trocar code por idToken via endpoint Google Token",
+              "TASK (API): POST /auth/google { idToken }",
+              "TASK (API): OAuth2Client.verifyIdToken() valida token",
+              "TASK (API): UserService.findOrCreate() por email/googleId",
+              "TASK (API): Emitir JWT + refresh token",
+              "END EVENT: Usuário autenticado"
+            ],
+            "acceptance_criteria": [
+              "expo-auth-session configurado com GOOGLE_CLIENT_ID via variável de ambiente",
+              "Backend valida audience do token (evita token de outra aplicação)",
+              "findOrCreate idempotente — chamadas múltiplas não duplicam usuário",
+              "Usuário criado via Google não tem passwordHash (null)"
+            ],
+            "tech_notes": "Instalar `expo-auth-session`, `expo-web-browser`. Para Google no Expo Go: usar proxy redirect. Para build: registrar scheme no Google Console. No NestJS: `npm i google-auth-library`. `const client = new OAuth2Client(GOOGLE_CLIENT_ID)`. `const ticket = await client.verifyIdToken({ idToken, audience: GOOGLE_CLIENT_ID })`. Para o Expo, usar scheme: `pecae://` e redirect: `redirectUri = makeRedirectUri({ scheme: 'pecae' })`. Criar campo `googleId String? @unique` no model User."
+          },
+          {
+            "id": "M01-T03-ST02",
+            "title": "Configurar Apple Sign-In no Expo e NestJS",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 5,
+            "description": "Integrar expo-apple-authentication no app React Native. Exibir botão Apple Sign-In apenas em iOS. No NestJS, implementar POST /auth/apple que valida o identityToken (JWT emitido pela Apple) usando apple-signin-auth ou jsonwebtoken com chave pública da Apple.",
+            "user_story": "Como usuário iOS, quero entrar com Apple ID para autenticar de forma segura sem revelar meu e-mail pessoal",
+            "use_case": "UC01",
+            "functional_requirements": [
+              { "id": "RF04", "description": "Validação do identityToken Apple no backend" }
+            ],
+            "business_rules": [
+              { "id": "RN-M01-03", "description": "Conta Apple ativa imediatamente sem verificação adicional" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Usuário (iOS) toca 'Entrar com Apple'",
+              "TASK (App): AppleAuthentication.signInAsync() com scope email e fullName",
+              "TASK (Usuário): Face ID / Touch ID confirmação",
+              "TASK (App): Receber { identityToken, user, email, fullName }",
+              "TASK (App): POST /auth/apple { identityToken, fullName }",
+              "TASK (API): Validar identityToken com chaves públicas da Apple (JWK)",
+              "TASK (API): Extrair sub (Apple user ID) e email do payload",
+              "TASK (API): UserService.findOrCreate() por appleId/email",
+              "TASK (API): Emitir JWT + refresh token",
+              "END EVENT: Usuário autenticado"
+            ],
+            "acceptance_criteria": [
+              "Botão Apple Sign-In visível apenas em Platform.OS === 'ios'",
+              "identityToken validado com chaves públicas JWKS da Apple",
+              "Suporte ao modo 'Hide my Email' da Apple (email relay @privaterelay.appleid.com)",
+              "fullName salvo apenas no primeiro login (Apple não o reenvia subsequentemente)"
+            ],
+            "tech_notes": "Instalar `expo-apple-authentication`. Configurar entitlement `com.apple.developer.applesignin` no app.json. No NestJS: instalar `apple-signin-auth` ou implementar validação JWKS manualmente com `jwks-rsa` + `jsonwebtoken`. Apple publica chaves em: https://appleid.apple.com/auth/keys. Criar campo `appleId String? @unique` no model User. Atenção: a Apple envia email e fullName apenas no primeiro sign-in; armazenar esses dados imediatamente."
+          },
+          {
+            "id": "M01-T03-ST03",
+            "title": "Implementar autenticação por telefone com OTP",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 5,
+            "description": "Criar fluxo de autenticação via número de telefone com OTP de 6 dígitos via SMS. Endpoints: POST /auth/phone/send-otp e POST /auth/phone/verify-otp. Usar Supabase Auth ou gateway SMS externo. Limitar tentativas de verificação (máx 3 por OtpCode).",
+            "user_story": "Como vendedor sem e-mail corporativo, quero me cadastrar com meu número de celular para que eu possa usar o PECAÊ sem precisar de e-mail",
+            "use_case": "UC01",
+            "functional_requirements": [
+              { "id": "RF05", "description": "Autenticação via OTP por SMS de 6 dígitos" }
+            ],
+            "business_rules": [
+              { "id": "RN-M01-02", "description": "OTP expira em 10 minutos" },
+              { "id": "RN-M01-03", "description": "Conta criada via telefone inicia como ACTIVE (telefone verificado)" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Usuário escolhe autenticação por telefone",
+              "TASK (App): Exibir input de número de telefone com máscara BR (+55)",
+              "TASK (Usuário): Informar número e submeter",
+              "TASK (API): POST /auth/phone/send-otp { phone }",
+              "TASK (API): Verificar rate limit (1 OTP por 60s por número)",
+              "TASK (API): Gerar OTP de 6 dígitos aleatório",
+              "TASK (API): Salvar OtpCode com hash do OTP e expiresAt +10min",
+              "MESSAGE FLOW (SMS Gateway): Enviar SMS com código OTP",
+              "TASK (App): Exibir input de 6 dígitos para o OTP",
+              "TASK (Usuário): Digitar OTP recebido",
+              "TASK (API): POST /auth/phone/verify-otp { phone, otp }",
+              "TASK (API): Buscar OtpCode válido por phone",
+              "EXCLUSIVE GATEWAY: OTP válido e não expirado?",
+              "  [Não] --> TASK (API): Incrementar attempts; se >= 3, invalidar OtpCode",
+              "  [Sim] --> TASK (API): Marcar OtpCode como usedAt=now()",
+              "TASK (API): findOrCreate User por telefone",
+              "TASK (API): Emitir JWT + refresh token",
+              "END EVENT: Usuário autenticado"
+            ],
+            "acceptance_criteria": [
+              "OTP gerado tem 6 dígitos numéricos",
+              "Rate limit: máximo 1 envio por número por 60 segundos",
+              "Após 3 tentativas erradas, OTP invalidado",
+              "OTP expira em 10 minutos (expiresAt verificado no banco)",
+              "SMS enviado com texto em português: 'Seu código PECAÊ: 123456'"
+            ],
+            "tech_notes": "OTP gerado com: `Math.floor(100000 + Math.random() * 900000).toString()`. Salvar hash: `crypto.createHash('sha256').update(otp).digest('hex')`. Rate limit via Redis Upstash: `SET otp:ratelimit:{phone} 1 EX 60 NX`. SMS Gateway: Twilio, Infobip ou AWS SNS. Supabase Auth também oferece OTP por telefone nativamente se preferir delegar. No Expo: usar `react-native-otp-textinput` ou input manual com 6 campos. Configurar `autoFillFromSms` no iOS via `textContentType='oneTimeCode'`."
+          }
+        ]
+      },
+      {
+        "id": "M01-T04",
+        "title": "Implementar login, logout, refresh token e recuperação de senha",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E01 — Gestão de Contas",
+        "description": "Implementar POST /auth/login (e-mail/senha), POST /auth/logout (revogação de refresh token), POST /auth/refresh (rotação de token), POST /auth/forgot-password e POST /auth/reset-password. Implementar JwtStrategy e JwtAuthGuard no NestJS. Criar tela de login no Expo.",
+        "user_stories": [
+          "Como usuário, quero fazer login com e-mail e senha para acessar minha conta no PECAÊ",
+          "Como sistema, quero renovar sessões automaticamente para que o usuário não precise fazer login frequentemente"
+        ],
+        "use_cases": ["UC02", "UC03", "UC04"],
+        "functional_requirements": [
+          { "id": "RF02", "description": "Login por e-mail e senha com token JWT" },
+          { "id": "RF08", "description": "Recuperação de senha via link seguro por e-mail" }
+        ],
+        "business_rules": [
+          { "id": "RN-M01-04", "description": "Access token 15min; refresh token 7 dias com rotation" },
+          { "id": "RN-M01-05", "description": "Apenas contas ACTIVE podem fazer login" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Usuário acessa tela de login",
+          "TASK (App): React Hook Form com e-mail e senha",
+          "TASK (Usuário): Preencher credenciais e submeter",
+          "TASK (API): POST /auth/login { email, password }",
+          "TASK (API): Buscar User por email",
+          "EXCLUSIVE GATEWAY: Usuário encontrado e status ACTIVE?",
+          "  [Não] --> INTERMEDIATE EVENT (Error): 401 Unauthorized (mensagem genérica)",
+          "  [Sim] --> TASK (API): bcrypt.compare(password, passwordHash)",
+          "EXCLUSIVE GATEWAY: Senha correta?",
+          "  [Não] --> INTERMEDIATE EVENT (Error): 401 Unauthorized",
+          "  [Sim] --> TASK (API): Gerar access token JWT (15min)",
+          "TASK (API): Gerar refresh token, hash e salvar em RefreshToken com ip/userAgent",
+          "MESSAGE FLOW (API → App): Retornar { accessToken, refreshToken, user }",
+          "TASK (App): SecureStore.setItemAsync('access_token', accessToken)",
+          "TASK (App): Navegar para Home",
+          "END EVENT: Sessão ativa"
+        ],
+        "acceptance_criteria": [
+          "POST /auth/login retorna 200 com accessToken, refreshToken e dados básicos do usuário",
+          "Credenciais inválidas retornam 401 sem especificar qual campo está errado",
+          "POST /auth/refresh rotaciona refresh token (invalida antigo, emite novo)",
+          "POST /auth/logout revoga refresh token no banco",
+          "POST /auth/forgot-password envia e-mail mesmo que e-mail não exista (evita enumeração)",
+          "POST /auth/reset-password invalida todos os refresh tokens do usuário após reset"
+        ],
+        "subtasks": [
+          {
+            "id": "M01-T04-ST01",
+            "title": "Implementar POST /auth/login e JwtStrategy no NestJS",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar endpoint POST /auth/login com LoginDto (email, password). Implementar AuthService.login() com bcrypt.compare. Configurar @nestjs/jwt com JwtModule.registerAsync usando ConfigService. Criar JwtStrategy (PassportStrategy) que extrai Bearer token e retorna payload. Criar JwtAuthGuard global com exceção via @Public() decorator.",
+            "user_story": "Como usuário cadastrado, quero fazer login com e-mail e senha para manter minha sessão ativa no app",
+            "use_case": "UC02",
+            "functional_requirements": [
+              { "id": "RF02", "description": "Autenticação com e-mail e senha via JWT" }
+            ],
+            "business_rules": [
+              { "id": "RN-M01-04", "description": "JWT com expiresIn: '15m'" },
+              { "id": "RN-M01-05", "description": "Verificar status ACTIVE antes de emitir token" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: POST /auth/login recebida",
+              "TASK: ValidationPipe valida LoginDto",
+              "TASK: AuthService.login(email, password)",
+              "TASK: prisma.user.findUnique({ where: { email } })",
+              "EXCLUSIVE GATEWAY: User encontrado e status ACTIVE?",
+              "  [Não] --> INTERMEDIATE EVENT (Error): UnauthorizedException",
+              "  [Sim] --> TASK: await bcrypt.compare(password, user.passwordHash)",
+              "EXCLUSIVE GATEWAY: Senha confere?",
+              "  [Não] --> INTERMEDIATE EVENT (Error): UnauthorizedException",
+              "  [Sim] --> TASK: jwtService.sign({ sub: user.id, type: user.type }, { expiresIn: '15m' })",
+              "TASK: generateRefreshToken() → salvar hash em RefreshToken",
+              "TASK: Retornar { accessToken, refreshToken, user: { id, name, email, type } }",
+              "END EVENT: Login bem-sucedido"
+            ],
+            "acceptance_criteria": [
+              "JWT assinado com HS256 e secret via ConfigService (JWT_SECRET)",
+              "Payload JWT contém: sub (userId), type (UserType), iat, exp",
+              "JwtAuthGuard aplicado globalmente; rotas públicas marcadas com @Public()",
+              "@Req() user disponível em controllers protegidos",
+              "Refresh token gerado com crypto.randomBytes(64).toString('hex')"
+            ],
+            "tech_notes": "Instalar `@nestjs/jwt`, `@nestjs/passport`, `passport`, `passport-jwt`. JwtStrategy extrai token do header `Authorization: Bearer <token>`. Criar decorator `@Public()` usando `SetMetadata('isPublic', true)`. JwtAuthGuard verifica metadata com Reflector. Payload: `{ sub: string, type: UserType }`. RefreshToken: salvar hash no banco, retornar raw token para o cliente. Usar `crypto.randomBytes(64).toString('hex')` para refresh token."
+          },
+          {
+            "id": "M01-T04-ST02",
+            "title": "Implementar refresh token rotation e logout",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Implementar POST /auth/refresh que recebe o refresh token, valida no banco (não expirado, não revogado), revoga o atual, gera novo par access + refresh e retorna. Implementar POST /auth/logout que revoga o refresh token (revokedAt = now()). No Expo, interceptar 401 com axios interceptor para chamar /refresh automaticamente.",
+            "user_story": "Como usuário, quero que minha sessão se renove automaticamente para que eu não precise fazer login toda vez que o token expira",
+            "use_case": "UC04",
+            "functional_requirements": [
+              { "id": "RF02", "description": "Renovação automática de sessão via refresh token" }
+            ],
+            "business_rules": [
+              { "id": "RN-M01-04", "description": "Refresh token rotation obrigatória a cada renovação" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: App detecta 401 ou refresh token próximo de expirar",
+              "TASK (App): Axios interceptor chama POST /auth/refresh { refreshToken }",
+              "TASK (API): Calcular hash do refreshToken recebido",
+              "TASK (API): prisma.refreshToken.findFirst({ where: { tokenHash, revokedAt: null } })",
+              "EXCLUSIVE GATEWAY: Token válido e não expirado?",
+              "  [Não] --> INTERMEDIATE EVENT (Error): 401 → App navega para login",
+              "  [Sim] --> TASK (API): Marcar token atual como revokedAt = now()",
+              "TASK (API): Gerar novo access token (15min) + novo refresh token (7 dias)",
+              "TASK (API): Salvar novo refresh token hash no banco",
+              "TASK (API): Retornar { accessToken, refreshToken }",
+              "TASK (App): Atualizar tokens no SecureStore",
+              "TASK (App): Retry da requisição original",
+              "END EVENT: Sessão renovada"
+            ],
+            "acceptance_criteria": [
+              "Refresh token usado uma única vez (rotation); uso duplicado invalida a sessão",
+              "POST /auth/logout revoga o refresh token no banco",
+              "App tem interceptor axios que detecta 401 e faz refresh automático",
+              "Após logout, SecureStore limpo (deleteItemAsync)",
+              "Rotation detecta reuso de token e invalida TODOS os tokens do usuário (reuse detection)"
+            ],
+            "tech_notes": "Axios interceptor no Expo: `api.interceptors.response.use(null, async (error) => { if (error.response?.status === 401) { const newTokens = await authApi.refresh(storedRefreshToken); ... } })`. Prevenir refresh loop com flag `isRetry`. Reuse detection: se hash incomingtoken encontrado com revokedAt != null, considerar ataque de replay e revogar TODOS os RefreshTokens do usuário (`prisma.refreshToken.updateMany({ where: { userId }, data: { revokedAt: now() } })`). Zustand store para auth state: `useAuthStore` com `accessToken`, `refreshToken`, `user`, `setTokens`, `clearAuth`."
+          },
+          {
+            "id": "M01-T04-ST03",
+            "title": "Implementar recuperação e redefinição de senha",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar POST /auth/forgot-password (envia e-mail com link de redefinição) e POST /auth/reset-password (valida token e altera senha). O link de redefinição usa deep link do Expo com token de 1 hora. Após reset, todos os refresh tokens anteriores são invalidados.",
+            "user_story": "Como usuário que esqueceu a senha, quero receber um link seguro por e-mail para redefinir minha senha e recuperar acesso à conta",
+            "use_case": "UC03",
+            "functional_requirements": [
+              { "id": "RF08", "description": "Recuperação de senha via link seguro com expiração de 1 hora" }
+            ],
+            "business_rules": [
+              { "id": "RN-M01-02", "description": "Token de redefinição expira em 1 hora" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Usuário solicita redefinição de senha",
+              "TASK (App): Tela app/(auth)/esqueci-senha.tsx — input de e-mail",
+              "TASK (API): POST /auth/forgot-password { email }",
+              "TASK (API): Buscar User por email (SEM revelar se existe na resposta)",
+              "EXCLUSIVE GATEWAY: User encontrado?",
+              "  [Não] --> TASK (API): Retornar 200 OK (mesmo comportamento para evitar enumeração)",
+              "  [Sim] --> TASK (API): Gerar token raw, salvar hash em PasswordResetToken (expiresAt +1h)",
+              "MESSAGE FLOW (API → Resend): Enviar e-mail com deep link pecae://reset-password?token=",
+              "TASK (API): Retornar 200 OK",
+              "TASK (Usuário): Clicar no link do e-mail",
+              "TASK (App): Deep link handler navega para app/(auth)/redefinir-senha.tsx com token",
+              "TASK (Usuário): Inserir nova senha",
+              "TASK (API): POST /auth/reset-password { token, newPassword }",
+              "TASK (API): Validar PasswordResetToken (hash, expiresAt, usedAt null)",
+              "TASK (API): bcrypt.hash(newPassword, 12) → atualizar user.passwordHash",
+              "TASK (API): Marcar token como usedAt = now()",
+              "TASK (API): Revogar TODOS os refresh tokens do usuário",
+              "TASK (API): Emitir novo par de tokens (login automático)",
+              "END EVENT: Senha redefinida e sessão ativa"
+            ],
+            "acceptance_criteria": [
+              "POST /auth/forgot-password sempre retorna 200 (independente se e-mail existe)",
+              "Token de redefinição expira exatamente em 1 hora",
+              "Token só pode ser usado uma vez (usedAt verificado)",
+              "Todos refresh tokens do usuário revogados após reset",
+              "Nova senha validada com mínimo 8 caracteres no DTO"
+            ],
+            "tech_notes": "Mesmo padrão de hash e armazenamento dos tokens de verificação: raw token retornado via e-mail, hash armazenado no banco. Deep link: `pecae://reset-password?token=<rawToken>`. Tela de redefinição captura o token via `useLocalSearchParams()` do Expo Router. Após reset bem-sucedido, `prisma.refreshToken.updateMany({ where: { userId }, data: { revokedAt: new Date() } })` para revogar todos os tokens existentes."
+          }
+        ]
+      }
+    ]
+  }
+}

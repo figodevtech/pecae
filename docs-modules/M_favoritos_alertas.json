@@ -1,0 +1,290 @@
+{
+  "module": {
+    "id": "M_favoritos_alertas",
+    "name": "Favoritos e Alertas de Busca",
+    "slug": "favoritos_alertas",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P1",
+    "epic_ref": "E10",
+    "estimated_sprint": "Sprint 6",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "queue": "BullMQ (processamento de alertas ao publicar novo anúncio)",
+      "push": "Expo Push Notifications via BullMQ",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo que gerencia a lista de anúncios favoritados pelo comprador e as buscas salvas com alertas. Quando um novo anúncio é publicado (após aprovação da moderação no M09), o sistema verifica todas as SavedSearches com alertActive=true e notifica compradores com filtros compatíveis via push notification e in-app.",
+    "goals": [
+      "Manter lista de anúncios favoritados por comprador (já parcialmente implementado no M02)",
+      "Alertar compradores quando novos anúncios compatíveis com suas buscas salvas forem publicados",
+      "Gerenciar ciclo de vida das buscas salvas (ativar/desativar alerta, excluir)"
+    ],
+    "actors": [
+      "Comprador (mantém favoritos e buscas salvas)",
+      "Sistema (verifica matches e dispara alertas via BullMQ)",
+      "M09 (dispara evento ao publicar novo anúncio)"
+    ],
+    "dependencies": {
+      "modules": ["M01", "M02", "M05", "M07", "M09", "M11"],
+      "external_services": ["BullMQ (job de match de alertas)", "Expo Push Notifications"]
+    },
+    "module_flow": {
+      "description": "Fluxo de alerta de busca: evento de publicação → matching de SavedSearches → notificação",
+      "pools": [
+        { "name": "M09 (Moderação)", "lanes": ["Evento: novo anúncio PUBLISHED"] },
+        { "name": "BullMQ", "lanes": ["MatchAlertsWorker"] },
+        { "name": "API NestJS", "lanes": ["AlertsService", "FavoritesService"] },
+        { "name": "M11 (Notificações)", "lanes": ["NotificationService"] },
+        { "name": "App Mobile", "lanes": ["Push + In-app notification"] }
+      ],
+      "bpmn_text": [
+        "START EVENT: M09 aprova anúncio → Listing.status = PUBLISHED",
+        "TASK (API M09): BullMQ: add job 'match-alerts' { listingId, vehicleData }",
+        "TASK (BullMQ Worker): Receber job match-alerts",
+        "TASK: Buscar Vehicle completo (versionId, yearFabId, city, state, availableParts)",
+        "TASK: Buscar todas as SavedSearches com alertActive = true",
+        "TASK (ParallelGateway): Para cada SavedSearch, verificar match de filtros",
+        "EXCLUSIVE GATEWAY: SavedSearch matches com o novo anúncio?",
+        "  [Sim] --> TASK: Criar Notification record via NotificationService (M11)",
+        "           TASK: BullMQ: add job 'send-push-notification' para o userId da SavedSearch",
+        "  [Não] --> TASK: Ignorar — próxima SavedSearch",
+        "TASK: Marcar job como concluído",
+        "END EVENT: Compradores compatíveis notificados sobre novo anúncio"
+      ],
+      "message_flows": [
+        "M09 → BullMQ: Evento de novo anúncio publicado",
+        "BullMQ → M11: Criação de Notification para cada match",
+        "M11 → App: Push notification com link para o novo anúncio"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF80", "description": "Sistema deve verificar SavedSearches com alertActive=true ao publicar novo anúncio e notificar compradores com match", "priority": "P1" },
+      { "id": "RF81", "description": "Comprador deve poder ativar/desativar alerta de uma busca salva", "priority": "P1" },
+      { "id": "RF82", "description": "Sistema deve exibir lista de favoritos com opção de remover e acessar o anúncio", "priority": "P0" },
+      { "id": "RF83", "description": "Alerta deve especificar nome do veículo e localização compatíveis com os filtros da busca salva", "priority": "P1" }
+    ],
+    "business_rules": [
+      { "id": "RN-MFA-01", "description": "Matching de alertas considera apenas anúncios PUBLISHED (nunca PENDING ou REJECTED)" },
+      { "id": "RN-MFA-02", "description": "Cada comprador recebe no máximo 5 alertas por dia para evitar spam" },
+      { "id": "RN-MFA-03", "description": "Busca salva deletada cancela todos os alertas futuros dessa busca" },
+      { "id": "RN-M02-03", "description": "Máximo de 10 buscas salvas ativas por comprador" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC40",
+        "name": "Ser notificado sobre novo anúncio compatível",
+        "actors": ["Comprador", "Sistema"],
+        "preconditions": ["Comprador tem SavedSearch com alertActive=true; novo Listing PUBLISHED publicado"],
+        "main_flow": [
+          "1. Novo Listing publicado (M09)",
+          "2. Job BullMQ match-alerts dispara",
+          "3. Sistema encontra SavedSearches compatíveis",
+          "4. Cria Notification e envia push",
+          "5. Comprador toca na notificação → vai para tela do anúncio"
+        ],
+        "alternative_flows": [
+          "A1. Comprador atingiu limite de 5 alertas diários: notificação in-app apenas, sem push"
+        ],
+        "postconditions": ["Comprador notificado sobre novo anúncio compatível"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "MFA-T01",
+        "title": "Worker BullMQ de matching de alertas",
+        "status": "planned",
+        "priority": "P1",
+        "estimated_days": 2,
+        "epic": "E10 — Favoritos e Alertas",
+        "description": "Implementar worker BullMQ 'match-alerts' que é invocado quando um novo anúncio é publicado. Busca todas as SavedSearches ativas, avalia compatibilidade de filtros com o novo veículo, e enfileira jobs de push notification para matches encontrados.",
+        "user_stories": [
+          "Como comprador, quero ser notificado automaticamente quando um anúncio compatível com minha busca salva for publicado"
+        ],
+        "use_cases": ["UC40"],
+        "functional_requirements": [
+          { "id": "RF80", "description": "Worker de matching com filtros de brandId, modelId, city, state, yearMin/yearMax" }
+        ],
+        "business_rules": [
+          { "id": "RN-MFA-01", "description": "Apenas listings PUBLISHED processados" },
+          { "id": "RN-MFA-02", "description": "Limite de 5 alertas push por dia por usuário" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Job match-alerts { listingId } processado",
+          "TASK: Buscar Vehicle completo via listingId",
+          "TASK: Extrair: brandId, modelId, yearFab, city, state, availableParts[]",
+          "TASK: Buscar SavedSearches WHERE alertActive=true IN BATCHES de 100",
+          "PARALLEL_GATEWAY: Para cada SavedSearch em paralelo",
+          "TASK: matchFilters(savedSearch.filters, vehicleData) → Boolean",
+          "EXCLUSIVE GATEWAY: Match encontrado?",
+          "  [Sim] --> TASK: Verificar limite diário de alertas do usuário (Redis counter)",
+          "           EXCLUSIVE GATEWAY: Dentro do limite?",
+          "             [Sim] --> TASK: Criar Notification + job push-notification",
+          "             [Não] --> TASK: Criar apenas Notification in-app (sem push)",
+          "  [Não] --> TASK: Continuar para próxima SavedSearch",
+          "END EVENT: Matches processados"
+        ],
+        "acceptance_criteria": [
+          "Matching em batches de 100 SavedSearches (evitar timeout)",
+          "matchFilters retorna true quando todos os filtros não-nulos da busca são compatíveis com o veículo",
+          "Limite diário de push por usuário controlado via Redis key com TTL de 24h",
+          "Job com retry 3x; falha de matching individual não cancela o resto"
+        ],
+        "subtasks": [
+          {
+            "id": "MFA-T01-ST01",
+            "title": "Implementar matchFilters e dispatch de notificações",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 5,
+            "description": "Implementar função matchFilters(savedSearch.filters, vehicle) que avalia compatibilidade. Match considera: brandId (se set), modelId (se set), yearMin/yearMax, city, state. Se match: verificar limite diário (Redis INCR com TTL 24h). Criar Notification e job de push.",
+            "user_story": "Como sistema de alertas, quero matchFilters preciso para que compradores recebam apenas alertas realmente relevantes para suas buscas",
+            "use_case": "UC40",
+            "functional_requirements": [
+              { "id": "RF80", "description": "matchFilters com suporte a todos os campos de filter" }
+            ],
+            "business_rules": [
+              { "id": "RN-MFA-02", "description": "Redis counter de alertas diários por userId" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: matchFilters(filters, vehicle) chamado",
+              "TASK: Para cada campo em filters, verificar se veículo é compatível",
+              "TASK: brandId match: vehicle.version.model.brandId === filters.brandId",
+              "TASK: yearMin/Max match: vehicle.yearFab.yearFab BETWEEN yearMin AND yearMax",
+              "TASK: city match: vehicle.city.toLowerCase() === filters.city.toLowerCase()",
+              "TASK: Retornar true apenas se TODOS os filtros não-nulos são compatíveis",
+              "END EVENT: Resultado do match retornado"
+            ],
+            "acceptance_criteria": [
+              "Filtros nulos/undefined são ignorados no match (não bloqueiam)",
+              "Match de city case-insensitive",
+              "Match de year via range incluso (>=yearMin AND <=yearMax)",
+              "Redis INCR 'alert-count:{userId}:{YYYY-MM-DD}' com EXPIRE 86400"
+            ],
+            "tech_notes": "matchFilters: `function matchFilters(filters: SavedSearchFilters, v: VehicleData): boolean { if (filters.brandId && v.brandId !== filters.brandId) return false; if (filters.modelId && v.modelId !== filters.modelId) return false; if (filters.yearMin && v.yearFab < filters.yearMin) return false; if (filters.yearMax && v.yearFab > filters.yearMax) return false; if (filters.city && v.city.toLowerCase() !== filters.city.toLowerCase()) return false; if (filters.state && v.state !== filters.state) return false; return true; }`. Redis: `const count = await redis.incr(key); if (count === 1) await redis.expire(key, 86400); if (count > 5) skip push; else enqueue push;`."
+          },
+          {
+            "id": "MFA-T01-ST02",
+            "title": "Integração com M09 — disparar job ao publicar anúncio",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 2,
+            "description": "Adicionar chamada para enfileirar job 'match-alerts' no serviço de moderação (M09) imediatamente após mudar Listing.status para PUBLISHED. Repassar vehicleData básico no payload do job para evitar query adicional no worker.",
+            "user_story": "Como sistema de alertas, quero ser notificado imediatamente quando um anúncio é publicado para processar os matches em tempo hábil",
+            "use_case": "UC40",
+            "functional_requirements": [
+              { "id": "RF80", "description": "Job enfileirado após aprovação no M09" }
+            ],
+            "business_rules": [
+              { "id": "RN-MFA-01", "description": "Job disparado apenas após status=PUBLISHED" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: M09 aprova listing (status PUBLISHED)",
+              "TASK: Após transaction de aprovação, chamar alertsQueue.add('match-alerts', { listingId, vehicleData: {...} })",
+              "END EVENT: Job enfileirado"
+            ],
+            "acceptance_criteria": [
+              "Job enfileirado apenas após transaction bem-sucedida de aprovação",
+              "vehicleData no payload inclui brandId, modelId, yearFab, city, state, availableParts",
+              "Job com attempts:3 e backoff exponencial"
+            ],
+            "tech_notes": "No ModerationService (M09): `await this.alertsQueue.add('match-alerts', { listingId, vehicleData: { brandId: vehicle.version.model.brandId, modelId: vehicle.version.model.id, versionId: vehicle.versionId, yearFab: vehicle.yearFab.yearFab, city: vehicle.city, state: vehicle.state, availableParts: vehicle.availableParts } }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } })`. Colocar fora do transaction para não bloquear a aprovação."
+          }
+        ]
+      },
+      {
+        "id": "MFA-T02",
+        "title": "Telas de favoritos e buscas salvas (extensão do M02)",
+        "status": "planned",
+        "priority": "P1",
+        "estimated_days": 1,
+        "epic": "E10 — Favoritos e Alertas",
+        "description": "Estender as telas já definidas no M02 (app/(buyer)/favoritos.tsx e app/(buyer)/buscas-salvas.tsx) com integrações do sistema de alertas. Adicionar badge de estado de alerta nas buscas salvas e indicação de anúncio salvo nos cards de favoritos (verificar se ainda PUBLISHED).",
+        "user_stories": [
+          "Como comprador, quero saber rapidamente quais buscas têm alerta ativo e se meus anúncios favoritados ainda estão disponíveis"
+        ],
+        "use_cases": ["UC40"],
+        "functional_requirements": [
+          { "id": "RF81", "description": "Toggle de alerta nas buscas salvas" },
+          { "id": "RF82", "description": "Indicador de disponibilidade em anúncios favoritados" }
+        ],
+        "business_rules": [
+          { "id": "RN-MFA-03", "description": "Busca salva deletada cancela alertas futuros" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Tela de buscas salvas renderizada",
+          "TASK: SavedSearchCard exibe: query/filtros resumidos, toggle de alerta, data de criação",
+          "TASK: Toggle alerta → PATCH /saved-searches/:id/alert { alertActive: !current }",
+          "TASK: Swipe to delete → DELETE /saved-searches/:id",
+          "TASK: Tela de favoritos: verificar se listing ainda PUBLISHED via badge",
+          "TASK: Anúncios SOLD ou EXPIRED exibem badge 'Indisponível' em cinza",
+          "END EVENT: Telas atualizadas com estado de alerta e disponibilidade"
+        ],
+        "acceptance_criteria": [
+          "Toggle de alerta com feedback visual imediato (otimista)",
+          "Anúncios SOLD exibem badge vermelho 'Vendido' no card de favorito",
+          "Anúncios EXPIRED exibem badge cinza 'Expirado'",
+          "Excluir busca salva exibe confirmação antes de deletar"
+        ],
+        "subtasks": [
+          {
+            "id": "MFA-T02-ST01",
+            "title": "SavedSearchCard com toggle de alerta e badge de status",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Criar componente SavedSearchCard para tela de buscas salvas com: resumo dos filtros (ex: 'Fiat Uno • SP • 2010-2015'), Switch de alerta ativo, data de criação e botão de deleção. Integrar com PATCH /saved-searches/:id/alert.",
+            "user_story": "Como comprador, quero gerenciar minhas buscas salvas e alertas em uma interface clara",
+            "use_case": "UC40",
+            "functional_requirements": [
+              { "id": "RF81", "description": "Switch de alertActive integrado ao endpoint PATCH" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: SavedSearchCard renderizado",
+              "TASK: Renderizar resumo dos filtros como texto legível",
+              "TASK: Switch com value=alertActive, onChange → useMutation PATCH",
+              "TASK: Botão de repetir busca: router.push com filtros pré-preenchidos",
+              "END EVENT: Card interativo renderizado"
+            ],
+            "acceptance_criteria": [
+              "Filtros resumidos legíveis: 'Volkswagen Gol • São Paulo-SP • 2015-2020'",
+              "Switch atualiza alertActive com optimistic update",
+              "Botão 'Buscar Agora' repete a busca com os filtros salvos"
+            ],
+            "tech_notes": "Resumo de filtros: `[brandName, modelName, `${city}-${state}`.trim(), yearRange].filter(Boolean).join(' • ')`. Usar dados do catálogo (M04) para resolver brandId/modelId para nomes via useQuery. Optimistic update no Switch: `useMutation({ onMutate: (vars) => queryClient.setQueryData(['saved-searches'], updater), onError: rollback })`."
+          },
+          {
+            "id": "MFA-T02-ST02",
+            "title": "Badge de disponibilidade em anúncios favoritados",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 2,
+            "description": "Atualizar ListingCard na tela de favoritos para exibir badge de status do anúncio: badge verde 'Disponível' quando PUBLISHED, vermelho 'Vendido' quando SOLD, cinza 'Expirado' quando EXPIRED. Anúncios SOLD e EXPIRED exibidos ao final da lista.",
+            "user_story": "Como comprador, quero saber quais anúncios nos meus favoritos ainda estão disponíveis para não perder tempo tentando contatar vendedores de anúncios encerrados",
+            "use_case": "UC40",
+            "functional_requirements": [
+              { "id": "RF82", "description": "Badge de disponibilidade em anúncios favoritados" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Tela de favoritos renderizada",
+              "TASK: GET /favorites retorna listing.status junto com dados do anúncio",
+              "TASK: Ordenar: PUBLISHED primeiro, SOLD depois, EXPIRED por último",
+              "TASK: ListingCard renderiza StatusBadge baseado em listing.status",
+              "END EVENT: Lista ordenada com badges"
+            ],
+            "acceptance_criteria": [
+              "Badge 'Disponível' (verde), 'Vendido' (vermelho), 'Expirado' (cinza)",
+              "PUBLISHED no topo da lista, outros no final",
+              "Anúncios não-PUBLISHED com opacidade 0.5 para indicação visual"
+            ],
+            "tech_notes": "StatusBadge: mapeamento `{ PUBLISHED: { label: 'Disponível', color: '#10B981' }, SOLD: { label: 'Vendido', color: '#EF4444' }, EXPIRED: { label: 'Expirado', color: '#6B7280' } }`. Order: `data.sort((a, b) => order[a.listing.status] - order[b.listing.status])` onde order = `{ PUBLISHED: 0, SOLD: 1, EXPIRED: 2 }`. Opacidade: `opacity: listing.status !== 'PUBLISHED' ? 0.5 : 1` no wrapper do card."
+          }
+        ]
+      }
+    ]
+  }
+}

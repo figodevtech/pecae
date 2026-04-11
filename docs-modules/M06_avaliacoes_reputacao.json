@@ -1,0 +1,322 @@
+{
+  "module": {
+    "id": "M06",
+    "name": "Avaliações e Reputação",
+    "slug": "avaliacoes_reputacao",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P1",
+    "epic_ref": "E07",
+    "estimated_sprint": "Sprint 5",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "queue": "BullMQ (recálculo de rating médio do vendedor)",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo de avaliação de vendedores após uma negociação concluída. Comprador avalia o vendedor com nota (1-5 estrelas) e comentário opcional. Rating média exibida publicamente no perfil do vendedor (M03). Busca de sucatas pode ordenar por rating. Vendedor não avalia comprador nesta versão.",
+    "goals": [
+      "Permitir que comprador avalie o vendedor após negociação bem-sucedida",
+      "Calcular e exibir rating médio no perfil do vendedor (M03)",
+      "Garantir que avaliação seja possível apenas uma vez por ChatRoom",
+      "Exibir histórico de avaliações recebidas no perfil público do vendedor"
+    ],
+    "actors": [
+      "Comprador (avalia vendedor)",
+      "Vendedor (recebe avaliação — leitura apenas)",
+      "Sistema (recalcula rating médio via BullMQ)"
+    ],
+    "dependencies": {
+      "modules": ["M01", "M03", "M08"],
+      "external_services": ["BullMQ (atualizar SellerStats.rating)"]
+    },
+    "module_flow": {
+      "description": "Fluxo de avaliação do vendedor pelo comprador após negociação",
+      "pools": [
+        { "name": "Comprador", "lanes": ["Usuário"] },
+        { "name": "App Mobile", "lanes": ["Tela de avaliação"] },
+        { "name": "API NestJS", "lanes": ["ReviewController", "ReviewService"] },
+        { "name": "BullMQ", "lanes": ["RecalcRatingWorker"] }
+      ],
+      "bpmn_text": [
+        "START EVENT: Comprador foi redirecionado para tela de avaliação após negociação",
+        "TASK (App): Exibir tela de avaliação do vendedor (Modal ou página dedicada)",
+        "TASK (Comprador): Selecionar nota (1-5 estrelas)",
+        "TASK (Comprador): Opcionalmente digitar comentário",
+        "TASK (Comprador): Tocar em 'Enviar Avaliação'",
+        "TASK (API): POST /reviews { sellerProfileId, chatRoomId, rating, comment? }",
+        "TASK (ReviewService): Verificar que comprador é buyerId do ChatRoom",
+        "TASK (ReviewService): Verificar que não existe Review anterior para este chatRoomId",
+        "EXCLUSIVE GATEWAY: Avaliação já existe para este chatRoom?",
+        "  [Sim] --> INTERMEDIATE EVENT (Error): 409 Conflict 'Você já avaliou este vendedor'",
+        "  [Não] --> TASK (Prisma): prisma.review.create({ sellerProfileId, buyerId, chatRoomId, rating, comment })",
+        "TASK (BullMQ): job 'recalc-seller-rating' { sellerProfileId }",
+        "TASK (BullMQ Worker): Calcular nova média de rating do vendedor",
+        "TASK (Prisma): Atualizar SellerStats.rating com nova média",
+        "END EVENT: Avaliação registrada e rating atualizado"
+      ],
+      "message_flows": [
+        "API → BullMQ: Job de recálculo de rating após nova avaliação",
+        "BullMQ → SellerStats: Rating médio atualizado no banco"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF70", "description": "Comprador deve poder avaliar vendedor com nota 1-5 e comentário opcional após interação em chat", "priority": "P1" },
+      { "id": "RF71", "description": "Sistema deve calcular e exibir rating médio no perfil público do vendedor", "priority": "P1" },
+      { "id": "RF72", "description": "Sistema deve exibir histórico de avaliações recebidas no perfil do vendedor", "priority": "P1" },
+      { "id": "RF73", "description": "Apenas uma avaliação por chatRoom (uma negociação = uma avaliação)", "priority": "P0" }
+    ],
+    "business_rules": [
+      { "id": "RN-M06-01", "description": "Avaliação permitida apenas para comprador que teve chatRoom com o vendedor" },
+      { "id": "RN-M06-02", "description": "Apenas uma avaliação por chatRoom — evitar avaliações duplicadas" },
+      { "id": "RN-M06-03", "description": "Moderador pode remover avaliação abusiva via M09" },
+      { "id": "RN-M06-04", "description": "Vendedor não avalia comprador nesta versão" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC35",
+        "name": "Avaliar vendedor após negociação",
+        "actors": ["Comprador"],
+        "preconditions": ["ChatRoom existente, comprador é buyerId, sem avaliação prévia para este chatRoom"],
+        "main_flow": [
+          "1. Comprador acessa opção 'Avaliar vendedor' dentro do chat",
+          "2. Seleciona nota de 1 a 5 estrelas",
+          "3. Opcionalmente escreve comentário",
+          "4. Confirma avaliação",
+          "5. Rating médio do vendedor atualizado via BullMQ"
+        ],
+        "alternative_flows": [
+          "A1. Avaliação já existe: botão desabilitado com texto 'Você já avaliou'"
+        ],
+        "postconditions": ["Review criada, SellerStats.rating atualizado"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M06-T01",
+        "title": "Schema Prisma — Review",
+        "status": "planned",
+        "priority": "P1",
+        "estimated_days": 1,
+        "epic": "E07 — Reputação",
+        "description": "Criar model Review no Prisma com: sellerProfileId, buyerId, chatRoomId (@unique para garantir 1 avaliação por negociação), rating (1-5), comment? e timestamps. Adicionar campo rating ao SellerStats.",
+        "user_stories": [
+          "Como desenvolvedor, quero model Review com constraint de unicidade por chatRoom para garantir que cada negociação gere no máximo uma avaliação"
+        ],
+        "use_cases": ["UC35"],
+        "functional_requirements": [
+          { "id": "RF70", "description": "Review com chatRoomId @unique e rating 1-5" }
+        ],
+        "business_rules": [
+          { "id": "RN-M06-02", "description": "chatRoomId @unique no Review" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Schema do módulo de avaliações",
+          "TASK: model Review (id, sellerProfileId FK, buyerId FK, chatRoomId @unique, rating Int @db.SmallInt, comment String? @db.Text, isRemoved Boolean @default(false), createdAt)",
+          "TASK: Adicionar @@index([sellerProfileId]) para busca de avaliações por vendedor",
+          "TASK: Adicionar campo `rating Float?` ao SellerStats para rating médio",
+          "TASK: Executar migration",
+          "END EVENT: Schema de Review pronto"
+        ],
+        "acceptance_criteria": [
+          "chatRoomId @unique garante 1 Review por ChatRoom",
+          "rating @db.SmallInt com check 1-5 via @Check no Prisma raw SQL",
+          "isRemoved Boolean para soft delete por moderação",
+          "SellerStats.rating Float? adicionado"
+        ],
+        "subtasks": [
+          {
+            "id": "M06-T01-ST01",
+            "title": "Escrever model Review e atualizar SellerStats",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 2,
+            "description": "Adicionar model Review ao schema Prisma e atualizar SellerStats para incluir campo rating (média calculada). Executar migration.",
+            "user_story": "Como sistema de reputação, quero model Review bem estruturado para rastrear avaliações de vendedores por negociação",
+            "use_case": "UC35",
+            "functional_requirements": [
+              { "id": "RF70", "description": "Review com todos os campos necessários" }
+            ],
+            "business_rules": [
+              { "id": "RN-M06-02", "description": "@@unique no chatRoomId" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Escrever model Review",
+              "TASK: model Review com chatRoomId @unique",
+              "TASK: Adicionar rating Float? ao SellerStats",
+              "TASK: Adicionar totalReviews Int @default(0) ao SellerStats",
+              "TASK: npx prisma migrate dev",
+              "END EVENT: Migration aplicada"
+            ],
+            "acceptance_criteria": [
+              "chatRoomId @unique confirmar no SQL da migration",
+              "SellerStats com rating Float? e totalReviews Int",
+              "Migration sem erros"
+            ],
+            "tech_notes": "model Review: `@@map('review')`, `@@index([sellerProfileId])`. Validação de range 1-5: não suportado nativo no Prisma — validar no DTO NestJS com `@Min(1) @Max(5) @IsInt() rating`. Alternativamente: adicionar CHECK CONSTRAINT via migration SQL raw: `ALTER TABLE review ADD CONSTRAINT chk_rating CHECK (rating BETWEEN 1 AND 5)`. isRemoved: soft delete para moderação sem remover histórico de cálculo de rating."
+          },
+          {
+            "id": "M06-T01-ST02",
+            "title": "ReviewService e ReviewController — CRUD de avaliações",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 4,
+            "description": "Criar ReviewModule com POST /reviews (criar avaliação), GET /sellers/:id/reviews (listar avaliações públicas do vendedor com paginação). Verificar membership no ChatRoom e unicidade. Disparar job BullMQ de recálculo de rating.",
+            "user_story": "Como comprador, quero submeter minha avaliação do vendedor de forma simples e segura após uma negociação",
+            "use_case": "UC35",
+            "functional_requirements": [
+              { "id": "RF70", "description": "POST /reviews com validação de membership e unicidade" },
+              { "id": "RF72", "description": "GET /sellers/:id/reviews com paginação" }
+            ],
+            "business_rules": [
+              { "id": "RN-M06-01", "description": "Verificar que req.user é buyerId do chatRoom" },
+              { "id": "RN-M06-02", "description": "chatRoomId @unique — 409 se já existe" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: POST /reviews",
+              "TASK: Verificar que req.user.id === chatRoom.buyerId",
+              "TASK: Verificar unicidade via try/catch (unique constraint)",
+              "TASK: prisma.review.create()",
+              "TASK: BullMQ job recalc-seller-rating",
+              "END EVENT: Review criada"
+            ],
+            "acceptance_criteria": [
+              "Non-buyer do chatRoom recebe 403",
+              "Avaliação duplicada retorna 409",
+              "GET /sellers/:id/reviews retorna apenas isRemoved=false",
+              "Paginação cursor com limit 10"
+            ],
+            "tech_notes": "CreateReviewDto: `@IsUUID() chatRoomId`, `@IsUUID() sellerProfileId`, `@IsInt() @Min(1) @Max(5) rating`, `@IsOptional() @IsString() @MaxLength(800) comment`. Unique constraint catch: `try { await prisma.review.create() } catch (e) { if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException() }`. GET /reviews: `isRemoved: false` no where. Review response inclui: buyerName (anonimizado parcialmente: 'João M.'), rating, comment, createdAt."
+          },
+          {
+            "id": "M06-T01-ST03",
+            "title": "Worker BullMQ para recálculo de rating do vendedor",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 2,
+            "description": "Implementar worker 'recalc-seller-rating' que calcula a média de rating de todas as Reviews não removidas do vendedor e atualiza SellerStats.rating e totalReviews.",
+            "user_story": "Como sistema de reputação, quero rating recalculado assincronamente após cada avaliação para que o perfil do vendedor reflita sempre a média atualizada",
+            "use_case": "UC35",
+            "functional_requirements": [
+              { "id": "RF71", "description": "Rating médio atualizado assincronamente após nova avaliação" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Job recalc-seller-rating { sellerProfileId }",
+              "TASK: prisma.review.aggregate({ where: { sellerProfileId, isRemoved: false }, _avg: { rating: true }, _count: { id: true } })",
+              "TASK: prisma.sellerStats.update({ data: { rating: avg, totalReviews: count } })",
+              "END EVENT: SellerStats atualizado"
+            ],
+            "acceptance_criteria": [
+              "Rating calculado via aggregate Prisma (AVG nativo)",
+              "totalReviews atualizado corretamente",
+              "rate nulo se sem reviews (null não exibido como zero no perfil)"
+            ],
+            "tech_notes": "Prisma aggregate: `prisma.review.aggregate({ where: { sellerProfileId, isRemoved: false }, _avg: { rating: true }, _count: { id: true } })`. Result: `{ _avg: { rating: 4.3 }, _count: { id: 12 } }`. Update: `prisma.sellerStats.update({ data: { rating: result._avg.rating, totalReviews: result._count.id } })`. No perfil: exibir estrelas com 1 casa decimal: '4.3 ★ (12 avaliações)'."
+          }
+        ]
+      },
+      {
+        "id": "M06-T02",
+        "title": "Tela de avaliação e exibição de reviews no app",
+        "status": "planned",
+        "priority": "P1",
+        "estimated_days": 1,
+        "epic": "E07 — Reputação",
+        "description": "Implementar tela ou modal de avaliação dentro do chat (app/chat/[roomId]/avaliar.tsx). Exibir histórico de avaliações em chips de estrelas e comentários no perfil público do vendedor (M03).",
+        "user_stories": [
+          "Como comprador, quero avaliar o vendedor diretamente dentro da conversa de forma intuitiva"
+        ],
+        "use_cases": ["UC35"],
+        "functional_requirements": [
+          { "id": "RF70", "description": "StarRating selector interativo na tela de avaliação" },
+          { "id": "RF72", "description": "Lista de reviews no perfil do vendedor" }
+        ],
+        "business_rules": [
+          { "id": "RN-M06-04", "description": "Botão de avaliar visível apenas para o comprador no chat" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Comprador toca 'Avaliar Vendedor' no header do chat",
+          "TASK: Modal ou navegação para tela de avaliação",
+          "TASK: StarRatingPicker: 5 estrelas tocáveis",
+          "TASK: TextInput opcional para comentário",
+          "TASK: Tocar 'Enviar' → useMutation POST /reviews",
+          "TASK: onSuccess → Botão 'Avaliar' muda para 'Avaliado ✓'",
+          "END EVENT: Avaliação enviada"
+        ],
+        "acceptance_criteria": [
+          "StarRatingPicker com feedback visual ao selecionar estrelas",
+          "Botão 'Avaliar' visível apenas para buyerId do ChatRoom",
+          "Após avaliação: botão desabilitado com feedback 'Avaliado'",
+          "Perfil do vendedor exibe reviews com nome anonimizado, nota e data"
+        ],
+        "subtasks": [
+          {
+            "id": "M06-T02-ST01",
+            "title": "Componente StarRatingPicker e tela/modal de avaliação",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Criar componente StarRatingPicker reutilizável com 5 estrelas tocáveis e animação. Criar modal de avaliação com StarRatingPicker, TextInput para comentário e botão de envio. Integrar ao header da tela de chat (apenas para buyers).",
+            "user_story": "Como comprador, quero avaliar o vendedor com um seletor de estrelas amigável após a negociação",
+            "use_case": "UC35",
+            "functional_requirements": [
+              { "id": "RF70", "description": "StarRatingPicker com 5 estrelas interativas" }
+            ],
+            "business_rules": [
+              { "id": "RN-M06-04", "description": "Exibido apenas para buyerId do chat" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Modal de avaliação aberta",
+              "TASK: StarRatingPicker renderiza 5 estrelas com Ionicons 'star' e 'star-outline'",
+              "TASK (Comprador): Tocar estrela → state rating setado + Animated.spring nas estrelas",
+              "TASK: TextInput comment com maxLength=800",
+              "TASK: Botão 'Enviar' habilitado apenas se rating > 0",
+              "END EVENT: Dados prontos para submit"
+            ],
+            "acceptance_criteria": [
+              "Estrelas iluminam progressivamente ao selecionar nota (★★★☆☆)",
+              "Animação spring ao selecionar estrela",
+              "Counter de caracteres no TextInput (0/800)",
+              "Botão desabilitado se rating = 0"
+            ],
+            "tech_notes": "StarRatingPicker: array de 5 `Pressable` com Ionicons `star` (preenchida, cor #F59E0B) ou `star-outline` (vazia, cor #9CA3AF). Animated.spring para escala da estrela ao tocar: `Animated.spring(scaleAnim[i], { toValue: 1.3, useNativeDriver: true }).start(() => reset)`. Modal: `Modal transparent animationType='slide'` ou BottomSheet. Botão submit: `disabled={rating === 0 || isPending}` com loading spinner."
+          },
+          {
+            "id": "M06-T02-ST02",
+            "title": "Seção de avaliações no perfil público do vendedor (M03)",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 2,
+            "description": "Adicionar seção de avaliações na tela de perfil público do vendedor (M03). Exibir rating médio com estrelas, total de avaliações e lista das N mais recentes com nome anonimizado, nota e comentário.",
+            "user_story": "Como comprador, quero ver as avaliações recebidas pelo vendedor para decidir se confio nele antes de negociar",
+            "use_case": "UC35",
+            "functional_requirements": [
+              { "id": "RF71", "description": "Rating médio no perfil com total de avaliações" },
+              { "id": "RF72", "description": "Lista de reviews no perfil público" }
+            ],
+            "business_rules": [
+              { "id": "RN-M06-03", "description": "Reviews marcadas como isRemoved não aparecem" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Seção de avaliações no perfil do vendedor",
+              "TASK: useQuery(['seller', id, 'reviews']) → GET /sellers/:id/reviews?limit=5",
+              "TASK: Exibir rating médio com estrelas coloridas e '(N avaliações)'",
+              "TASK: Lista de ReviewCard: nome anonimizado, estrelas, comentário, data",
+              "TASK: Botão 'Ver todas' → navegar para /sellers/:id/reviews (lista completa)",
+              "END EVENT: Avaliações exibidas no perfil"
+            ],
+            "acceptance_criteria": [
+              "Rating médio com 1 decimal e total: '4.3 ★ (28 avaliações)'",
+              "Nome anonimizado: 'João M.' (primeiro nome + inicial do sobrenome)",
+              "Máximo 5 reviews exibidas na seção, com link para ver todas",
+              "isRemoved=false filtrado no endpoint"
+            ],
+            "tech_notes": "Anonimização do nome: `const [first, ...rest] = review.buyer.name.split(' '); return ${first} ${rest[0]?.[0] ?? ''}.`.trim()`. ReviewCard: componente com 5 estrelas menores (size 14), nome, data (dd/mm/yyyy), comentário. Rating header: componente RatingHeader com StarRow grande e contador. StarRow: usa mesma lógica do StarRatingPicker mas readOnly (sem Pressable)."
+          }
+        ]
+      }
+    ]
+  }
+}

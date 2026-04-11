@@ -1,0 +1,448 @@
+{
+  "module": {
+    "id": "M12",
+    "name": "Analytics e Dashboard",
+    "slug": "analytics_dashboard",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P2",
+    "epic_ref": "E12",
+    "estimated_sprint": "Sprint 8",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "charts": "Victory Native (React Native charts) para gráficos no app",
+      "aggregation": "PostgreSQL window functions + materialized views para performance",
+      "queue": "BullMQ (recálculo periódico de aggregates — cron a cada 6h)",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo de analytics e dashboards para vendedores e administradores. Vendedores visualizam métricas de seus anúncios (views, contatos, taxa de conversão chat/view). Admins visualizam métricas globais da plataforma (DAU, volume de anúncios, receita de assinaturas). Metrics calculadas de forma assíncrona via BullMQ para não impactar performance das queries principais.",
+    "goals": [
+      "Fornecer dashboard de métricas de anúncios para vendedores (views, chats iniciados, taxa de conversão)",
+      "Fornecer dashboard administrativo de métricas globais da plataforma para Admins",
+      "Calcular métricas de forma assíncrona (aggregates pré-calculados) para performance",
+      "Exibir métricas em gráficos simples e legíveis no app (Victory Native)"
+    ],
+    "actors": [
+      "Vendedor (acessa métricas dos seus anúncios e perfil)",
+      "Admin (acessa métricas globais da plataforma)",
+      "Sistema (recalcula aggregates via BullMQ cron)"
+    ],
+    "dependencies": {
+      "modules": ["M01", "M03", "M05", "M08", "M09", "M10"],
+      "external_services": ["BullMQ (cron job de recálculo de métricas)"]
+    },
+    "metrics": {
+      "seller_metrics": [
+        "views_per_listing: visualizações por anúncio (7/30/90 dias)",
+        "chats_initiated: chats iniciados em cada anúncio",
+        "conversion_rate: chats/views ratio por anúncio",
+        "avg_response_time_minutes: tempo médio de resposta a mensagens",
+        "total_reviews: total de avaliações recebidas",
+        "avg_rating: rating médio público"
+      ],
+      "admin_metrics": [
+        "dau: Daily Active Users (compradores + vendedores)",
+        "new_registrations_daily: novos cadastros por dia",
+        "active_listings: anúncios PUBLISHED ativos",
+        "pending_moderation: anúncios aguardando moderação",
+        "subscription_revenue_monthly: receita MRR de assinaturas",
+        "plan_distribution: % por plano (GRATUITO/PRO/PREMIUM)"
+      ]
+    },
+    "module_flow": {
+      "description": "Fluxo de coleta de métricas e exibição no dashboard",
+      "pools": [
+        { "name": "Vendedor/Admin", "lanes": ["App Mobile - Dashboard"] },
+        { "name": "API NestJS", "lanes": ["AnalyticsController"] },
+        { "name": "PostgreSQL", "lanes": ["Aggregates pré-calculados + window functions"] },
+        { "name": "BullMQ Cron", "lanes": ["RecalcMetricsWorker (a cada 6h)"] }
+      ],
+      "bpmn_text": [
+        "START EVENT: Usuário acessa tela de Dashboard",
+        "TASK (App): GET /analytics/seller/me ou GET /analytics/admin",
+        "TASK (API): Buscar SellerStats (pré-calculado) do vendedor",
+        "TASK (API): Buscar ListingStats por anúncio do vendedor",
+        "EXCLUSIVE GATEWAY: Dados frescos (< 6h)?",
+        "  [Sim] --> TASK: Retornar cached aggregates do banco",
+        "  [Não] --> TASK (Fallback): Calcular on-demand com LIMIT (max 90 dias)",
+        "TASK (App): Exibir gráficos com Victory Native (views, chats timeline)",
+        "PARALLEL FLOW (Background): BullMQ cron a cada 6h",
+        "TASK (Cron): RecalcMetricsWorker para todos os vendedores ativos",
+        "TASK: Atualizar SellerStats e ListingStats no banco",
+        "END EVENT: Dashboard exibido com métricas atualizadas"
+      ],
+      "message_flows": [
+        "BullMQ Cron → PostgreSQL: Recálculo de aggregates a cada 6h",
+        "API → App: Métricas via REST JSON para renderização em gráficos"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF120", "description": "Vendedor deve ver dashboard com views, chats iniciados e rating médio dos seus anúncios", "priority": "P2" },
+      { "id": "RF121", "description": "Vendedor deve ver gráfico de evolução de views dos últimos 30 dias por anúncio", "priority": "P2" },
+      { "id": "RF122", "description": "Admin deve ver dashboard com DAU, novos cadastros, volume de anúncios e receita de assinaturas", "priority": "P2" },
+      { "id": "RF123", "description": "Métricas devem ser atualizadas a cada 6 horas via BullMQ cron (não real-time)", "priority": "P2" }
+    ],
+    "business_rules": [
+      { "id": "RN-M12-01", "description": "Métricas de vendedor são privadas — apenas o próprio vendedor pode ver" },
+      { "id": "RN-M12-02", "description": "Métricas globais (admin) são restritas a ADMIN e MODERATOR (RBAC)" },
+      { "id": "RN-M12-03", "description": "ListingView registra apenas 1 view por IP por anúncio a cada 24h (dedup básico)" },
+      { "id": "RN-M12-04", "description": "Analytics calculados sobre dados anonimizados — sem identificação de compradores individuais nos logs" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC60",
+        "name": "Vendedor analisa performance de seus anúncios",
+        "actors": ["Vendedor"],
+        "preconditions": ["Vendedor com pelo menos 1 Listing PUBLISHED"],
+        "main_flow": [
+          "1. Vendedor acessa Dashboard no perfil",
+          "2. Vê resumo: total de views, total de chats, rating médio",
+          "3. Seleciona período (7/30/90 dias)",
+          "4. Vê gráfico de views por dia",
+          "5. Vê ranking de anúncios por views"
+        ],
+        "alternative_flows": [
+          "A1. Sem anúncios: EmptyState com CTA 'Cadastrar sua primeira sucata'"
+        ],
+        "postconditions": ["Vendedor informado sobre performance"]
+      },
+      {
+        "id": "UC61",
+        "name": "Admin analisa métricas globais da plataforma",
+        "actors": ["Admin"],
+        "preconditions": ["Usuário com role ADMIN"],
+        "main_flow": [
+          "1. Admin acessa Dashboard Admin",
+          "2. Vê cards: DAU, novos usuários hoje, anúncios ativos, pendentes de moderação",
+          "3. Vê gráfico de crescimento de usuários (últimos 30 dias)",
+          "4. Vê distribuição de planos (gratuito/pro/premium)"
+        ],
+        "alternative_flows": [],
+        "postconditions": ["Admin com visão geral da saúde da plataforma"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M12-T01",
+        "title": "Schema Prisma — ListingView, ListingStats e atualização do SellerStats",
+        "status": "planned",
+        "priority": "P2",
+        "estimated_days": 1,
+        "epic": "E12 — Analytics",
+        "description": "Criar model ListingView (registro de view por listing com dedup por IP+24h), ListingStats (aggregates pré-calculados por listing: views30d, chats7d, conversionRate) e atualizar SellerStats existente com campos de analytics.",
+        "user_stories": [
+          "Como analytics, quero modelos eficientes para registrar views de anúncios com dedup e calcular aggregates sem impactar queries de produção"
+        ],
+        "use_cases": ["UC60"],
+        "functional_requirements": [
+          { "id": "RF120", "description": "ListingStats com views e chats por período" }
+        ],
+        "business_rules": [
+          { "id": "RN-M12-03", "description": "DeduP: 1 view por IP por 24h por listing" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Schema de analytics",
+          "TASK: model ListingView (id, listingId, ipHash String, viewedAt, @@unique([listingId, ipHash]) com TTL lógico via viewedAt)",
+          "TASK: model ListingStats (id, listingId @unique, views7d, views30d, views90d, chatsInitiated30d, conversionRate Float, calculatedAt)",
+          "TASK: SellerStats: adicionar avgResponseTimeMinutes Float?, totalChatsInitiated Int @default(0)",
+          "TASK: Executar migration",
+          "END EVENT: Schema de analytics pronto"
+        ],
+        "acceptance_criteria": [
+          "ListingView com ipHash (SHA256 do IP para anonimização) em vez de IP raw",
+          "@@unique([listingId, ipHash]) não é suficiente para dedup 24h — usar lógica de verificação por viewedAt",
+          "ListingStats calculatedAt para saber quando foi recalculado",
+          "Migration sem impacto em modelos existentes"
+        ],
+        "subtasks": [
+          {
+            "id": "M12-T01-ST01",
+            "title": "Models ListingView e ListingStats",
+            "status": "planned",
+            "priority": "P2",
+            "estimated_hours": 2,
+            "description": "Adicionar ListingView e ListingStats ao schema.prisma. ListingView com ipHash (SHA256 do IP para anonimização LGPD). ListingStats como cache de aggregates. Executar migration.",
+            "user_story": "Como desenvolvedor, quero ListingView com ipHash para registrar views anonimizadas em conformidade com a LGPD",
+            "use_case": "UC60",
+            "functional_requirements": [
+              { "id": "RF120", "description": "Analytics por anúncio com views e chats" }
+            ],
+            "business_rules": [
+              { "id": "RN-M12-04", "description": "ipHash em vez de IP raw para anonimização" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Escrever ListingView e ListingStats",
+              "TASK: model ListingView com ipHash String @db.Char(64), @@index([listingId, viewedAt])",
+              "TASK: model ListingStats com todos os campos de aggregate",
+              "TASK: npx prisma migrate dev",
+              "END EVENT: Migration ok"
+            ],
+            "acceptance_criteria": [
+              "ipHash como SHA256 (64 chars hex) do IP do request",
+              "@@index([listingId, viewedAt]) para queries de contagem por período",
+              "ListingStats.calculatedAt para cache invalidation",
+              "Migration sem erros"
+            ],
+            "tech_notes": "ipHash: `const ipHash = createHash('sha256').update(req.ip + process.env.ANALYTICS_HASH_SALT).digest('hex')`. Salt: ANALYTICS_HASH_SALT em env vars — pseudoanonimização dinâmica. Dedup 24h: `WHERE listingId=? AND ipHash=? AND viewedAt > NOW() - INTERVAL '24 hours'` — contar > 0 antes de inserir. ListingStats: pode ser materializado como PostgreSQL MATERIALIZED VIEW no futuro para performance máxima."
+          }
+        ]
+      },
+      {
+        "id": "M12-T02",
+        "title": "AnalyticsController — endpoints e registro de views",
+        "status": "planned",
+        "priority": "P2",
+        "estimated_days": 2,
+        "epic": "E12 — Analytics",
+        "description": "Implementar AnalyticsController: POST /listings/:id/view (registrar view com dedup), GET /analytics/seller/me (métricas do vendedor), GET /analytics/admin (métricas globais para Admin). Views registradas assincronamente via BullMQ para não bloquear a tela do anúncio.",
+        "user_stories": [
+          "Como vendedor, quero que views sejam registradas automaticamente quando meu anúncio é visualizado, sem impacto no tempo de carregamento"
+        ],
+        "use_cases": ["UC60", "UC61"],
+        "functional_requirements": [
+          { "id": "RF120", "description": "Endpoint de registro de view e de métricas do vendedor" },
+          { "id": "RF122", "description": "Endpoint de métricas admin" }
+        ],
+        "business_rules": [
+          { "id": "RN-M12-01", "description": "Métricas do vendedor: apenas seu próprio sellerId" },
+          { "id": "RN-M12-02", "description": "Admin endpoint com RolesGuard ADMIN" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: POST /listings/:id/view (chamado ao abrir tela do anúncio)",
+          "TASK: Extrair IP do request, calcular ipHash",
+          "TASK: viewsQueue.add('register-view', { listingId, ipHash }) — fire and forget",
+          "TASK: Retornar 200 imediatamente (não aguardar write)",
+          "PARALLEL FLOW: GET /analytics/seller/me",
+          "TASK: Buscar ListingStats de todos os listings do vendedor",
+          "TASK: Calcular totais: sum(views30d), sum(chatsInitiated30d)",
+          "TASK: Retornar SellerAnalyticsDto com dados por listing e totais",
+          "PARALLEL FLOW: GET /analytics/admin (ADMIN only)",
+          "TASK: Calcular DAU via query de lastActiveAt nas últimas 24h",
+          "TASK: Contar novas registrações hoje",
+          "TASK: Buscar Listings por status, Subscriptions por plano",
+          "END EVENT: Métricas retornadas"
+        ],
+        "acceptance_criteria": [
+          "POST /view retorna 200 sem aguardar write no banco (fire-and-forget via BullMQ)",
+          "Worker de view verifica dedup antes de inserir ListingView",
+          "GET /seller/me retorna métricas apenas do vendedor autenticado",
+          "GET /admin retorna 403 para não-ADMIN",
+          "Período padrão: últimos 30 dias"
+        ],
+        "subtasks": [
+          {
+            "id": "M12-T02-ST01",
+            "title": "Registro assíncrono de views via BullMQ",
+            "status": "planned",
+            "priority": "P2",
+            "estimated_hours": 3,
+            "description": "Implementar POST /listings/:id/view que enfileira job BullMQ 'register-view' e retorna 200 imediatamente. Worker verifica dedup (1 view/IP/24h) e insere ListingView. Não bloquear a resposta da tela do anúncio.",
+            "user_story": "Como sistema de analytics, quero registrar views de forma assíncrona para que a performance e UX da tela de anúncio não sejam afetadas",
+            "use_case": "UC60",
+            "functional_requirements": [
+              { "id": "RF120", "description": "View registrada via BullMQ fire-and-forget" }
+            ],
+            "business_rules": [
+              { "id": "RN-M12-03", "description": "Dedup 1 view por IP por 24h" },
+              { "id": "RN-M12-04", "description": "IP hasheado via SHA256" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: POST /listings/:id/view chamado (sem auth obrigatória)",
+              "TASK: Extrair req.ip, calcular ipHash",
+              "TASK: viewsQueue.add('register-view', { listingId, ipHash }, { removeOnComplete: true })",
+              "TASK: return { success: true } — imediatamente (não aguarda worker)",
+              "WORKER FLOW: register-view job processado",
+              "TASK: Verificar dedup: prisma.listingView.count({ where: { listingId, ipHash, viewedAt: { gte: new Date(Date.now() - 86400000) } } })",
+              "EXCLUSIVE GATEWAY: count > 0?",
+              "  [Sim] --> TASK: Ignorar (dedup) — concluir job",
+              "  [Não] --> TASK: prisma.listingView.create({ listingId, ipHash, viewedAt: now })",
+              "END EVENT: View registrada ou ignorada por dedup"
+            ],
+            "acceptance_criteria": [
+              "Endpoint retorna em < 10ms (não aguarda DB write)",
+              "Dedup correto: segundo acesso do mesmo IP no mesmo dia não cria ListingView",
+              "removeOnComplete: true para não acumular jobs na fila",
+              "Job sem autenticação obrigatória (view é evento público)"
+            ],
+            "tech_notes": "IP em produção: usar `req.headers['x-forwarded-for'] || req.ip` (Vercel/proxy passa IP real via headers). ipHash: `createHash('sha256').update(ip + process.env.ANALYTICS_HASH_SALT).digest('hex')`. Queue options: `{ removeOnComplete: { age: 3600 }, removeOnFail: { age: 86400 } }`. Rate limit: o dedup de 24h já previne abuso. Para maior proteção: adicionar rate limit de 100 views/segundo por IP no gateway."
+          },
+          {
+            "id": "M12-T02-ST02",
+            "title": "Endpoints de métricas do vendedor e admin",
+            "status": "planned",
+            "priority": "P2",
+            "estimated_hours": 4,
+            "description": "Implementar GET /analytics/seller/me (métricas do vendedor: views, chats, rating por listing e totais) e GET /analytics/admin (métricas globais: DAU, cadastros, listings, MRR). Admin endpoint protegido por RolesGuard ADMIN.",
+            "user_story": "Como vendedor, quero um dashboard simples com métricas em cards e gráfico de linha de views dos últimos 30 dias para entender a performance dos meus anúncios",
+            "use_case": "UC60",
+            "functional_requirements": [
+              { "id": "RF120", "description": "GET /seller/me com views e chats por listing" },
+              { "id": "RF122", "description": "GET /admin com métricas globais" }
+            ],
+            "business_rules": [
+              { "id": "RN-M12-01", "description": "Apenas dados do próprio vendedor" },
+              { "id": "RN-M12-02", "description": "ADMIN guard em /analytics/admin" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: GET /analytics/seller/me",
+              "TASK: Buscar todos os listings do vendedor autenticado",
+              "TASK: Para cada listing: buscar ListingStats (pré-calculado) ou calcular on-demand",
+              "TASK: Buscar série temporal de views (últimos 30 dias): GROUP BY date",
+              "TASK: Retornar { summary: { totalViews, totalChats, avgRating }, listings: [...], viewsTimeline: [...] }",
+              "PARALLEL FLOW: GET /analytics/admin",
+              "TASK: Contar Users.lastActiveAt > 24h (DAU)",
+              "TASK: Contar Users criados hoje (new registrations)",
+              "TASK: Contar Listings por status",
+              "TASK: Contar Subscriptions por plano",
+              "TASK: Retornar AdminMetricsDto",
+              "END EVENT: Métricas retornadas"
+            ],
+            "acceptance_criteria": [
+              "viewsTimeline: array de { date: 'YYYY-MM-DD', count: N } para gráfico de linha",
+              "Período configurável via query param: ?period=7|30|90 (default: 30)",
+              "GET /admin com @Roles('ADMIN') guard",
+              "DAU: users com lastActiveAt > NOW() - 24h (adicionar lastActiveAt ao User)"
+            ],
+            "tech_notes": "viewsTimeline query: `SELECT DATE(viewed_at) as date, COUNT(*) as count FROM listing_view WHERE listing_id IN (?) AND viewed_at > NOW() - INTERVAL '30 days' GROUP BY date ORDER BY date ASC`. Via Prisma raw: `prisma.$queryRaw`. Alternativa: MATERIALIZED VIEW no Postgres: `CREATE MATERIALIZED VIEW mv_listing_daily_views AS SELECT ...` com REFRESH a cada 6h via BullMQ cron. User.lastActiveAt: atualizar via middleware no JwtAuthGuard ao autenticar: `prisma.user.update({ data: { lastActiveAt: new Date() } })` — com throttle para não atualizar em toda request."
+          }
+        ]
+      },
+      {
+        "id": "M12-T03",
+        "title": "BullMQ cron — recálculo periódico de aggregates",
+        "status": "planned",
+        "priority": "P2",
+        "estimated_days": 1,
+        "epic": "E12 — Analytics",
+        "description": "Implementar BullMQ scheduled job (cron) que recalcula ListingStats e SellerStats para todos os vendedores ativos a cada 6 horas. Usar Prisma aggregations (COUNT, AVG) para calcular os valores e atualizar os campos de cache.",
+        "user_stories": [
+          "Como sistema de analytics, quero aggregates pré-calculados para que as queries do dashboard do vendedor sejam rápidas sem calcular tudo on-demand a cada request"
+        ],
+        "use_cases": ["UC60"],
+        "functional_requirements": [
+          { "id": "RF123", "description": "Cron de recálculo a cada 6h" }
+        ],
+        "business_rules": [],
+        "bpmn_flow": [
+          "START EVENT: Cron dispara a cada 6 horas (expressão: '0 */6 * * *')",
+          "TASK: Buscar todos os SellerProfiles com listings PUBLISHED (active sellers)",
+          "TASK (ParallelBatch): Para cada sellerProfile em batches de 50",
+          "TASK: Calcular views30d, views7d: contar ListingView por listingId no período",
+          "TASK: Calcular chatsInitiated30d: contar ChatRooms criados no período por listing",
+          "TASK: Calcular conversionRate: chats/views",
+          "TASK: prisma.listingStats.upsert({ where: { listingId }, create/update: { views30d, chats, conversion, calculatedAt } })",
+          "TASK: Calcular SellerStats: sum dos agregados dos listings + avgRating + totalReviews",
+          "TASK: prisma.sellerStats.update({})",
+          "END EVENT: Aggregates atualizados"
+        ],
+        "acceptance_criteria": [
+          "Cron agendado via BullMQ repeat: `{ pattern: '0 */6 * * *' }`",
+          "Batches de 50 para não sobrecarregar o banco",
+          "calculatedAt setado no ListingStats para validar frescor dos dados",
+          "Job com retry 3x em caso de falha de DB"
+        ],
+        "subtasks": [
+          {
+            "id": "M12-T03-ST01",
+            "title": "Implementar RecalcMetricsWorker com BullMQ cron",
+            "status": "planned",
+            "priority": "P2",
+            "estimated_hours": 4,
+            "description": "Criar RecalcMetricsWorker que processa job 'recalc-metrics' agendado via BullMQ repeat. Calcular views e chats com Prisma aggregations. Atualizar ListingStats e SellerStats em upserts. Processar em batches com concorrência controlada.",
+            "user_story": "Como desenvolvedor, quero worker de recálculo de métricas que rode de forma confiável a cada 6h sem impactar a performance do banco em produção",
+            "use_case": "UC60",
+            "functional_requirements": [
+              { "id": "RF123", "description": "Recálculo assíncrono de aggregates" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Job recalc-metrics processado",
+              "TASK: Buscar SellerProfiles com listings ativos em batches",
+              "TASK: Para cada batch: calcular e upsert ListingStats",
+              "TASK: Atualizar SellerStats consolidado",
+              "TASK: Logar duração da execução (performace monitoring)",
+              "END EVENT: Aggregates atualizados"
+            ],
+            "acceptance_criteria": [
+              "Cron registrado no módulo: `analyticsQueue.add('recalc-metrics', {}, { repeat: { pattern: '0 */6 * * *' } })`",
+              "Batches de 50 sellerProfiles por vez",
+              "Upsert usa listingId como where (não criar duplicatas)",
+              "Logging de tempo de execução para monitoramento"
+            ],
+            "tech_notes": "BullMQ repeat: registrar no onModuleInit: `await this.analyticsQueue.add('recalc-metrics', {}, { repeat: { pattern: '0 */6 * * *' }, jobId: 'recalc-metrics-cron' })`. Batch processing: `while (hasMore) { const batch = sellers.slice(offset, offset+50); await Promise.all(batch.map(s => this.recalcSeller(s.id))); offset += 50; }`. conversionRate: `views30d > 0 ? chats30d / views30d : 0`. Limitar concorrência worker: `{ concurrency: 1 }` para não múltiplas instâncias simultâneas do cron."
+          }
+        ]
+      },
+      {
+        "id": "M12-T04",
+        "title": "Dashboard de analytics no app (tela do vendedor)",
+        "status": "planned",
+        "priority": "P2",
+        "estimated_days": 2,
+        "epic": "E12 — Analytics",
+        "description": "Implementar tela de dashboard analytics para vendedor no app: app/(seller)/analytics.tsx. Cards de métricas agregadas, gráfico de linha de views (Victory Native) e lista de anúncios ranqueados por performance.",
+        "user_stories": [
+          "Como vendedor, quero um dashboard visual e simples para entender quais anúncios performam melhor e se estou recebendo muitos contatos"
+        ],
+        "use_cases": ["UC60"],
+        "functional_requirements": [
+          { "id": "RF120", "description": "Dashboard com cards de métricas e lista de anúncios" },
+          { "id": "RF121", "description": "Gráfico de linha de views dos últimos 30 dias" }
+        ],
+        "business_rules": [
+          { "id": "RN-M12-01", "description": "Apenas métricas do próprio vendedor" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Tela analytics.tsx montada",
+          "TASK: useQuery(['analytics', 'seller']) → GET /analytics/seller/me?period=30",
+          "TASK: Exibir summary cards: Total views, Total chats, Conversão, Rating médio",
+          "TASK: VictoryLine com viewsTimeline (x=date, y=count)",
+          "TASK: FlatList de ListingAnalyticsCard ranqueados por views30d",
+          "TASK: Seletor de período (7/30/90 dias) → refetch query",
+          "END EVENT: Dashboard interativo renderizado"
+        ],
+        "acceptance_criteria": [
+          "4 cards de summary em grid 2x2",
+          "VictoryLine responsivo com eixo X de datas e eixo Y de views",
+          "Seletor de período: Segmented Control (7d / 30d / 90d)",
+          "ListingAnalyticsCard com thumbnail, título, views e badge de conversão",
+          "EmptyState para vendedor sem anúncios ainda"
+        ],
+        "subtasks": [
+          {
+            "id": "M12-T04-ST01",
+            "title": "Dashboard de analytics com Victory Native",
+            "status": "planned",
+            "priority": "P2",
+            "estimated_hours": 5,
+            "description": "Criar tela app/(seller)/analytics.tsx com: MetricCard component (4 cards), VictoryLine gráfico de views, PeriodSelector (Segmented Control), AnalyticsListingCard list. Usar Victory Native para gráfico de linha responsivo.",
+            "user_story": "Como vendedor, quero um gráfico de views claro e profissional para monitorar o interesse nos meus anúncios",
+            "use_case": "UC60",
+            "functional_requirements": [
+              { "id": "RF121", "description": "VictoryLine com viewsTimeline" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Tela renderizada",
+              "TASK: PeriodSelector: SegmentedControl ['7d', '30d', '90d']",
+              "TASK: MetricCard grid: Views Total | Contatos | Conversão | Rating",
+              "TASK: VictoryLine com data={viewsTimeline.map(v => ({ x: parseISO(v.date), y: v.count }))}",
+              "TASK: FlatList de AnalyticsListingCard ordenados por views",
+              "END EVENT: Dashboard completo renderizado"
+            ],
+            "acceptance_criteria": [
+              "Victory Native instalado: `npm install victory-native` (compatível com Expo SDK 51)",
+              "VictoryLine com eixo X formatado como 'dd/MM' (date-fns)",
+              "MetricCard com ícone Ionicons, valor numérico e label",
+              "Loading skeleton durante fetch",
+              "Conversão exibida como porcentagem: '12.3%'"
+            ],
+            "tech_notes": "Victory Native: `import { VictoryLine, VictoryChart, VictoryAxis } from 'victory-native'`. Obs: Victory Native com Skia requer `@shopify/react-native-skia` (Expo SDK 51 suporta via plugin). Alternativa mais simples: `react-native-gifted-charts` (sem Skia). width do chart: `Dimensions.get('window').width - 32` (responsivo). Formatação eixo X: `tickFormat={(t) => format(t, 'dd/MM', { locale: ptBR })}`. SegmentedControl: usar `@react-native-segmented-control/segmented-control`."
+          }
+        ]
+      }
+    ]
+  }
+}

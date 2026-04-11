@@ -1,0 +1,388 @@
+{
+  "module": {
+    "id": "M09",
+    "name": "Painel de Moderação",
+    "slug": "painel_moderacao",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P0",
+    "epic_ref": "E08",
+    "estimated_sprint": "Sprint 5-6",
+    "tech_stack": {
+      "mobile_admin": "React Native + Expo SDK 51 (ou Web Admin em Next.js via Expo Router)",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "queue": "BullMQ (jobs pós-moderação: alertas, notificações, expiração)",
+      "auth": "CASL (NestJS) para controle de permissões baseado em Role",
+      "deploy": "Vercel (API) + Expo EAS (mobile admin)"
+    },
+    "description": "Painel de moderação exclusivo para Admins/Moderadores da equipe PECAÊ. Responsável pela aprovação ou rejeição de anúncios cadastrados pelos vendedores (RN14). Central de revisão de documentos de verificação (Selo Verificado, M03) e denúncias de usuários. Nenhum anúncio vai a público sem aprovação (RN14).",
+    "goals": [
+      "Implementar fluxo mandatório de aprovação de anúncios (RN14)",
+      "Centralizar revisão de documentos para Selo Verificado (M03)",
+      "Gerenciar denúncias de anúncios e mensagens de chat",
+      "Garantir via RBAC que apenas Admin e Moderador acessem o painel"
+    ],
+    "actors": [
+      "Moderador (revisa e aprova/rejeita anúncios e documentos)",
+      "Admin (todos os poderes de Moderador + gestão de moderadores e configurações)",
+      "Vendedor (recebe feedback de aprovação/rejeição)"
+    ],
+    "dependencies": {
+      "modules": ["M01", "M03", "M05", "M11", "M_favoritos_alertas"],
+      "external_services": ["BullMQ (pós-aprovação: alertas de busca, notificações)", "Expo Push/Resend via M11"]
+    },
+    "module_flow": {
+      "description": "Fluxo de moderação — da submissão do anúncio pelo vendedor à publicação (aprovação) ou rejeição",
+      "pools": [
+        { "name": "Vendedor", "lanes": ["Envia sucata para moderação (M05)"] },
+        { "name": "Sistema", "lanes": ["Anúncio fica PENDING_APPROVAL"] },
+        { "name": "Moderador", "lanes": ["Painel Admin — revisa anúncios"] },
+        { "name": "API NestJS", "lanes": ["ModerationController (Admin Guard)"] },
+        { "name": "BullMQ", "lanes": ["match-alerts, notification-jobs"] },
+        { "name": "Vendedor", "lanes": ["Recebe notificação via M11"] }
+      ],
+      "bpmn_text": [
+        "START EVENT: Vendedor finaliza wizard de cadastro de sucata (M05)",
+        "TASK (M05): Listing.status = PENDING_APPROVAL",
+        "TASK: Notificação in-app para Moderadores: 'Novo anúncio aguardando revisão'",
+        "TASK (Moderador): Acessa dashboard de moderação → fila de PENDING_APPROVAL",
+        "TASK (Moderador): Abre anúncio para revisão: fotos, dados do veículo, placa mascarada",
+        "EXCLUSIVE GATEWAY: Anúncio aprovado?",
+        "  [Sim] --> TASK: POST /moderation/listings/:id/approve { moderatorNote? }",
+        "           TASK: Listing.status = PUBLISHED, Listing.publishedAt = now()",
+        "           TASK: M11: notificationService.send({ type: LISTING_PUBLISHED, userId: sellerId })",
+        "           TASK: BullMQ: job match-alerts { listingId } para alertar compradores (MFA)",
+        "  [Não] --> TASK: POST /moderation/listings/:id/reject { rejectionReason }",
+        "           TASK: Listing.status = REJECTED",
+        "           TASK: M11: notificationService.send({ type: LISTING_REJECTED, userId: sellerId, data: { reason } })",
+        "END EVENT: Listing PUBLISHED ou REJECTED; vendedor notificado"
+      ],
+      "message_flows": [
+        "M09 → M11: notificationService.send() ao aprovar ou rejeitar",
+        "M09 → BullMQ: job match-alerts ao aprovar (para MFA)",
+        "M09 → M03: Atualizar VerificationRequest ao revisar documentos"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF100", "description": "Moderador deve visualizar fila de anúncios PENDING_APPROVAL com filtros por data, vendedor e tipo de veículo", "priority": "P0" },
+      { "id": "RF101", "description": "Moderador deve poder aprovar anúncio com nota opcional", "priority": "P0" },
+      { "id": "RF102", "description": "Moderador deve poder rejeitar anúncio com motivo obrigatório (exibido ao vendedor)", "priority": "P0" },
+      { "id": "RF103", "description": "Moderador deve revisar documentos de verificação de vendedores (Selo Verificado)", "priority": "P0" },
+      { "id": "RF104", "description": "Moderador deve poder ver e gerenciar denúncias de anúncios e reviews", "priority": "P1" },
+      { "id": "RF105", "description": "Admin deve poder suspender ou banir usuários (soft ban)", "priority": "P1" }
+    ],
+    "business_rules": [
+      { "id": "RN14", "description": "Nenhum anúncio é publicado sem aprovação de moderador — fluxo mandatório" },
+      { "id": "RN15", "description": "Apenas usuários com role MODERATOR ou ADMIN acessam endpoints /moderation/*" },
+      { "id": "RN-M09-01", "description": "Rejeição exige rejectionReason não vazio (exibido ao vendedor)" },
+      { "id": "RN-M09-02", "description": "Moderador não pode moderar seus próprios anúncios (conflict of interest)" },
+      { "id": "RN08", "description": "Placa de veículo exibida no painel de moderação mascarada para moderadores também" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC50",
+        "name": "Aprovar anúncio de sucata",
+        "actors": ["Moderador"],
+        "preconditions": ["Listing com status PENDING_APPROVAL, Moderador autenticado com role MODERATOR ou ADMIN"],
+        "main_flow": [
+          "1. Moderador acessa fila de pendentes",
+          "2. Abre anúncio: fotos, dados do veículo, placa mascarada",
+          "3. Valida informações (fotos claras, dados consistentes)",
+          "4. Toca 'Aprovar'",
+          "5. Listing.status = PUBLISHED",
+          "6. Vendedor notificado via push + email",
+          "7. Job match-alerts disparado para alertar compradores com buscas compatíveis"
+        ],
+        "alternative_flows": [],
+        "postconditions": ["Listing PUBLISHED, vendedor notificado, alertas de busca processados"]
+      },
+      {
+        "id": "UC51",
+        "name": "Rejeitar anúncio com motivo",
+        "actors": ["Moderador"],
+        "preconditions": ["Listing PENDING_APPROVAL"],
+        "main_flow": [
+          "1. Moderador abre anúncio",
+          "2. Identifica problema: fotos de baixa qualidade, dados incorretos, etc",
+          "3. Toca 'Rejeitar'",
+          "4. Preenche motivo de rejeição (obrigatório)",
+          "5. Listing.status = REJECTED",
+          "6. Vendedor notificado com o motivo"
+        ],
+        "alternative_flows": [],
+        "postconditions": ["Listing REJECTED, vendedor notificado com motivo"]
+      },
+      {
+        "id": "UC52",
+        "name": "Aprovar Selo Verificado de vendedor",
+        "actors": ["Moderador"],
+        "preconditions": ["VerificationRequest com status PENDING, documentos enviados pelo vendedor"],
+        "main_flow": [
+          "1. Moderador acessa fila de verificações",
+          "2. Analisa documentos enviados (CNPJ/CPF, nota fiscal)",
+          "3. Toca 'Aprovar Verificação'",
+          "4. SellerProfile.isVerified = true",
+          "5. Vendedor notificado: 'Seu Selo Verificado foi aprovado'"
+        ],
+        "alternative_flows": [
+          "A1. Documentos insuficientes: rejeitar com motivo detalhado"
+        ],
+        "postconditions": ["SellerProfile.isVerified=true ou VerificationRequest.status=REJECTED"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M09-T01",
+        "title": "RBAC — Roles Admin e Moderador com CASL no NestJS",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 1,
+        "epic": "E08 — Painel de Moderação",
+        "description": "Implementar controle de acesso baseado em roles (RBAC) usando CASL no NestJS. Criar roles ADMIN e MODERATOR no model User. Criar guard AdminGuard/@Roles decorator para proteger todos os endpoints /moderation/*. Garantir que RN15 seja aplicado em nível de infraestrutura.",
+        "user_stories": [
+          "Como sistema de segurança, quero que apenas usuários com role ADMIN ou MODERATOR acessem o painel de moderação"
+        ],
+        "use_cases": ["UC50", "UC51", "UC52"],
+        "functional_requirements": [
+          { "id": "RF100", "description": "Admin Guard em todos os endpoints /moderation/*" }
+        ],
+        "business_rules": [
+          { "id": "RN15", "description": "MODERATOR e ADMIN apenas" },
+          { "id": "RN-M09-02", "description": "Moderador não modera seus próprios anúncios" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Configurar RBAC para moderação",
+          "TASK: Adicionar enum UserRole { USER MODERATOR ADMIN } ao schema Prisma",
+          "TASK: User.role UserRole @default(USER)",
+          "TASK: Criar RolesGuard que verifica req.user.role contra @Roles() decorator",
+          "TASK: Aplicar @UseGuards(JwtAuthGuard, RolesGuard) + @Roles('MODERATOR', 'ADMIN') em ModerationController",
+          "END EVENT: RBAC configurado"
+        ],
+        "acceptance_criteria": [
+          "User.role no banco com enum UserRole",
+          "RolesGuard retorna 403 para USER tentando acessar /moderation/*",
+          "ADMIN tem todas as permissões de MODERATOR",
+          "Endpoint POST /auth/promote-to-moderator { userId } apenas para ADMIN (para onboarding)"
+        ],
+        "subtasks": [
+          {
+            "id": "M09-T01-ST01",
+            "title": "Enum UserRole no Prisma e RolesGuard no NestJS",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Adicionar enum UserRole { USER MODERATOR ADMIN } ao schema Prisma. Criar NestJS @Roles() decorator e RolesGuard. Aplicar ao ModerationController. Criar endpoint POST /admin/users/:id/role para promover usuários (apenas ADMIN).",
+            "user_story": "Como sistema de acesso, quero roles granulares para garantir que apenas staff autorizado modere conteúdo",
+            "use_case": "UC50",
+            "functional_requirements": [
+              { "id": "RF100", "description": "RolesGuard em /moderation/*" }
+            ],
+            "business_rules": [
+              { "id": "RN15", "description": "MODERATOR ou ADMIN" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Implementar RBAC",
+              "TASK: scheme.prisma: enum UserRole { USER MODERATOR ADMIN }, User.role UserRole @default(USER)",
+              "TASK: Criar @Roles(...roles) SetMetadata decorator",
+              "TASK: Criar RolesGuard implements CanActivate: verificar req.user.role",
+              "TASK: Aplicar @Controller('moderation') @UseGuards(JwtAuthGuard, RolesGuard) @Roles('MODERATOR', 'ADMIN')",
+              "END EVENT: Roles configurados"
+            ],
+            "acceptance_criteria": [
+              "enum UserRole com USER, MODERATOR e ADMIN",
+              "RolesGuard usa reflector para ler @Roles()",
+              "ADMIN implicado: role ADMIN satisfaz @Roles('MODERATOR')",
+              "Migration sem breaking changes nos usuários existentes (default USER)"
+            ],
+            "tech_notes": "CASL (opcional para granularidade futura): instalar `@casl/ability @casl/nestjs`. Para MVP: simples RolesGuard sem CASL. RolesGuard: `canActivate() { const requiredRoles = this.reflector.get('roles', context.getHandler()); const user = request.user; return requiredRoles.includes(user.role) || user.role === 'ADMIN'; }`. JWT: adicionar `role` ao payload do JWT no AuthService ao gerar tokens."
+          }
+        ]
+      },
+      {
+        "id": "M09-T02",
+        "title": "ModerationController — fila de anúncios pendentes e ações de approve/reject",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E08 — Painel de Moderação",
+        "description": "Implementar ModerationController com: GET /moderation/listings (fila de PENDING_APPROVAL com filtros e paginação), GET /moderation/listings/:id (detalhes completos), POST /moderation/listings/:id/approve, POST /moderation/listings/:id/reject { rejectionReason }.",
+        "user_stories": [
+          "Como moderador, quero uma fila clara de anúncios pendentes com filtros para processar moderação de forma eficiente"
+        ],
+        "use_cases": ["UC50", "UC51"],
+        "functional_requirements": [
+          { "id": "RF100", "description": "GET /moderation/listings com filtros, ordenação e paginação" },
+          { "id": "RF101", "description": "POST /approve publica listing e notifica via M11" },
+          { "id": "RF102", "description": "POST /reject com rejectionReason obrigatório" }
+        ],
+        "business_rules": [
+          { "id": "RN14", "description": "Approve = único caminho para PUBLISHED" },
+          { "id": "RN-M09-01", "description": "Reject exige motivo não vazio" },
+          { "id": "RN-M09-02", "description": "Guard: moderador não aprova seus próprios anúncios" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: GET /moderation/listings",
+          "TASK: Filtrar por status=PENDING_APPROVAL, filtros opcionais (sellerId, brandId, dateRange)",
+          "TASK: Paginação cursor, ordenação por createdAt ASC (mais antigo primeiro — FIFO)",
+          "TASK: Incluir vendedor (name, isVerified) e fotos do veículo",
+          "PARALLEL FLOW: POST /moderation/listings/:id/approve",
+          "TASK: Verificar que moderador não é o vendedor (RN-M09-02)",
+          "TASK: prisma.$transaction: Listing.status=PUBLISHED + Listing.publishedAt=now()",
+          "TASK: notificationService.send(LISTING_PUBLISHED, sellerId)",
+          "TASK: alertsQueue.add('match-alerts', { listingId })",
+          "PARALLEL FLOW: POST /moderation/listings/:id/reject",
+          "TASK: Validar rejectionReason @IsString @MinLength(10)",
+          "TASK: Listing.status=REJECTED + Listing.rejectionReason=reason",
+          "TASK: notificationService.send(LISTING_REJECTED, sellerId, { reason })",
+          "END EVENT: Listing em novo status"
+        ],
+        "acceptance_criteria": [
+          "Fila FIFO por createdAt ASC (mais antigo pendente primeiro)",
+          "Approve: transaction atômica para status+publishedAt",
+          "Reject: rejectionReason exibido ao vendedor na notificação M11",
+          "Ambas as ações disparam notificação via notificationService",
+          "Approve dispara match-alerts para compradores com buscas compatíveis"
+        ],
+        "subtasks": [
+          {
+            "id": "M09-T02-ST01",
+            "title": "Endpoints de fila de moderação e detalhes do anúncio",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Implementar GET /moderation/listings (fila PENDING_APPROVAL) e GET /moderation/listings/:id (detalhes completos com fotos, placa mascarada, dados do vendedor). Paginação cursor. Payload inclui dados suficientes para moderação sem necessidade de telas adicionais.",
+            "user_story": "Como moderador, quero ver os detalhes completos de um anúncio pendente sem precisar sair da tela de moderação",
+            "use_case": "UC50",
+            "functional_requirements": [
+              { "id": "RF100", "description": "Lista e detalhes de anúncios PENDING_APPROVAL" }
+            ],
+            "business_rules": [
+              { "id": "RN08", "description": "Placa mascarada mesmo no painel de moderação" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: GET /moderation/listings",
+              "TASK: `WHERE status = PENDING_APPROVAL` com filtros opcionais",
+              "TASK: Incluir: vehicle (brand, model, version, year, photos), sellerProfile (name, isVerified, totalListings)",
+              "TASK: Mascarar placa: vehicle.licensePlate → 'ABC-****'",
+              "TASK: Retornar com hasMore para paginação",
+              "END EVENT: Lista retornada"
+            ],
+            "acceptance_criteria": [
+              "Placa mascarada no response (RN08)",
+              "Fotos ordenadas por order ASC",
+              "sellerProfile.totalListings para contexto do vendedor",
+              "Filter: sellerId, status, createdAt range"
+            ],
+            "tech_notes": "GET /moderation/listings query: `prisma.listing.findMany({ where: { status: 'PENDING_APPROVAL', ...(sellerId && { vehicle: { sellerProfile: { id: sellerId } } }) }, include: { vehicle: { include: { photos: { orderBy: { order: 'asc' } }, version: { include: { model: { include: { brand: true } } } }, yearFab: true, sellerProfile: { include: { user: { select: { name: true } }, _count: { select: { listings: { where: { status: 'PUBLISHED' } } } } } } } } }, orderBy: { createdAt: 'asc' }, take: 10 })`. Placa: mascarar no ModerationSerializer."
+          },
+          {
+            "id": "M09-T02-ST02",
+            "title": "Endpoints de approve e reject com side effects",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Implementar POST /moderation/listings/:id/approve e /reject. Usar prisma.$transaction para garantir atomicidade. Chamar notificationService após transaction. Enfileirar job match-alerts (apenas no approve). Verificar self-approval guard (RN-M09-02).",
+            "user_story": "Como moderador, quero aprovar ou rejeitar anúncios com um único toque e ter certeza que o vendedor é notificado automaticamente",
+            "use_case": "UC50",
+            "functional_requirements": [
+              { "id": "RF101", "description": "Approve: PUBLISHED + side effects" },
+              { "id": "RF102", "description": "Reject: REJECTED + notificação com motivo" }
+            ],
+            "business_rules": [
+              { "id": "RN14", "description": "Approve = único caminho para PUBLISHED" },
+              { "id": "RN-M09-02", "description": "Self-approval bloqueado" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: POST /moderation/listings/:id/approve",
+              "TASK: Buscar Listing e verificar status = PENDING_APPROVAL",
+              "TASK: Verificar self-approval: sellerProfile.userId !== req.user.id",
+              "TASK: prisma.$transaction([listing.update({ status: PUBLISHED, publishedAt }), moderationLog.create(...)])",
+              "TASK: notificationService.send({ type: LISTING_PUBLISHED, userId: sellerId })",
+              "TASK: alertsQueue.add('match-alerts', { listingId })",
+              "TASK: POST /moderation/listings/:id/reject: REJECTED + rejectionReason",
+              "TASK: notificationService.send({ type: LISTING_REJECTED, data: { reason } })",
+              "END EVENT: Ações executadas com side effects"
+            ],
+            "acceptance_criteria": [
+              "PUBLISHED+publishedAt definido na mesma transaction",
+              "Self-approval retorna 403 'Conflito de interesse'",
+              "Reject sem rejectionReason retorna 400",
+              "match-alerts enfileirado apenas no approve, não no reject",
+              "notificationService chamado fora da transaction (não bloqueia)"
+            ],
+            "tech_notes": "prisma.$transaction: `[prisma.listing.update({ where: { id: listingId, status: 'PENDING_APPROVAL' }, data: { status: 'PUBLISHED', publishedAt: new Date() } }), prisma.moderationLog.create({ data: { listingId, moderatorId, action: 'APPROVE', note: dto.moderatorNote } })]`. Self-approval check: `listing.vehicle.sellerProfile.userId === moderatorId`. Post-transaction: chamar notificationService e alertsQueue fora do transaction (fire-and-forget via Promise.all sem await para não bloquear response)."
+          }
+        ]
+      },
+      {
+        "id": "M09-T03",
+        "title": "Moderação de documentos de verificação (Selo Verificado)",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 1,
+        "epic": "E08 — Painel de Moderação",
+        "description": "Implementar fila de revisão de VerificationRequests (Selo Verificado do M03). Endpoints: GET /moderation/verifications (fila PENDING), POST /moderation/verifications/:id/approve, POST /moderation/verifications/:id/reject { reason }.",
+        "user_stories": [
+          "Como moderador, quero revisar documentos de vendedores e conceder ou negar o Selo Verificado de forma rápida e segura"
+        ],
+        "use_cases": ["UC52"],
+        "functional_requirements": [
+          { "id": "RF103", "description": "Fila de VerificationRequests PENDING e ações de approve/reject" }
+        ],
+        "business_rules": [
+          { "id": "RN15", "description": "Apenas MODERATOR/ADMIN" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: GET /moderation/verifications",
+          "TASK: Retornar VerificationRequests com status PENDING com documentUrls",
+          "TASK: Moderador analisa documentos via URLs dos arquivos",
+          "PARALLEL FLOW: Approve",
+          "TASK: SellerProfile.isVerified = true + VerificationRequest.status = APPROVED",
+          "TASK: notificationService.send(VERIFICATION_APPROVED)",
+          "PARALLEL FLOW: Reject",
+          "TASK: VerificationRequest.status = REJECTED + rejectionReason",
+          "TASK: notificationService.send(VERIFICATION_REJECTED, { reason })",
+          "END EVENT: Verificação processada"
+        ],
+        "acceptance_criteria": [
+          "Approve: SellerProfile.isVerified=true em transaction com VerificationRequest.status=APPROVED",
+          "Reject: Vendedor pode resubmeter após rejeição",
+          "Documentos acessíveis via URL assinada do Supabase Storage (link temporário)"
+        ],
+        "subtasks": [
+          {
+            "id": "M09-T03-ST01",
+            "title": "Endpoints de moderação de VerificationRequests",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Implementar endpoints de fila de verificações e ações de approve/reject. Integrate com M11 para notificações. Gerar URLs assinadas para documentos privados no Supabase Storage.",
+            "user_story": "Como moderador, quero ver os documentos dos vendedores e aprovar/rejeitar verificações com feedback claro",
+            "use_case": "UC52",
+            "functional_requirements": [
+              { "id": "RF103", "description": "Fila e ações de VerificationRequest" }
+            ],
+            "business_rules": [
+              { "id": "RN15", "description": "MODERATOR/ADMIN apenas" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: GET /moderation/verifications",
+              "TASK: findMany WHERE status=PENDING",
+              "TASK: Para cada documento: supabase.storage.from('verifications').createSignedUrl(path, 3600)",
+              "TASK: Retornar com signedUrls (1h de validade)",
+              "END EVENT: Fila retornada com documentos acessíveis"
+            ],
+            "acceptance_criteria": [
+              "documentUrls como signed URLs válidas por 1 hora",
+              "Approve: transaction atômica (isVerified=true + status=APPROVED)",
+              "Reject: vendedor pode criar nova VerificationRequest após rejeição",
+              "Notificação via M11 em ambos os casos"
+            ],
+            "tech_notes": "Signed URLs: `const { data } = await supabase.storage.from('verifications').createSignedUrl(doc.storagePath, 3600)`. Approve transaction: `prisma.$transaction([sellerProfile.update({ isVerified: true }), verificationRequest.update({ status: 'APPROVED', reviewedAt: new Date(), reviewedBy: moderatorId })])`. Resubmit: ao rejeitar, permitir nova VerificationRequest (sem lock em versão MVP)."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,694 @@
+{
+  "module": {
+    "id": "M04",
+    "name": "Catálogo Automotivo",
+    "slug": "catalogo_automotivo",
+    "version": "1.0.0",
+    "status": "planned",
+    "priority": "P0",
+    "epic_ref": "E03",
+    "estimated_sprint": "Sprint 1",
+    "tech_stack": {
+      "mobile": "React Native + Expo SDK 51 + TypeScript + Expo Router",
+      "backend": "Node.js + NestJS + TypeScript",
+      "database": "Supabase (PostgreSQL) + Prisma ORM",
+      "cache": "Redis via Upstash (cache agressivo — dados raramente mudam)",
+      "deploy": "Vercel (API) + Expo EAS (mobile)"
+    },
+    "description": "Módulo responsável pelo catálogo de veículos da plataforma: marcas, modelos, versões, anos e categorias fixas de peças (PartCategory). É infraestrutura base para os módulos M05 (Cadastro de Sucata) e M07 (Busca e Descoberta). Dados gerenciados exclusivamente pelo administrador.",
+    "goals": [
+      "Prover catálogo hierárquico de veículos: Marca → Modelo → Versão → Ano",
+      "Manter lista fixa de PartCategory disponível para seleção no cadastro de sucatas",
+      "Expor endpoints eficientes com cache agressivo (dados raramente mudam)",
+      "Permitir CRUD completo via painel administrativo"
+    ],
+    "actors": [
+      "Comprador (leitura via busca em cascata)",
+      "Vendedor (seleção no formulário de cadastro de sucata)",
+      "Administrador (CRUD completo via painel web)",
+      "Sistema (seed inicial de marcas/modelos brasileiros)"
+    ],
+    "dependencies": {
+      "modules": ["M01"],
+      "external_services": ["Redis via Upstash (cache)"]
+    },
+    "module_flow": {
+      "description": "Fluxo de consulta do catálogo automotivo em cascata — usado no formulário de cadastro de sucata e na tela de busca",
+      "pools": [
+        { "name": "Usuário", "lanes": ["Comprador / Vendedor"] },
+        { "name": "App Mobile", "lanes": ["Expo Router / Telas React Native"] },
+        { "name": "API NestJS", "lanes": ["CatalogController", "CatalogService", "CacheService"] },
+        { "name": "Infraestrutura", "lanes": ["Redis (Upstash)", "Supabase PostgreSQL"] }
+      ],
+      "bpmn_text": [
+        "START EVENT: Usuário inicia seleção de veículo (busca ou cadastro de sucata)",
+        "TASK (App): Chamar GET /catalog/brands",
+        "TASK (API - CatalogService): Verificar cache Redis 'catalog:brands'",
+        "EXCLUSIVE GATEWAY: Cache hit?",
+        "  [Sim] --> MESSAGE FLOW (Redis → API): Retornar lista de marcas do cache (TTL 24h)",
+        "  [Não] --> TASK (API): prisma.vehicleBrand.findMany({ orderBy: { name: 'asc' } })",
+        "           TASK (API): Salvar resultado no Redis com TTL 24h",
+        "           MESSAGE FLOW (API → App): Retornar lista de marcas",
+        "TASK (Usuário): Selecionar marca",
+        "TASK (App): Chamar GET /catalog/brands/:brandId/models",
+        "TASK (API): Verificar cache Redis 'catalog:models:{brandId}'",
+        "EXCLUSIVE GATEWAY: Cache hit?",
+        "  [Sim] --> MESSAGE FLOW: Retornar modelos do cache",
+        "  [Não] --> TASK (API): prisma.vehicleModel.findMany({ where: { brandId } })",
+        "           TASK (API): Salvar no Redis com TTL 24h",
+        "TASK (Usuário): Selecionar modelo",
+        "TASK (App): Chamar GET /catalog/models/:modelId/versions",
+        "TASK (Usuário): Selecionar versão",
+        "TASK (App): Chamar GET /catalog/versions/:versionId/years",
+        "TASK (Usuário): Selecionar ano",
+        "TASK (App): Chamar GET /catalog/part-categories (lista fixa)",
+        "TASK (Usuário): Marcar checkboxes de peças disponíveis",
+        "END EVENT: Veículo identificado por versionId + yearFabId; peças selecionadas"
+      ],
+      "message_flows": [
+        "Redis → API: Cache hit retorna dados sem acessar banco",
+        "API → App: Retornar lista paginada de marcas, modelos, versões e categorias"
+      ]
+    },
+    "functional_requirements": [
+      { "id": "RF20", "description": "Sistema deve listar marcas de veículos ordenadas alfabeticamente", "priority": "P0" },
+      { "id": "RF21", "description": "Sistema deve listar modelos filtrados por marca selecionada", "priority": "P0" },
+      { "id": "RF22", "description": "Sistema deve listar versões filtradas por modelo selecionado", "priority": "P0" },
+      { "id": "RF23", "description": "Sistema deve listar anos disponíveis filtrados por versão selecionada", "priority": "P0" },
+      { "id": "RF24", "description": "Sistema deve expor lista fixa de PartCategory para seleção no cadastro de sucata", "priority": "P0" },
+      { "id": "RF25", "description": "Administrador deve poder adicionar, editar e remover marcas, modelos e versões via painel web", "priority": "P1" },
+      { "id": "RF26", "description": "Sistema deve suportar autocomplete de marca e modelo com debounce de 300ms no app", "priority": "P1" }
+    ],
+    "business_rules": [
+      { "id": "RN03", "description": "PartCategory é lista fixa gerenciada apenas por administradores — vendedores apenas selecionam" },
+      { "id": "RN-M04-01", "description": "Dados do catálogo são cacheados por 24h no Redis; invalidação manual pelo admin ao editar" },
+      { "id": "RN-M04-02", "description": "Seed inicial obrigatório com marcas mais comuns no Brasil: Fiat, VW, GM, Ford, Toyota, Honda, Hyundai, Renault, Chevrolet, Nissan, Jeep" }
+    ],
+    "use_cases": [
+      {
+        "id": "UC10",
+        "name": "Consultar catálogo em cascata",
+        "actors": ["Comprador", "Vendedor"],
+        "preconditions": ["Catálogo populado com seed inicial"],
+        "main_flow": [
+          "1. Usuário inicia seleção de marca",
+          "2. Sistema retorna lista de marcas (cache ou banco)",
+          "3. Usuário seleciona marca → sistema retorna modelos da marca",
+          "4. Usuário seleciona modelo → sistema retorna versões do modelo",
+          "5. Usuário seleciona versão → sistema retorna anos disponíveis",
+          "6. Usuário seleciona ano",
+          "7. Sistema retorna lista fixa de PartCategory"
+        ],
+        "alternative_flows": [
+          "A1. Marca sem modelos cadastrados: exibir mensagem 'Nenhum modelo disponível'",
+          "A2. Cache Redis indisponível: fallback para banco com degradação elegante"
+        ],
+        "postconditions": ["Veículo identificado por versionId + yearFabId"]
+      },
+      {
+        "id": "UC11",
+        "name": "Gerenciar catálogo (Admin)",
+        "actors": ["Administrador"],
+        "preconditions": ["Admin autenticado com role ADMIN"],
+        "main_flow": [
+          "1. Admin acessa painel de gestão do catálogo",
+          "2. Cria, edita ou remove marcas, modelos e versões",
+          "3. Sistema invalida cache Redis das entidades editadas",
+          "4. Novas entradas ficam disponíveis imediatamente"
+        ],
+        "alternative_flows": [],
+        "postconditions": ["Catálogo atualizado e cache invalidado"]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "M04-T01",
+        "title": "Schema Prisma — entidades do catálogo automotivo",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 1,
+        "epic": "E03 — Catálogo Automotivo",
+        "description": "Definir e criar no Prisma as entidades VehicleBrand, VehicleModel, VehicleVersion, VehicleYear e PartCategory com seus relacionamentos hierárquicos, índices de performance e constraints.",
+        "user_stories": [
+          "Como desenvolvedor, quero schema Prisma bem estruturado para o catálogo automotivo para que as consultas em cascata sejam eficientes",
+          "Como sistema, quero PartCategory como tabela fixagoverned no banco para garantir consistência das categorias de peças"
+        ],
+        "use_cases": ["UC10"],
+        "functional_requirements": [
+          { "id": "RF20", "description": "Entidade VehicleBrand com campos: id, name, country, logo" },
+          { "id": "RF21", "description": "Entidade VehicleModel com brandId FK e segment enum" },
+          { "id": "RF22", "description": "Entidade VehicleVersion com modelId FK e campos técnicos" },
+          { "id": "RF23", "description": "Entidade VehicleYear com versionId FK e ano de fabricação/modelo" }
+        ],
+        "business_rules": [
+          { "id": "RN-M04-01", "description": "Índices em brandId, modelId e versionId para queries em cascata" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Início do schema do catálogo automotivo",
+          "TASK: Declarar enum VehicleSegment (HATCH, SEDAN, SUV, PICKUP, VAN, TRUCK, MOTORCYCLE, OTHER)",
+          "TASK: Escrever model VehicleBrand (id, name, country, logo?)",
+          "TASK: Escrever model VehicleModel (id, brandId, name, segment VehicleSegment)",
+          "TASK: Escrever model VehicleVersion (id, modelId, name, engineCode, displacement, fuel, transmission)",
+          "TASK: Escrever model VehicleYear (id, versionId, yearFab Int, yearModel Int)",
+          "TASK: Escrever model PartCategory (id, name, slug UNIQUE, icon)",
+          "TASK: Adicionar @@index([brandId]) em VehicleModel",
+          "TASK: Adicionar @@index([modelId]) em VehicleVersion",
+          "TASK: Adicionar @@index([versionId]) em VehicleYear",
+          "TASK: Executar npx prisma validate e migrate",
+          "END EVENT: Schema do catálogo pronto"
+        ],
+        "acceptance_criteria": [
+          "Hierarquia Brand → Model → Version → Year corretamente representada no Prisma",
+          "PartCategory tem slug com @unique para upsert idempotente no seed",
+          "Índices em todas as FKs para performance das queries em cascata",
+          "VehicleSegment como enum para filtros de busca futuros",
+          "Migration executada com sucesso no Supabase"
+        ],
+        "subtasks": [
+          {
+            "id": "M04-T01-ST01",
+            "title": "Escrever schema Prisma — hierarquia Brand → Model → Version → Year",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Adicionar ao schema.prisma as entidades VehicleBrand, VehicleModel, VehicleVersion e VehicleYear com relações bidirecionais e índices em FKs. VehicleVersion inclui: engineCode, displacement, fuel (GASOLINE/ETHANOL/FLEX/DIESEL/ELECTRIC/HYBRID), transmission (MANUAL/AUTOMATIC/CVT/AUTOMATED).",
+            "user_story": "Como desenvolvedor, quero hierarquia de veículos bem definida no Prisma para que a seleção em cascata seja type-safe e eficiente",
+            "use_case": "UC10",
+            "functional_requirements": [
+              { "id": "RF20", "description": "VehicleBrand com id, name, country, logo" },
+              { "id": "RF22", "description": "VehicleVersion com dados técnicos do motor" }
+            ],
+            "business_rules": [
+              { "id": "RN-M04-01", "description": "Índices em todas as FKs" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Adição das entidades de veículos ao schema",
+              "TASK: Declarar enums FuelType e TransmissionType",
+              "TASK: Escrever model VehicleBrand",
+              "TASK: Escrever model VehicleModel com relação para VehicleBrand",
+              "TASK: Escrever model VehicleVersion com relação para VehicleModel",
+              "TASK: Escrever model VehicleYear com relação para VehicleVersion",
+              "TASK: Adicionar indices nas FKs (@@index([brandId]), etc)",
+              "END EVENT: Schema válido"
+            ],
+            "acceptance_criteria": [
+              "Todos os models têm id UUID como primary key",
+              "Relações bidirecionais declaradas (Brand → models[], Model → versions[], etc)",
+              "Enums FuelType e TransmissionType declarados fora dos models",
+              "npx prisma validate sem erros"
+            ],
+            "tech_notes": "VehicleBrand: `id String @id @default(uuid()), name String, country String, logo String?`. VehicleModel: `id String @id @default(uuid()), brandId String, brand VehicleBrand @relation(...), name String, segment VehicleSegment, @@index([brandId])`. VehicleVersion: `engineCode String?, displacement Decimal?, fuel FuelType, transmission TransmissionType`. VehicleYear: `yearFab Int, yearModel Int, versionId String, @@index([versionId])`. Usar `@@map('vehicle_brand')` etc para snake_case no banco."
+          },
+          {
+            "id": "M04-T01-ST02",
+            "title": "Escrever model PartCategory e migration do catálogo",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 2,
+            "description": "Adicionar model PartCategory (id UUID, name, slug UNIQUE, icon) ao schema.prisma. Executar migration `npx prisma migrate dev --name add_catalog_automotive`. PartCategory é entidade central: lista fixa não criada por vendedores.",
+            "user_story": "Como sistema, quero PartCategory bem definida no banco para que a lista fixa de categorias de peças seja consistente em toda a plataforma",
+            "use_case": "UC10",
+            "functional_requirements": [
+              { "id": "RF24", "description": "PartCategory com id, name, slug e icon" }
+            ],
+            "business_rules": [
+              { "id": "RN03", "description": "Lista gerenciada apenas por admins; slug único para upsert" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Adição do model PartCategory",
+              "TASK: Escrever model PartCategory com slug @unique",
+              "TASK: Executar npx prisma migrate dev --name add_catalog",
+              "TASK: Verificar migration SQL gerada",
+              "END EVENT: Tabelas criadas no Supabase"
+            ],
+            "acceptance_criteria": [
+              "PartCategory tem slug com @unique constraint",
+              "Migration gerada sem erros e aplicada no Supabase",
+              "Tabela part_category criada no PostgreSQL"
+            ],
+            "tech_notes": "model PartCategory: `id String @id @default(uuid()), name String, slug String @unique, icon String, @@map('part_category')`. O campo `icon` referencia nome de ícone do Lucide ou MaterialCommunityIcons usado no React Native. Após migration, executar seed via `npx prisma db seed` (já definido em M01-T01-ST03)."
+          },
+          {
+            "id": "M04-T01-ST03",
+            "title": "Seed completo de marcas e modelos populares no Brasil",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Expandir o seed do Prisma com dados reais de VehicleBrand (Fiat, VW, GM/Chevrolet, Ford, Toyota, Honda, Hyundai, Renault, Nissan, Jeep) e seus modelos populares com segmento correto. Cada marca com pelo menos 5 modelos mais vendidos no Brasil. Seed idempotente com upsert.",
+            "user_story": "Como vendedor, quero encontrar minha marca e modelo de carro no sistema para que eu possa cadastrar minha sucata sem dificuldade",
+            "use_case": "UC10",
+            "functional_requirements": [
+              { "id": "RF20", "description": "Marcas populares no Brasil disponíveis para seleção" },
+              { "id": "RF21", "description": "Modelos mais vendidos disponíveis por marca" }
+            ],
+            "business_rules": [
+              { "id": "RN-M04-02", "description": "Seed obrigatório com marcas BR" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Executar seed de catálogo",
+              "TASK: Upsert VehicleBrand para cada marca (Fiat, VW, GM, Ford, Toyota, Honda, Hyundai, Renault, Nissan, Jeep)",
+              "TASK: Para cada marca, upsert VehicleModel com segment correto",
+              "PARALLEL GATEWAY: Executar upserts em paralelo por marca",
+              "  --> TASK: Fiat — Uno, Palio, Siena, Strada, Toro (+ Pulse, Cronos, Mobi)",
+              "  --> TASK: VW — Gol, Polo, Voyage, Saveiro, T-Cross (+ Virtus, Nivus)",
+              "  --> TASK: GM — Onix, Tracker, S10, Spin, Cruze",
+              "  --> TASK: Ford — Ka, EcoSport, Ranger, Fiesta, Focus",
+              "  --> TASK: Toyota — Corolla, Hilux, SW4, Etios, Yaris",
+              "TASK: Executar npm prisma db seed",
+              "END EVENT: Catálogo populado"
+            ],
+            "acceptance_criteria": [
+              "Mínimo 10 marcas populares no Brasil",
+              "Mínimo 5 modelos por marca com segment correto",
+              "Seed idempotente: executar 2x não duplica dados",
+              "Cada modelo tem segment mapeado corretamente (Strada = PICKUP, Uno = HATCH, etc)"
+            ],
+            "tech_notes": "Usar `prisma.vehicleBrand.upsert({ where: { name }, create: {...}, update: {} })`. Para modelos: `prisma.vehicleModel.upsert({ where: { brandId_name: { brandId, name } }, create: {...}, update: {} })` — requere `@@unique([brandId, name])` no Prisma schema. Estruturar o seed como array de objetos para facilitar manutenção. Adicionar campo `isPopular: Boolean @default(false)` para destacar marcas/modelos mais buscados."
+          }
+        ]
+      },
+      {
+        "id": "M04-T02",
+        "title": "CatalogController e CatalogService com cache Redis",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E03 — Catálogo Automotivo",
+        "description": "Implementar CatalogModule no NestJS com todos os endpoints de leitura do catálogo. Integrar Redis via @nestjs/cache-manager (Upstash) para cache de 24h em todas as respostas. Endpoints públicos (@Public()) pois catálogo não requer autenticação.",
+        "user_stories": [
+          "Como comprador, quero ver a lista de marcas rapidamente no app para que a seleção de veículo seja ágil",
+          "Como sistema, quero cachear o catálogo no Redis para que não haja queries desnecessárias ao banco em cada acesso"
+        ],
+        "use_cases": ["UC10"],
+        "functional_requirements": [
+          { "id": "RF20", "description": "GET /catalog/brands retorna lista de marcas ordenadas" },
+          { "id": "RF21", "description": "GET /catalog/brands/:id/models retorna modelos da marca" },
+          { "id": "RF22", "description": "GET /catalog/models/:id/versions retorna versões do modelo" },
+          { "id": "RF23", "description": "GET /catalog/versions/:id/years retorna anos da versão" },
+          { "id": "RF24", "description": "GET /catalog/part-categories retorna lista fixa de categorias" }
+        ],
+        "business_rules": [
+          { "id": "RN-M04-01", "description": "Cache Redis com TTL 24h; invalidação ao editar via admin" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Requisição GET /catalog/*",
+          "TASK (NestJS - JwtAuthGuard): Endpoint público, @Public() — sem verificação de token",
+          "TASK (CatalogService): Gerar cache key baseada no endpoint e parâmetros",
+          "TASK (CacheService): Verificar Redis Upstash com chave 'pecae:catalog:brands' etc",
+          "EXCLUSIVE GATEWAY: Cache hit?",
+          "  [Sim] --> TASK: Deserializar JSON do Redis e retornar resposta",
+          "  [Não] --> TASK (Prisma): Executar query com filtros e ordenação",
+          "           TASK (CacheService): Serializar resultado e salvar no Redis (TTL 86400s)",
+          "           TASK: Retornar resultado",
+          "END EVENT: Resposta entregue ao app"
+        ],
+        "acceptance_criteria": [
+          "GET /catalog/brands retorna array de brands em < 100ms (com cache)",
+          "Todos os endpoints de catálogo são públicos (sem JWT)",
+          "Cache invalidado automaticamente quando admin edita uma entidade",
+          "Resposta inclui campos necessários para seleção em cascata no app"
+        ],
+        "subtasks": [
+          {
+            "id": "M04-T02-ST01",
+            "title": "Criar CatalogModule, CatalogController e CatalogService",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 4,
+            "description": "Criar CatalogModule com CatalogController (@Get brands, models, versions, years, part-categories) e CatalogService com injeção de PrismaService e CacheService. Todos os endpoints decorados com @Public(). Implementar respostas tipadas com DTOs de resposta.",
+            "user_story": "Como app mobile, quero endpoints de catálogo eficientes para popular as seleções em cascata de veículo",
+            "use_case": "UC10",
+            "functional_requirements": [
+              { "id": "RF20", "description": "GET /catalog/brands" },
+              { "id": "RF24", "description": "GET /catalog/part-categories" }
+            ],
+            "business_rules": [
+              { "id": "RN-M04-01", "description": "Endpoints públicos, sem autenticação" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Módulo CatalogModule criado",
+              "TASK: nest g module catalog",
+              "TASK: nest g controller catalog",
+              "TASK: nest g service catalog",
+              "TASK: Implementar getBrands(), getModelsByBrand(), getVersionsByModel(), getYearsByVersion(), getPartCategories()",
+              "TASK: Decorar endpoints com @Get, @Param, @Public",
+              "END EVENT: Module registrado no AppModule"
+            ],
+            "acceptance_criteria": [
+              "GET /catalog/brands retorna { id, name, country, logo } ordenados por name",
+              "GET /catalog/brands/:brandId/models retorna modelos filtrados",
+              "GET /catalog/part-categories retorna lista completa de categorias",
+              "Erros de entidade não encontrada retornam 404 NotFoundException"
+            ],
+            "tech_notes": "NestJS CLI: `nest g module modules/catalog`. Injetar PrismaService via construtor. Para cache: `@Inject(CACHE_MANAGER) private cacheManager: Cache`. Usar `@UseInterceptors(CacheInterceptor)` do @nestjs/cache-manager ou implementar manualmente via cacheManager.get/set. Response DTOs: `BrandResponseDto`, `ModelResponseDto`, etc. Serialização com `class-transformer`."
+          },
+          {
+            "id": "M04-T02-ST02",
+            "title": "Integrar Redis Upstash como cache provider no NestJS",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Configurar @nestjs/cache-manager com ioredis apontando para Upstash Redis. Criar CacheModule global com TTL padrão de 24h. Implementar CacheService wrapper com métodos get, set e invalidateByPattern para facilitar invalidação por prefixo (ex: 'pecae:catalog:*').",
+            "user_story": "Como sistema, quero um cache Redis centralizado para que o catálogo automotivo seja servido com altíssima performance sem pressionar o banco",
+            "use_case": "UC10",
+            "functional_requirements": [
+              { "id": "RF26", "description": "Tempo de resposta < 100ms com cache ativo" }
+            ],
+            "business_rules": [
+              { "id": "RN-M04-01", "description": "TTL 24h para dados do catálogo" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Configurar cache Redis",
+              "TASK: Instalar @nestjs/cache-manager e cache-manager-ioredis-yet",
+              "TASK: Configurar CacheModule.registerAsync() com Upstash Redis URL",
+              "TASK: Criar CacheModule global com isGlobal: true",
+              "TASK: Injetar CACHE_MANAGER nas services que precisam de cache",
+              "TASK: Testar cache hit/miss com logs de debug",
+              "END EVENT: Cache Redis funcional"
+            ],
+            "acceptance_criteria": [
+              "Segunda chamada a /catalog/brands retorna do cache (verificar via logs)",
+              "TTL de 24h configurado como padrão global",
+              "UPSTASH_REDIS_URL via ConfigService (nunca hardcoded)",
+              "Cache miss adiciona resultado ao Redis automaticamente"
+            ],
+            "tech_notes": "Instalar: `@nestjs/cache-manager`, `cache-manager`, `cache-manager-ioredis-yet`, `ioredis`. ConfiguraçãoUpstash: usar `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` OU connection string ioredis `redis://default:{token}@{host}:{port}`. CacheModule: `CacheModule.registerAsync({ useFactory: (config: ConfigService) => ({ store: redisStore, host: config.get('REDIS_HOST'), port: config.get('REDIS_PORT'), password: config.get('REDIS_PASSWORD'), ttl: 86400 }) })`. Keys pattern: `pecae:catalog:brands`, `pecae:catalog:models:{brandId}`, etc."
+          },
+          {
+            "id": "M04-T02-ST03",
+            "title": "Endpoint de autocomplete e busca de modelo para o app",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Implementar GET /catalog/search?q=&type=brand|model que retorna sugestões de autocomplete para busca rápida. Usado na tela de busca do app (M07) com debounce de 300ms. Suportar busca parcial de texto (ILIKE no PostgreSQL) com cache de 1h para queries frequentes.",
+            "user_story": "Como comprador, quero digitar o nome do carro e ver sugestões automáticas para que eu possa encontrar rapidamente o veículo que preciso",
+            "use_case": "UC10",
+            "functional_requirements": [
+              { "id": "RF26", "description": "Autocomplete de marca e modelo no campo de busca" }
+            ],
+            "business_rules": [
+              { "id": "RN-M04-01", "description": "Resultados de autocomplete cacheados por 1h" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Usuário digita no campo de busca do app",
+              "TASK (App): Debounce 300ms antes de chamar API",
+              "TASK (API): GET /catalog/search?q=polo&type=model",
+              "TASK (API): Verificar cache 'pecae:catalog:search:{type}:{q}'",
+              "EXCLUSIVE GATEWAY: Cache hit?",
+              "  [Sim] --> TASK: Retornar sugestões do cache",
+              "  [Não] --> TASK (Prisma): SELECT WHERE name ILIKE '%polo%' LIMIT 10",
+              "           TASK: Salvar no cache com TTL 3600s",
+              "END EVENT: Sugestões retornadas ao app"
+            ],
+            "acceptance_criteria": [
+              "GET /catalog/search?q=polo retorna modelos contendo 'polo' (case-insensitive)",
+              "Retorna máximo 10 sugestões por chamada",
+              "Busca com menos de 2 caracteres retorna array vazio (sem query ao banco)",
+              "Tempo de resposta < 200ms incluindo query ao banco"
+            ],
+            "tech_notes": "Query Prisma: `prisma.vehicleModel.findMany({ where: { name: { contains: q, mode: 'insensitive' } }, take: 10 })`. No React Native: `useDeferredValue` ou `useDebounce` customizado com `setTimeout(fn, 300)`. TanStack Query: `useQuery({ queryKey: ['catalog', 'search', query], queryFn: () => catalogApi.search(query), enabled: query.length >= 2, staleTime: 60 * 1000 })`. Retornar array com `{ id, name, brandName, segment }` para exibição contextual no autocomplete."
+          }
+        ]
+      },
+      {
+        "id": "M04-T03",
+        "title": "Seletor em cascata no app React Native",
+        "status": "planned",
+        "priority": "P0",
+        "estimated_days": 2,
+        "epic": "E03 — Catálogo Automotivo",
+        "description": "Implementar o componente de seleção em cascata (Marca → Modelo → Versão → Ano) reutilizável no React Native usando Expo + TanStack Query. Será usado tanto na tela de busca (M07) quanto no wizard de cadastro de sucata (M05).",
+        "user_stories": [
+          "Como comprador ou vendedor, quero selecionar meu veículo em cascata (marca → modelo → ano) de forma intuitiva para que a busca ou cadastro seja preciso"
+        ],
+        "use_cases": ["UC10"],
+        "functional_requirements": [
+          { "id": "RF20", "description": "Exibir marcas como lista/grid no primeiro passo" },
+          { "id": "RF21", "description": "Filtrar modelos dinamicamente após seleção de marca" },
+          { "id": "RF22", "description": "Filtrar versões após seleção de modelo" }
+        ],
+        "business_rules": [
+          { "id": "RN-M04-01", "description": "Dados em cache local via TanStack Query (staleTime 24h)" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Componente VehicleSelector montado",
+          "TASK (App): useQuery(['catalog', 'brands']) — buscar marcas (staleTime 24h)",
+          "TASK (App): Renderizar FlatList de marcas com logo e nome",
+          "TASK (Usuário): Selecionar marca",
+          "TASK (App): useQuery(['catalog', 'models', brandId]) — buscar modelos",
+          "TASK (App): Renderizar lista de modelos filtrados",
+          "TASK (Usuário): Selecionar modelo",
+          "TASK (App): useQuery(['catalog', 'versions', modelId]) — buscar versões",
+          "TASK (Usuário): Selecionar versão",
+          "TASK (App): useQuery(['catalog', 'years', versionId]) — buscar anos",
+          "TASK (Usuário): Selecionar ano",
+          "TASK (App): Chamar onSelectionComplete({ brandId, modelId, versionId, yearId })",
+          "END EVENT: Seleção completa notificada ao componente pai"
+        ],
+        "acceptance_criteria": [
+          "Componente VehicleSelector aceita prop onComplete(selection) para notificar seleção",
+          "Cada nível da cascata só ativa após seleção do nível anterior",
+          "Loading skeleton exibido enquanto dados carregam",
+          "Seleção persistida em Zustand se navegação for interrompida (draft)",
+          "Reset disponível para limpar seleção completa"
+        ],
+        "subtasks": [
+          {
+            "id": "M04-T03-ST01",
+            "title": "Criar hooks useCatalog para queries com TanStack Query",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 3,
+            "description": "Criar pasta hooks/catalog/ com hooks: useBrands(), useModels(brandId), useVersions(modelId), useYears(versionId), usePartCategories(). Cada hook usa useQuery com queryKey correto, staleTime de 3600s e habilitação condicional (enabled: !!brandId).",
+            "user_story": "Como desenvolvedor, quero hooks de catálogo reutilizáveis para que qualquer tela do app possa usar dados de veículos sem duplicação de lógica",
+            "use_case": "UC10",
+            "functional_requirements": [
+              { "id": "RF20", "description": "Hook useBrands() com TanStack Query" }
+            ],
+            "business_rules": [
+              { "id": "RN-M04-01", "description": "staleTime = 3600s (1h) nos hooks" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Hooks de catálogo criados",
+              "TASK: Criar catalogApi com métodos getBrands, getModels, getVersions, getYears, getPartCategories",
+              "TASK: Criar useBrands() com useQuery({ queryKey: ['catalog', 'brands'], queryFn: catalogApi.getBrands, staleTime: 3600000 })",
+              "TASK: Criar useModels(brandId?) com enabled: !!brandId",
+              "TASK: Criar useVersions(modelId?) com enabled: !!modelId",
+              "TASK: Criar useYears(versionId?) com enabled: !!versionId",
+              "TASK: Criar usePartCategories()",
+              "END EVENT: Hooks disponíveis para uso em qualquer componente"
+            ],
+            "acceptance_criteria": [
+              "Hooks possuem estado isLoading, error e data tipados",
+              "useModels não executa query se brandId for undefined",
+              "Dados persistem em cache sem nova requisição por 1h",
+              "catalogApi usa instância axios configurada com baseURL da API"
+            ],
+            "tech_notes": "TanStack Query: `useQuery({ queryKey: ['catalog', 'brands'], queryFn: () => api.get<Brand[]>('/catalog/brands').then(r => r.data), staleTime: 60 * 60 * 1000, gcTime: 24 * 60 * 60 * 1000 })`. Para queries dependentes: `enabled: !!brandId`. Criar type `CatalogSelection = { brandId?: string; modelId?: string; versionId?: string; yearId?: string }` para uso no Zustand e nos componentes."
+          },
+          {
+            "id": "M04-T03-ST02",
+            "title": "Implementar componente VehicleSelector reutilizável",
+            "status": "planned",
+            "priority": "P0",
+            "estimated_hours": 5,
+            "description": "Criar componente React Native VehicleSelector que exibe a seleção em cascata usando BottomSheet ou Modal para cada nível. Suporte a FlashList para renderização performática de longas listas de modelos. Props: onComplete(selection), initialSelection?, mode ('search' | 'register').",
+            "user_story": "Como usuário, quero selecionar meu veículo em um fluxo de passos claro e responsivo para que a experiência seja fluida e sem erros",
+            "use_case": "UC10",
+            "functional_requirements": [
+              { "id": "RF20", "description": "Lista de marcas com logo renderizada eficientemente" },
+              { "id": "RF21", "description": "Modelos filtrados dinamicamente após seleção de marca" }
+            ],
+            "business_rules": [
+              { "id": "RN-M04-01", "description": "UI não bloqueia durante carregamento — skeleton screen" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: VehicleSelector renderizado",
+              "TASK: Exibir step 1 — lista de marcas com FlashList",
+              "TASK (Usuário): Tocar em marca",
+              "TASK: Atualizar estado local com brandId selecionado",
+              "TASK: Exibir step 2 — lista de modelos (habilitado via useModels(brandId))",
+              "TASK (Usuário): Tocar em modelo",
+              "TASK: Exibir step 3 — versões",
+              "TASK: Exibir step 4 — anos",
+              "TASK (Usuário): Selecionar ano",
+              "TASK: Chamar props.onComplete({ brandId, modelId, versionId, yearId })",
+              "END EVENT: Seleção concluída"
+            ],
+            "acceptance_criteria": [
+              "Cada passo renderiza em BottomSheet com busca/filtro opcional",
+              "FlashList usado para listas com mais de 20 itens",
+              "Loading skeleton (SkeletonView) durante carregamento de cada nível",
+              "Navegação entre passos com breadcrumb (ex: 'Fiat > Uno > 1.0 Flex > 2018')",
+              "Modo 'search' exibe seleção horizontal cards; modo 'register' usa stepper vertical"
+            ],
+            "tech_notes": "FlashList do Shopify: `@shopify/flash-list`. BottomSheet: `@gorhom/bottom-sheet`. Para o breadcrumb de seleção: componente VehicleBreadcrumb que recebe selection e exibe chips clicáveis para reset de nível. Zustand store: `useVehicleSelectorStore` com `selection`, `setStep`, `reset`. Usar `react-native-skeleton-content` para loading states. Modo 'register' integra com o wizard de M05."
+          },
+          {
+            "id": "M04-T03-ST03",
+            "title": "Admin CRUD do catálogo via endpoints protegidos",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 4,
+            "description": "Implementar endpoints CRUD admin para gerenciar marcas, modelos e versões. Protegidos com JwtAuthGuard + RolesGuard (role ADMIN). Após cada mutação, invalidar o cache Redis do catálogo. Endpoints: POST/PUT/DELETE /admin/catalog/brands, /models, /versions.",
+            "user_story": "Como administrador, quero gerenciar o catálogo automotivo para que novos modelos e marcas sejam adicionados conforme necessário",
+            "use_case": "UC11",
+            "functional_requirements": [
+              { "id": "RF25", "description": "CRUD de marcas e modelos pelo admin" }
+            ],
+            "business_rules": [
+              { "id": "RN-M04-01", "description": "Invalidar cache Redis após mutação admin" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Admin cria/edita entidade do catálogo",
+              "TASK (API): JwtAuthGuard + RolesGuard verifica role ADMIN",
+              "TASK (API): Validar DTO da mutação",
+              "TASK (Prisma): Executar create/update/delete",
+              "TASK (CacheService): Invalidar keys 'pecae:catalog:brands*' ou 'pecae:catalog:models:{brandId}*'",
+              "TASK (API): Retornar entidade atualizada",
+              "END EVENT: Catálogo atualizado e cache limpo"
+            ],
+            "acceptance_criteria": [
+              "Endpoints /admin/catalog protegidos com @Roles(UserRole.ADMIN)",
+              "Cache Redis invalidado imediatamente após qualquer mutação",
+              "Tentativa de excluir marca com modelos ativos retorna 409 Conflict",
+              "Criação de modelo valida que brandId existe"
+            ],
+            "tech_notes": "RolesGuard: verificar `req.user.type === 'ADMIN'`. CacheService.invalidateByPattern(): usar `redis.keys('pecae:catalog:brands*')` + `redis.del(...keys)`. Para deleção com dependências: checar se existem veículos cadastrados usando aquela versão antes de deletar. Upstash Redis tem API REST que pode ser usada para invalidação: `SCAN 0 MATCH pecae:catalog:*`. Criar AdminCatalogController separado em módulo /admin para organização."
+          }
+        ]
+      },
+      {
+        "id": "M04-T04",
+        "title": "Testes e documentação da API do catálogo",
+        "status": "planned",
+        "priority": "P1",
+        "estimated_days": 1,
+        "epic": "E03 — Catálogo Automotivo",
+        "description": "Criar testes unitários para CatalogService (mock do Prisma) e testes de integração para os endpoints do CatalogController usando supertest. Documentar a API com Swagger (@nestjs/swagger). Testar comportamento do cache.",
+        "user_stories": [
+          "Como desenvolvedor, quero testes que garantam o funcionamento correto das queries do catálogo para que refatorações futuras não quebrem a funcionalidade"
+        ],
+        "use_cases": ["UC10"],
+        "functional_requirements": [
+          { "id": "RF20", "description": "Endpoint de brands coberto por testes" },
+          { "id": "RF24", "description": "Endpoint de part-categories coberto por testes" }
+        ],
+        "business_rules": [
+          { "id": "RN-M04-01", "description": "Testar comportamento de cache hit e cache miss" }
+        ],
+        "bpmn_flow": [
+          "START EVENT: Início dos testes do catálogo",
+          "TASK: Escrever unit tests para CatalogService com mock do PrismaService",
+          "TASK: Escrever integration tests com supertest para GET /catalog/brands e /catalog/models/:id",
+          "TASK: Testar cache — primeira chamada (miss) vs segunda chamada (hit)",
+          "TASK: Configurar Swagger com @ApiTags('Catalog') e @ApiOperation em cada endpoint",
+          "TASK: Executar npm run test:cov e verificar cobertura > 80%",
+          "END EVENT: Suite de testes verde e API documentada"
+        ],
+        "acceptance_criteria": [
+          "Cobertura de testes do CatalogService > 80%",
+          "Testes de integração cobrem: brands, models, versions, years, part-categories",
+          "Swagger disponível em /api com descrições dos endpoints do catálogo",
+          "Testes de cache: mock do CacheManager verificar chamadas a get() e set()"
+        ],
+        "subtasks": [
+          {
+            "id": "M04-T04-ST01",
+            "title": "Testes unitários do CatalogService",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Escrever testes unitários para CatalogService usando Jest com mock do PrismaService e CacheManager. Testar: getBrands() com cache hit, getBrands() com cache miss (query Prisma), getModelsByBrand() com brandId inválido.",
+            "user_story": "Como desenvolvedor, quero testes unitários do CatalogService para garantir que a lógica de cache e queries funciona corretamente",
+            "use_case": "UC10",
+            "functional_requirements": [
+              { "id": "RF20", "description": "getBrands() testado com e sem cache" }
+            ],
+            "business_rules": [
+              { "id": "RN-M04-01", "description": "Cache mock verifica chamadas a set() no cache miss" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: npm run test catalog.service.spec.ts",
+              "TASK: Mock PrismaService com jest.fn()",
+              "TASK: Mock CacheManager com jest.fn()",
+              "TASK: Testar getBrands() — cache hit: cacheManager.get retorna dados mockados",
+              "TASK: Testar getBrands() — cache miss: Prisma chamado, cacheManager.set chamado",
+              "TASK: Testar getModelsByBrand(brandId) com brandId inválido → NotFoundException",
+              "END EVENT: Todos os testes passando"
+            ],
+            "acceptance_criteria": [
+              "100% das branches de cache hit/miss cobertas",
+              "Mock do Prisma verifica que findMany foi chamado com filtros corretos",
+              "NotFoundException lançada para brandId inválido nos modelos"
+            ],
+            "tech_notes": "NestJS Testing: `createTestingModule({ providers: [CatalogService, { provide: PrismaService, useValue: mockPrisma }, { provide: CACHE_MANAGER, useValue: mockCache }] })`. Mock: `const mockCache = { get: jest.fn(), set: jest.fn() }`. Verificar: `expect(mockCache.set).toHaveBeenCalledWith('pecae:catalog:brands', brands, { ttl: 86400 })`."
+          },
+          {
+            "id": "M04-T04-ST02",
+            "title": "Documentação Swagger dos endpoints do catálogo",
+            "status": "planned",
+            "priority": "P2",
+            "estimated_hours": 2,
+            "description": "Adicionar decorators Swagger (@ApiTags, @ApiOperation, @ApiResponse, @ApiParam) em todos os endpoints do CatalogController. Criar response DTOs com @ApiProperty para documentação automática dos campos retornados.",
+            "user_story": "Como desenvolvedor frontend, quero documentação Swagger completa do catálogo para integrar rapidamente sem precisar ler o código fonte",
+            "use_case": "UC10",
+            "functional_requirements": [
+              { "id": "RF20", "description": "Endpoints documentados com Swagger" }
+            ],
+            "business_rules": [],
+            "bpmn_flow": [
+              "START EVENT: Adicionar decorators Swagger",
+              "TASK: Criar BrandResponseDto com @ApiProperty em cada campo",
+              "TASK: Decorar CatalogController com @ApiTags('Catálogo Automotivo')",
+              "TASK: Decorar cada endpoint com @ApiOperation e @ApiResponse",
+              "TASK: Registrar SwaggerModule no main.ts",
+              "TASK: Acessar /api e verificar documentação gerada",
+              "END EVENT: Swagger completo e funcional"
+            ],
+            "acceptance_criteria": [
+              "Swagger UI disponível em /api/docs",
+              "Todos os 5 endpoints do catálogo documentados com exemplos de resposta",
+              "DTOs de resposta exportados para uso em testes de integração"
+            ],
+            "tech_notes": "Instalar `@nestjs/swagger`. main.ts: `const config = new DocumentBuilder().setTitle('PECAÊ API').setVersion('1.0').addBearerAuth().build(); SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config))`. BrandResponseDto: `@ApiProperty({ example: 'e7c3b2a1-...', description: 'Brand UUID' }) id: string`. Usar `@ApiResponse({ status: 200, type: [BrandResponseDto] })`."
+          },
+          {
+            "id": "M04-T04-ST03",
+            "title": "Testes de integração dos endpoints de catálogo",
+            "status": "planned",
+            "priority": "P1",
+            "estimated_hours": 3,
+            "description": "Escrever testes de integração (e2e) com supertest para todos os endpoints do CatalogController. Usar banco de teste (SQLite in-memory ou Supabase staging) com seed de dados de teste. Validar status codes, estrutura da resposta e comportamento de não-autenticação.",
+            "user_story": "Como desenvolvedor, quero testes de integração que validem os endpoints com dados reais para garantir que a API funciona de ponta a ponta",
+            "use_case": "UC10",
+            "functional_requirements": [
+              { "id": "RF20", "description": "GET /catalog/brands retorna 200 com array de brands" },
+              { "id": "RF24", "description": "GET /catalog/part-categories retorna 200 com categorias" }
+            ],
+            "business_rules": [
+              { "id": "RN-M04-01", "description": "Endpoints públicos retornam 200 sem token JWT" }
+            ],
+            "bpmn_flow": [
+              "START EVENT: Executar npm run test:e2e -- catalog",
+              "TASK: Criar app NestJS de teste com banco de teste (Supabase staging)",
+              "TASK: Executar seed de marcas e modelos de teste",
+              "TASK: GET /catalog/brands → expect 200, array com length > 0",
+              "TASK: GET /catalog/brands/:brandId/models → expect 200, array filtrado",
+              "TASK: GET /catalog/brands/invalid-id/models → expect 404",
+              "TASK: GET /catalog/part-categories → expect 200, array com >= 15 itens",
+              "END EVENT: Todos os testes de integração passando"
+            ],
+            "acceptance_criteria": [
+              "Todos os endpoints retornam 200 sem autenticação",
+              "Brand com ID inválido retorna 404",
+              "Part-categories retorna mínimo 15 itens",
+              "Estrutura JSON validada com expect(response.body).toMatchObject({...})"
+            ],
+            "tech_notes": "NestJS E2E: `import * as request from 'supertest'`. `beforeAll(async () => { app = await createTestApp(); await execPrismaSeeds(); })`. Para isolamento: usar banco de teste dedicado configurado via `DATABASE_URL_TEST`. Alternativamente, mock do PrismaService para integração sem banco real. Cache desabilitado em testes: `CacheModule.register({ isGlobal: true, ttl: 0 })`."
+          }
+        ]
+      }
+    ]
+  }
+}
