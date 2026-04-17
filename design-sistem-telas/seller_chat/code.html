@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+
+<html lang="pt-br"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Chat Screen - Peçaê</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'chat-gray': '#E5E5E5',
+            'chat-green-start': '#58C34B',
+            'chat-green-end': '#2A9D49',
+            'status-online': '#4CAF50',
+            'text-muted': '#7A7A7A',
+            'border-light': '#EDEDED'
+          }
+        }
+      }
+    }
+  </script>
+<style data-purpose="custom-gradients">
+    /* Custom gradient for outgoing message bubbles */
+    .bg-outgoing-gradient {
+      background: linear-gradient(to right, #5AC34B, #2B9C49);
+    }
+    
+    /* Custom shadows and rounded corners for message bubbles */
+    .bubble-left {
+      border-radius: 4px 18px 18px 18px;
+    }
+    .bubble-right {
+      border-radius: 18px 4px 18px 18px;
+    }
+
+    /* Fixed height for input area to stay at bottom */
+    .chat-input-container {
+      box-shadow: 0 -1px 5px rgba(0,0,0,0.05);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-white font-sans text-slate-800 flex flex-col h-screen overflow-hidden">
+<!-- BEGIN: MainHeader -->
+<header class="flex items-center justify-between px-4 py-3 border-b border-border-light bg-white shrink-0" data-purpose="header-main">
+<div class="flex items-center space-x-3">
+<!-- Back Arrow -->
+<button class="text-xl px-1">
+<i class="fa-solid fa-chevron-left"></i>
+</button>
+<!-- Seller Profile -->
+<div class="relative">
+<img alt="Marcos" class="w-12 h-12 rounded-full object-cover bg-gray-200" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCFXCILzqdYo0JOfgg0mA6qcdptH7DJMOzP_A_AUKbPKPuId3dlaUWRjYGfaO1MJPoHFrdAi513E-Vh7OJpQNCpGD0D0YYM_lHrOav3RXN18nXLMbj6QGTQx3c23X3ETqUjuzysNMIBmSNfMRqm-2u2rUZQZEqRSMfi70HKSHMT9eg3HEtSzX6FzcMqXGVeuJpquq8JYKZPARstZ0y35mt0FoMYNUBRWDse1WMEOOvEjQN7eka5e7OvLCxgw1gQHsTRUP8mhGivL9fl"/>
+<!-- Online Status Indicator -->
+<span class="absolute bottom-0 right-0 w-3 h-3 bg-status-online border-2 border-white rounded-full"></span>
+</div>
+<div class="flex flex-col">
+<h1 class="font-bold text-lg leading-tight">Vendedor: Marcos</h1>
+<span class="text-status-online text-sm">Online</span>
+</div>
+</div>
+<!-- Platform Logo -->
+<div class="w-24">
+<img alt="PEÇAÊ" class="h-8 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDtZ6pe4f9tpSHYxnl63KLYZLrU9FfefhWAJjheh3vyeVSHZq-AjM_NHy5aTQ_TwIEKmmHKuUvBvLVdJu5N-QpPhJcZdWo6_0CSDZ5uvZzsdaVZyBQPYSF32oZqYnb2ASP4QIx7PeDRKPa9cQx8VWPA_PTu2WYOFYxaUY3EwSJnczY80Nhsra4N3JDc12LFbPQWKP4-x-TexBLvOH7hawPCkN_G2tipu5hr3k2cnbBKhU2T_EynBNe7vIFELzhCqPlmFVpwsmROTpHL"/>
+</div>
+</header>
+<!-- END: MainHeader -->
+<!-- BEGIN: ProductBar -->
+<section class="flex items-center justify-between px-4 py-3 border-b border-border-light bg-white shrink-0" data-purpose="product-info-bar">
+<div class="flex items-center space-x-3 overflow-hidden">
+<img alt="Product Thumbnail" class="w-16 h-16 rounded-md object-cover flex-shrink-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBfPozTFu3nCoTL2-xvP8OLQ5AcZa_1J6NYDS2PhmkvC8WZMkVPF5KIlxMc0USfMcwubdiN4p404qXPjEksj8pgFaMTYYgzjrsn9y5oz4v_gMYl1eXuZpxLwE-GvVm7byqxmWSCGe5DKcGWoUuWYtzT928q4BHRli7M0MPd1nxE1rvnk6fk_GgNEjB80JRJhTz2Hk5pskp07R7j7NIWLRhVILFsjV_jZmILZHQK3qSRirMcsvOgirxP9VLE98fVr5ff1Jt3VXE3tRjA"/>
+<div class="overflow-hidden">
+<p class="text-[17px] leading-snug text-gray-800">Lote de Sucata<br/>Metálica - R$ 450,00</p>
+</div>
+</div>
+<button class="ml-4 border border-gray-800 rounded-md px-3 py-1.5 text-[15px] font-medium whitespace-nowrap text-gray-800">
+      Ver Anúncio
+    </button>
+</section>
+<!-- END: ProductBar -->
+<!-- BEGIN: MessageHistory -->
+<main class="flex-grow overflow-y-auto p-4 space-y-6 bg-white" data-purpose="chat-messages-container">
+<!-- Incoming Message 1 -->
+<div class="flex justify-start">
+<div class="max-w-[80%] bg-chat-gray bubble-left p-4 relative">
+<p class="text-[17px] leading-relaxed">Olá, ainda está disponível o lote?</p>
+<span class="block text-right text-xs text-text-muted mt-1">12:00</span>
+</div>
+</div>
+<!-- Outgoing Message 1 -->
+<div class="flex justify-end">
+<div class="max-w-[80%] bg-outgoing-gradient bubble-right p-4 relative text-white">
+<p class="text-[17px] leading-relaxed">Boa tarde! Sim, tenho interesse.</p>
+<span class="block text-right text-xs opacity-80 mt-1">17:32</span>
+</div>
+</div>
+<!-- Incoming Message 2 -->
+<div class="flex justify-start">
+<div class="max-w-[80%] bg-chat-gray bubble-left p-4 relative">
+<p class="text-[17px] leading-relaxed">Sim, está completo, 100kg.</p>
+<span class="block text-right text-xs text-text-muted mt-1">12:06</span>
+</div>
+</div>
+<!-- Outgoing Message 2 -->
+<div class="flex justify-end">
+<div class="max-w-[80%] bg-outgoing-gradient bubble-right p-4 relative text-white">
+<p class="text-[17px] leading-relaxed">Posso retirar amanhã?</p>
+<span class="block text-right text-xs opacity-80 mt-1">12:33</span>
+</div>
+</div>
+</main>
+<!-- END: MessageHistory -->
+<!-- BEGIN: InputBar -->
+<footer class="px-4 py-3 bg-white chat-input-container shrink-0" data-purpose="chat-input-bar">
+<div class="flex items-center space-x-3">
+<!-- Text Input Field -->
+<div class="relative flex-grow">
+<input class="w-full h-12 pl-4 pr-12 rounded-full border border-gray-300 focus:outline-none focus:ring-1 focus:ring-chat-green-end text-lg" placeholder="Digite sua mensagem..." type="text"/>
+<!-- Paperclip Icon inside input -->
+<button class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-xl">
+<i class="fa-solid fa-paperclip"></i>
+</button>
+</div>
+<!-- Send Button -->
+<button class="w-12 h-12 bg-chat-green-end text-white rounded-full flex items-center justify-center shadow-md">
+<i class="fa-solid fa-paper-plane text-xl -mr-1"></i>
+</button>
+</div>
+</footer>
+<!-- END: InputBar -->
+</body></html>

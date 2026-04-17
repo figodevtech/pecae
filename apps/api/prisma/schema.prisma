@@ -1,0 +1,197 @@
+// ============================================================
+// PECAÊ — Prisma Schema
+// M01-T01: Identity & Auth Entities
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+/// Defines the role/type of a user account.
+enum UserType {
+  BUYER
+  SELLER
+  BOTH
+  ADMIN
+  MODERATOR
+}
+
+/// Lifecycle status of a user account.
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+// ============================================================
+// MODELS
+// ============================================================
+
+/// Core user identity record.
+model User {
+  id String @id @default(uuid())
+
+  // --- Identity ---
+  name  String
+  email String @unique @db.VarChar(255)
+
+  // --- Auth ---
+  passwordHash String? @map("password_hash") @db.Text
+  googleId     String? @unique @map("google_id")
+  appleId      String? @unique @map("apple_id")
+  phone        String? @unique
+
+  // --- Account state ---
+  type   UserType   @default(BUYER)
+  status UserStatus @default(PENDING_VERIFICATION)
+
+  // --- Verification flags ---
+  emailVerified   Boolean   @default(false) @map("email_verified")
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  phoneVerified   Boolean   @default(false) @map("phone_verified")
+  phoneVerifiedAt DateTime? @map("phone_verified_at")
+
+  // --- Profile ---
+  avatar String? @db.Text
+
+  // --- Timestamps ---
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // --- Relations ---
+  refreshTokens            RefreshToken[]
+  emailVerificationTokens  EmailVerificationToken[]
+  passwordResetTokens      PasswordResetToken[]
+  otpCodes                 OtpCode[]
+  termsAcceptances         TermsAcceptance[]
+
+  @@index([email])
+  @@index([status])
+  @@index([type])
+  @@map("users")
+}
+
+/// Rotating refresh tokens for session management.
+/// Each login/refresh generates a new record; old ones are revoked.
+model RefreshToken {
+  id String @id @default(uuid())
+
+  userId    String @map("user_id")
+  tokenHash String @db.Text @map("token_hash")
+
+  // --- Session context ---
+  ip        String  @db.VarChar(45)
+  userAgent String? @db.Text @map("user_agent")
+
+  // --- Lifecycle ---
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+/// Single-use tokens sent via e-mail for account verification.
+model EmailVerificationToken {
+  id String @id @default(uuid())
+
+  userId    String @map("user_id")
+  tokenHash String @db.Text @map("token_hash")
+
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([userId])
+  @@map("email_verification_tokens")
+}
+
+/// Single-use tokens for password reset flow (1 hour expiry).
+model PasswordResetToken {
+  id String @id @default(uuid())
+
+  userId    String @map("user_id")
+  tokenHash String @db.Text @map("token_hash")
+
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+/// OTP codes sent via SMS for phone authentication.
+model OtpCode {
+  id String @id @default(uuid())
+
+  phone    String @db.VarChar(20)
+  codeHash String @db.Text @map("code_hash")
+  attempts Int    @default(0)
+
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([phone])
+  @@map("otp_codes")
+}
+
+/// Audit record of user acceptance of Terms, Privacy Policy, and LGPD.
+model TermsAcceptance {
+  id String @id @default(uuid())
+
+  userId    String @map("user_id")
+  version   String @db.VarChar(20)
+  ip        String @db.VarChar(45)
+  userAgent String @db.Text @map("user_agent")
+
+  acceptedAt DateTime @default(now()) @map("accepted_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("terms_acceptances")
+}
+
+// ============================================================
+// M05 REFERENCE — Part Categories (seed-only entity)
+// Listed here because seed runs in M01-T01-ST03
+// ============================================================
+
+/// Fixed list of spare part categories available in a salvage vehicle.
+model PartCategory {
+  id   String @id @default(uuid())
+  name String @db.VarChar(100)
+  slug String @unique @db.VarChar(100)
+  icon String @db.VarChar(50)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([slug])
+  @@map("part_categories")
+}

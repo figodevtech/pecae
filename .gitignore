@@ -1,0 +1,38 @@
+# === ENVIRONMENT ===
+node_modules
+.turbo
+dist
+build
+.expo
+
+# === SECRETS - NEVER COMMIT ===
+.env
+.env.local
+.env.production
+.env.staging
+
+# === EDITORS ===
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+*.swp
+*.swo
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === LOGS ===
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# === PRISMA GENERATED ===
+prisma/generated
+
+# === BUILD OUTPUTS ===
+apps/mobile/.expo
+apps/mobile/dist
+apps/api/dist

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Post New Ad - Peçaê</title>
+<!-- Tailwind CSS CDN -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Custom Font: Inter (closest to standard mobile system font) -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<style data-purpose="global-styles">
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #ffffff;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+  </style>
+<style data-purpose="header-layout">
+    /* Precise status bar and navigation styling */
+    .status-bar {
+      height: 44px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 16px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .nav-bar {
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .back-btn {
+      position: absolute;
+      left: 12px;
+      display: flex;
+      align-items: center;
+      color: #000;
+      font-size: 17px;
+    }
+    .page-title {
+      font-weight: 700;
+      font-size: 17px;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="flex flex-col min-h-screen bg-white text-gray-900">
+<!-- BEGIN: Header Section -->
+<header class="sticky top-0 bg-white z-50">
+<!-- Status Bar Mockup -->
+<div class="status-bar" data-purpose="ios-status-bar">
+<div class="flex items-center gap-1">
+<span>Cirrrber</span>
+<svg class="w-4 h-4" fill="currentColor" viewbox="0 0 24 24"><path d="M12 21l-12-18h24z"></path></svg>
+</div>
+<div class="text-sm">2:57 PM</div>
+<div class="flex items-center gap-1">
+<svg class="w-5 h-5" fill="currentColor" viewbox="0 0 24 24"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"></path></svg>
+</div>
+</div>
+<!-- Navigation Bar -->
+<nav class="nav-bar" data-purpose="navigation">
+<button aria-label="Go back" class="back-btn">
+<svg class="w-6 h-6 mr-1" fill="none" stroke="currentColor" stroke-width="2.5" viewbox="0 0 24 24"><path d="M15 19l-7-7 7-7"></path></svg>
+<span>Back</span>
+</button>
+<h1 class="page-title">Post New Ad</h1>
+</nav>
+</header>
+<!-- END: Header Section -->
+<main class="flex-grow px-4 pb-10">
+<!-- BEGIN: Brand Logo -->
+<section class="py-6 flex justify-center" data-purpose="brand-identity">
+<img alt="PEÇAÊ Logo" class="h-24 object-contain max-w-full" id="main-logo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD0lNcCxK73K6kQ1sAqv7N4m3AUVj02T4e6044jSY5RCzKepb0zbDgjUHeUHF46X5otHvjKutcFbpSuTrYbmyltljuQftSx5Xwn7Ki1C2fGaTsjjWHz-vv2XVCcwv_qn2y20WuCJ60_pctJc2SfkpbZiA7GsBXYOE7DsrPxRD5ABha1z3Lb2v5Kr_CwmB4yzYQXCiAIrLAkdmrhZGZFaXhJ24X_tWsl73qJmhk2ebfNF0b4x2elw75zMg135Q8LLX81fgETG7HKce9R"/>
+<!-- Fallback placeholder if image provided is used differently -->
+<script>
+        // Optimization: if IMAGE_1 contains the whole screen, we use a placeholder for the logo specifically
+        document.getElementById('main-logo').onerror = function() {
+            this.src = 'https://placehold.co/200x80?text=PEÇAÊ\nSOLUÇÕES+E+PEÇAS';
+        };
+      </script>
+</section>
+<!-- END: Brand Logo -->
+<!-- BEGIN: Photo Upload Section -->
+<section class="mb-8" data-purpose="photo-upload-section">
+<h2 class="text-xl font-bold mb-4">Photos</h2>
+<div class="bg-gray-50 border border-gray-200 rounded-xl p-8 flex flex-col items-center text-center">
+<!-- Camera Icon -->
+<div class="mb-3 text-gray-400">
+<svg class="w-16 h-16" fill="currentColor" viewbox="0 0 24 24">
+<path d="M12 15c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3z"></path>
+<path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"></path>
+</svg>
+</div>
+<p class="text-lg font-medium text-gray-800 mb-6">Tap to add photos</p>
+<div class="flex gap-4 w-full max-w-sm">
+<button class="flex-1 py-3 px-4 bg-white border border-gray-900 rounded-lg font-semibold text-gray-900 active:bg-gray-100 transition-colors">
+            Take Photo
+          </button>
+<button class="flex-1 py-3 px-4 bg-white border border-gray-900 rounded-lg font-semibold text-gray-900 active:bg-gray-100 transition-colors">
+            Library
+          </button>
+</div>
+</div>
+</section>
+<!-- END: Photo Upload Section -->
+<!-- BEGIN: Form Section -->
+<section class="space-y-1" data-purpose="ad-details-form">
+<!-- Title Input -->
+<div class="border-b py-3 border-gray-200">
+<label class="sr-only" for="title">Title</label>
+<div class="flex items-center text-lg">
+<span class="font-medium mr-1">Title</span>
+<input class="w-full border-none focus:ring-0 p-0 placeholder-gray-400 text-gray-900" id="title" placeholder="(e.g., Ford Fiesta Alternator)" type="text"/>
+</div>
+</div>
+<!-- Category Input -->
+<div class="border-b py-4 border-gray-200">
+<label class="sr-only" for="category">Category</label>
+<div class="flex items-center text-lg">
+<span class="font-medium mr-1">Category</span>
+<input class="w-full border-none focus:ring-0 p-0 placeholder-gray-400 text-gray-900" id="category" placeholder="(Select one)" type="text"/>
+</div>
+</div>
+<!-- Description Input -->
+<div class="border-b py-4 border-gray-200">
+<label class="sr-only" for="description">Description</label>
+<div class="flex items-center text-lg">
+<span class="font-medium mr-1">Description</span>
+<input class="w-full border-none focus:ring-0 p-0 placeholder-gray-400 text-gray-900" id="description" placeholder="(Condition, details, etc.)" type="text"/>
+</div>
+</div>
+<!-- Price Input -->
+<div class="border-b py-4 border-gray-200">
+<label class="sr-only" for="price">Price</label>
+<div class="flex items-center text-lg">
+<span class="font-medium mr-1">Price</span>
+<input class="w-full border-none focus:ring-0 p-0 placeholder-gray-400 text-gray-900" id="price" placeholder="(R$)" type="text"/>
+</div>
+</div>
+</section>
+<!-- END: Form Section -->
+</main>
+<!-- BEGIN: Footer Action -->
+<footer class="p-4 bg-white mt-auto" data-purpose="form-actions">
+<button class="w-full py-4 bg-[#0bb336] hover:bg-[#09962d] text-white font-bold text-xl rounded-xl transition-all shadow-sm active:scale-[0.98]">
+      Next
+    </button>
+</footer>
+<!-- END: Footer Action -->
+</body></html>
