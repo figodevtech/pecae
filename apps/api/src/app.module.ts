@@ -6,6 +6,10 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { MailModule } from './mail/mail.module';
+import { SellersModule } from './sellers/sellers.module';
+import { VerificationsModule } from './verifications/verifications.module';
+import { BullModule } from '@nestjs/bullmq';
+import { ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -13,6 +17,18 @@ import { MailModule } from './mail/mail.module';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
+    }),
+
+    // --- BullMQ: Redis connection ---
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        connection: {
+          host: configService.get<string>('REDIS_HOST', 'localhost'),
+          port: configService.get<number>('REDIS_PORT', 6379),
+        },
+      }),
+      inject: [ConfigService],
     }),
 
     // --- Rate limiting: global throttler ---
@@ -36,6 +52,8 @@ import { MailModule } from './mail/mail.module';
     AuthModule,
     UsersModule,
     MailModule,
+    SellersModule,
+    VerificationsModule,
   ],
   providers: [
     // Register ThrottlerGuard globally so @Throttle() decorators are enforced

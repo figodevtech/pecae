@@ -75,6 +75,8 @@ model User {
   passwordResetTokens      PasswordResetToken[]
   otpCodes                 OtpCode[]
   termsAcceptances         TermsAcceptance[]
+  sellerProfile            SellerProfile?
+  sellerVerifications      SellerVerification[]
 
   @@index([email])
   @@index([status])
@@ -194,4 +196,85 @@ model PartCategory {
 
   @@index([slug])
   @@map("part_categories")
+}
+
+// ============================================================
+// M03 - Seller Profile Entities
+// ============================================================
+
+enum SellerType {
+  PF
+  PJ
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model SellerProfile {
+  id     String @id @default(uuid())
+  userId String @unique @map("user_id")
+
+  storeName   String     @map("store_name") @db.VarChar(100)
+  type        SellerType
+  cnpj        String?    @db.VarChar(20)
+  address     String     @db.VarChar(255)
+  city        String     @db.VarChar(100)
+  state       String     @db.VarChar(2)
+  lat         Float?
+  lng         Float?
+  whatsapp    String     @db.VarChar(20)
+  phone       String?    @db.VarChar(20)
+  openHours   Json?      @map("open_hours")
+  logo        String?    @db.Text
+  description String?    @db.Text
+
+  isVerified       Boolean @default(false) @map("is_verified")
+  responseTimeAvg Int?    @map("response_time_avg")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stats         SellerStats?
+  verifications SellerVerification[]
+
+  @@index([city, state])
+  @@map("seller_profiles")
+}
+
+model SellerStats {
+  id              String @id @default(uuid())
+  sellerProfileId String @unique @map("seller_profile_id")
+
+  activeListings         Int  @default(0) @map("active_listings")
+  totalListings          Int  @default(0) @map("total_listings")
+  totalSold              Int  @default(0) @map("total_sold")
+  avgResponseTimeMinutes Int? @map("avg_response_time_minutes")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sellerProfile SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
+
+  @@map("seller_stats")
+}
+
+model SellerVerification {
+  id              String             @id @default(uuid())
+  sellerProfileId String             @map("seller_profile_id")
+  status          VerificationStatus @default(PENDING)
+  documentUrls    Json               @default("[]") @map("document_urls")
+  notes           String?            @db.Text
+  moderatorId     String?            @map("moderator_id")
+  resolvedAt      DateTime?          @map("resolved_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+  sellerProfile SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
+  moderator     User?         @relation(fields: [moderatorId], references: [id], onDelete: SetNull)
+
+  @@index([sellerProfileId])
+  @@map("seller_verifications")
 }

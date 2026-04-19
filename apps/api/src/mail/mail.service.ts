@@ -54,6 +54,52 @@ export class MailService {
   /**
    * Envia um e-mail de recuperação de senha.
    */
+  /**
+   * Envia um e-mail com o status da verificação do vendedor.
+   */
+  async sendVerificationStatusEmail(email: string, storeName: string, status: string, notes?: string) {
+    const isApproved = status === 'APPROVED';
+    const subject = isApproved
+      ? 'Parabéns! Sua loja foi verificada no PECAÊ'
+      : 'Atualização sobre a verificação da sua loja - PECAÊ';
+
+    const statusMessage = isApproved
+      ? '<p>Sua documentação foi analisada e aprovada. Sua loja agora possui o <strong>Selo Verificado</strong>!</p>'
+      : '<p>Infelizmente não pudemos aprovar sua solicitação de verificação neste momento.</p>';
+
+    const notesMessage = notes ? `<p><strong>Motivo / Observações:</strong> ${notes}</p>` : '';
+
+    const from = this.configService.get<string>('MAIL_FROM') || 'PECAÊ <onboarding@resend.dev>';
+
+    try {
+      const { data, error } = await this.resend.emails.send({
+        from,
+        to: [email],
+        subject,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #333;">Olá, ${storeName}!</h1>
+            ${statusMessage}
+            ${notesMessage}
+            <p>Se tiver dúvidas, entre em contato com nosso suporte.</p>
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+            <p style="color: #999; font-size: 12px;">Equipe PECAÊ</p>
+          </div>
+        `,
+      });
+
+      if (error) {
+        console.error('Erro ao enviar e-mail de status via Resend:', error);
+        throw new InternalServerErrorException('Falha ao enviar e-mail de status de verificação.');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Exceção ao enviar e-mail:', error);
+      throw new InternalServerErrorException('Falha no serviço de e-mail.');
+    }
+  }
+
   async sendPasswordResetEmail(email: string, name: string, token: string) {
     const resetUrl = `${this.configService.get<string>('FRONTEND_URL')}/reset-password?token=${token}`;
     const from = this.configService.get<string>('MAIL_FROM') || 'PECAÊ <onboarding@resend.dev>';
