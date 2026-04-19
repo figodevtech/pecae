@@ -4,23 +4,12 @@ export default function AuthLayout() {
   return (
     <Stack
       screenOptions={{
-        headerTitle: '',
-        headerBackTitle: 'Voltar',
-        headerShadowVisible: false,
+        headerShown: false,
       }}
     >
-      <Stack.Screen
-        name="register"
-        options={{
-          headerTitle: 'Criar Conta',
-        }}
-      />
-      <Stack.Screen
-        name="verify-email"
-        options={{
-          headerTitle: 'Verificar E-mail',
-        }}
-      />
+      <Stack.Screen name="login" />
+      <Stack.Screen name="register" />
+      <Stack.Screen name="verify-email" />
     </Stack>
   );
 }

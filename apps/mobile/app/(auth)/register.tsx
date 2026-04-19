@@ -1,38 +1,46 @@
 import React from 'react';
 import {
+  StyleSheet,
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  TouchableOpacity,
   Alert,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { useRouter } from 'expo-router';
+import { 
+  ForgeBackground, 
+  ForgeGlassCard, 
+  ForgeInput, 
+  ForgeButton 
+} from '../../src/components/ForgeUI';
+import { useForgeTheme } from '../../src/theme';
 import { api } from '../../src/services/api';
 
 const registerSchema = z.object({
-  name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
+  name: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres'),
   email: z.string().email('E-mail inválido'),
-  password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres'),
+  password: z.string().min(8, 'A senha deve ter pelo menos 8 caracteres'),
   type: z.enum(['BUYER', 'SELLER']),
   termsAccepted: z.boolean().refine((val) => val === true, {
     message: 'Você deve aceitar os termos de uso',
   }),
 });
 
-type RegisterFormData = z.infer<typeof registerSchema>;
-
-export default function RegisterScreen() {
+type RegisterFormData = z.infer<typeof registerSchema>;export default function RegisterScreen() {
   const router = useRouter();
+  const { colors, typography, effects } = useForgeTheme();
+  
   const {
     control,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
@@ -42,10 +50,13 @@ export default function RegisterScreen() {
     },
   });
 
+  const selectedType = watch('type');
+  const termsAccepted = watch('termsAccepted');
+
   const onSubmit = async (data: RegisterFormData) => {
     try {
-      const response = await api.post('/auth/register', data);
-      Alert.alert('Sucesso', response.data.message, [
+      await api.post('/auth/register', data);
+      Alert.alert('Sucesso', 'Cadastro realizado! Verifique seu e-mail.', [
         { text: 'OK', onPress: () => router.push('/(auth)/verify-email') },
       ]);
     } catch (error: any) {
@@ -55,238 +66,247 @@ export default function RegisterScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Crie sua conta</Text>
-          <Text style={styles.subtitle}>
-            Junte-se à maior rede de autopeças usadas.
-          </Text>
-        </View>
-
-        <View style={styles.form}>
-          <Text style={styles.label}>Nome Completo</Text>
-          <Controller
-            control={control}
-            name="name"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <TextInput
-                style={[styles.input, errors.name && styles.inputError]}
-                placeholder="Ex: João da Silva"
-                onBlur={onBlur}
-                onChangeText={onChange}
-                value={value}
-              />
-            )}
-          />
-          {errors.name && <Text style={styles.errorText}>{errors.name.message}</Text>}
-
-          <Text style={styles.label}>E-mail</Text>
-          <Controller
-            control={control}
-            name="email"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <TextInput
-                style={[styles.input, errors.email && styles.inputError]}
-                placeholder="exemplo@email.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                onBlur={onBlur}
-                onChangeText={onChange}
-                value={value}
-              />
-            )}
-          />
-          {errors.email && <Text style={styles.errorText}>{errors.email.message}</Text>}
-
-          <Text style={styles.label}>Senha</Text>
-          <Controller
-            control={control}
-            name="password"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <TextInput
-                style={[styles.input, errors.password && styles.inputError]}
-                placeholder="Mínimo 8 caracteres"
-                secureTextEntry
-                onBlur={onBlur}
-                onChangeText={onChange}
-                value={value}
-              />
-            )}
-          />
-          {errors.password && <Text style={styles.errorText}>{errors.password.message}</Text>}
-
-          <Text style={styles.label}>Tipo de Perfil</Text>
-          <View style={styles.typeContainer}>
-            <Controller
-              control={control}
-              name="type"
-              render={({ field: { onChange, value } }) => (
-                <>
-                  <TouchableOpacity
-                    style={[styles.typeButton, value === 'BUYER' && styles.typeButtonActive]}
-                    onPress={() => onChange('BUYER')}
-                  >
-                    <Text style={[styles.typeButtonText, value === 'BUYER' && styles.typeButtonTextActive]}>
-                      Comprador
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.typeButton, value === 'SELLER' && styles.typeButtonActive]}
-                    onPress={() => onChange('SELLER')}
-                  >
-                    <Text style={[styles.typeButtonText, value === 'SELLER' && styles.typeButtonTextActive]}>
-                      Vendedor
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            />
-          </View>
-
-          <View style={styles.termsContainer}>
-             <Controller
-              control={control}
-              name="termsAccepted"
-              render={({ field: { onChange, value } }) => (
-                <TouchableOpacity 
-                  style={styles.checkboxContainer} 
-                  onPress={() => onChange(!value)}
-                >
-                  <View style={[styles.checkbox, value && styles.checkboxChecked]} />
-                  <Text style={styles.termsText}>Aceito os termos e políticas</Text>
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-          {errors.termsAccepted && <Text style={styles.errorText}>{errors.termsAccepted.message}</Text>}
-
-          <TouchableOpacity
-            style={[styles.button, isSubmitting && styles.buttonDisabled]}
-            onPress={handleSubmit(onSubmit)}
-            disabled={isSubmitting}
-          >
-            <Text style={styles.buttonText}>
-              {isSubmitting ? 'Cadastrando...' : 'Finalizar Cadastro'}
+    <ForgeBackground>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.container}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent} 
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <View style={styles.tag}>
+              <Text style={[styles.tagText, { color: colors.brand, fontFamily: typography.mono }]}>
+                SYSTEM_ACCESS: v1.0.4
+              </Text>
+            </View>
+            <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]}>
+              FORJA DIGITAL
             </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+            <Text style={[styles.subtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
+              Crie sua conta para entrar no ecossistema industrial de peças originais.
+            </Text>
+          </View>
+
+          <ForgeGlassCard intensity={30}>
+            <View style={styles.formSection}>
+              <Controller
+                control={control}
+                name="name"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <ForgeInput
+                    label="Credencial (Nome)"
+                    placeholder="Ex: João da Silva"
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                    error={errors.name?.message}
+                  />
+                )}
+              />
+
+              <Controller
+                control={control}
+                name="email"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <ForgeInput
+                    label="Canal de Comunicação (E-mail)"
+                    placeholder="exemplo@email.com"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                    error={errors.email?.message}
+                  />
+                )}
+              />
+
+              <Controller
+                control={control}
+                name="password"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <ForgeInput
+                    label="Chave de Segurança (Senha)"
+                    placeholder="Mínimo 8 caracteres"
+                    secureTextEntry
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                    error={errors.password?.message}
+                  />
+                )}
+              />
+
+              <View style={styles.typeSection}>
+                <Text style={[styles.sectionLabel, { color: colors.textMuted, fontFamily: typography.display }]}>
+                  CONFIGURAÇÃO DE PERFIL
+                </Text>
+                
+                <View style={[styles.typeContainer, { backgroundColor: 'rgba(0,0,0,0.1)', borderRadius: effects.radius.md }]}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      selectedType === 'BUYER' && { 
+                        backgroundColor: colors.surface,
+                        borderColor: colors.brand,
+                        borderWidth: 1,
+                      }
+                    ]}
+                    onPress={() => setValue('type', 'BUYER')}
+                  >
+                    <Text style={[
+                       styles.typeButtonText, 
+                       { color: selectedType === 'BUYER' ? colors.brand : colors.textMuted, fontFamily: typography.medium }
+                    ]}>COMPRADOR</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      selectedType === 'SELLER' && { 
+                        backgroundColor: colors.surface,
+                        borderColor: colors.brand,
+                        borderWidth: 1,
+                      }
+                    ]}
+                    onPress={() => setValue('type', 'SELLER')}
+                  >
+                    <Text style={[
+                      styles.typeButtonText, 
+                      { color: selectedType === 'SELLER' ? colors.brand : colors.textMuted, fontFamily: typography.medium }
+                    ]}>VENDEDOR</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <TouchableOpacity 
+                style={styles.termsWrapper} 
+                onPress={() => setValue('termsAccepted', !termsAccepted)}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.checkbox, 
+                  { borderColor: colors.border },
+                  termsAccepted && { backgroundColor: colors.brand, borderColor: colors.brand }
+                ]} />
+                <Text style={[styles.termsText, { color: colors.textMuted, fontFamily: typography.body }]}>
+                  Declaro que li e concordo com os termos de operação.
+                </Text>
+              </TouchableOpacity>
+              {errors.termsAccepted && <Text style={[styles.errorText, { color: colors.error }]}>{errors.termsAccepted.message}</Text>}
+
+              <ForgeButton
+                title="Sincronizar Dados"
+                onPress={handleSubmit(onSubmit)}
+                loading={isSubmitting}
+                style={styles.submitBtn}
+              />
+              
+              <TouchableOpacity onPress={() => router.push('/(auth)/login')} style={styles.loginNavigation}>
+                <Text style={[styles.loginNavText, { color: colors.textMuted, fontFamily: typography.body }]}>
+                  RECONHECER ACESSO? <Text style={{ color: colors.brand, fontFamily: typography.display }}>ENTRAR</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ForgeGlassCard>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </ForgeBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   scrollContent: {
     padding: 24,
+    paddingTop: 60,
   },
   header: {
     marginBottom: 32,
   },
+  tag: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: 'rgba(63, 255, 139, 0.1)',
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  tagText: {
+    fontSize: 10,
+    letterSpacing: 2,
+  },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
+    fontSize: 32,
+    letterSpacing: -1,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
     marginTop: 8,
+    lineHeight: 24,
   },
-  form: {
-    gap: 16,
+  formSection: {
+    gap: 8,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: -8,
+  typeSection: {
+    marginTop: 8,
+    marginBottom: 16,
   },
-  input: {
-    backgroundColor: '#f5f5f5',
-    padding: 16,
-    borderRadius: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  inputError: {
-    borderColor: '#ff4d4d',
-    backgroundColor: '#fff5f5',
-  },
-  errorText: {
-    color: '#ff4d4d',
+  sectionLabel: {
     fontSize: 12,
-    marginTop: -8,
+    marginBottom: 12,
+    letterSpacing: 1,
   },
   typeContainer: {
     flexDirection: 'row',
-    gap: 12,
+    padding: 4,
+    gap: 4,
   },
   typeButton: {
     flex: 1,
     padding: 12,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#eee',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-  },
-  typeButtonActive: {
-    borderColor: '#007bff',
-    backgroundColor: '#e6f0ff',
+    justifyContent: 'center',
   },
   typeButtonText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#666',
+    letterSpacing: 1,
   },
-  typeButtonTextActive: {
-    color: '#007bff',
-  },
-  termsContainer: {
-    marginTop: 8,
-  },
-  checkboxContainer: {
+  termsWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
+    marginVertical: 16,
   },
   checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#ccc',
-  },
-  checkboxChecked: {
-    backgroundColor: '#007bff',
-    borderColor: '#007bff',
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
   },
   termsText: {
     fontSize: 14,
-    color: '#666',
+    flex: 1,
   },
-  button: {
-    backgroundColor: '#007bff',
-    padding: 18,
-    borderRadius: 12,
+  errorText: {
+    fontSize: 12,
+    marginTop: -8,
+    marginBottom: 8,
+  },
+  submitBtn: {
+    marginTop: 8,
+  },
+  loginNavigation: {
+    marginTop: 24,
     alignItems: 'center',
-    marginTop: 16,
   },
-  buttonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+  loginNavText: {
+    fontSize: 14,
+    letterSpacing: 0.5,
   },
 });

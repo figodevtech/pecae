@@ -4,7 +4,8 @@
     "name": "Autenticação e Cadastro",
     "slug": "autenticacao_cadastro",
     "version": "1.0.0",
-    "status": "planned",
+    "progress": 85,
+    "status": "in_progress",
     "priority": "P0",
     "epic_ref": "E01",
     "estimated_sprint": "Sprint 1",
@@ -191,7 +192,7 @@
       {
         "id": "M01-T01",
         "title": "Setup de banco, schema Prisma e modelo de usuário",
-        "status": "planned",
+        "status": "completed",
         "priority": "P0",
         "estimated_days": 2,
         "epic": "E01 — Gestão de Contas",
@@ -235,7 +236,7 @@
           {
             "id": "M01-T01-ST01",
             "title": "Escrever schema Prisma — entidades de identidade",
-            "status": "planned",
+            "status": "completed",
             "priority": "P0",
             "estimated_hours": 4,
             "description": "Criar schema.prisma com: User (id UUID, name, email UNIQUE, passwordHash, type UserType, status UserStatus, emailVerified Boolean, emailVerifiedAt?, phoneVerified Boolean, phoneVerifiedAt?, phone?, avatar?, createdAt, updatedAt), RefreshToken (id, userId, tokenHash, expiresAt, revokedAt?, ip, userAgent, createdAt), EmailVerificationToken (id, userId, tokenHash, expiresAt, usedAt?), PasswordResetToken (id, userId, tokenHash, expiresAt, usedAt?), OtpCode (id, phone, code, expiresAt, attempts, usedAt?), TermsAcceptance (id, userId, version, acceptedAt, ip, userAgent).",
@@ -272,7 +273,7 @@
           {
             "id": "M01-T01-ST02",
             "title": "Executar migrations e configurar PrismaService no NestJS",
-            "status": "planned",
+            "status": "completed",
             "priority": "P0",
             "estimated_hours": 3,
             "description": "Executar `prisma migrate dev` no Supabase (ambiente local e staging). Criar PrismaModule e PrismaService no NestJS como módulo global com lifecycle hooks OnModuleInit e OnModuleDestroy para gestão de conexões. Configurar DATABASE_URL via ConfigModule do NestJS apontando para Supabase connection string com pooling (PgBouncer).",
@@ -307,7 +308,7 @@
           {
             "id": "M01-T01-ST03",
             "title": "Seed inicial — PartCategory (lista fixa de categorias de peças)",
-            "status": "planned",
+            "status": "completed",
             "priority": "P0",
             "estimated_hours": 3,
             "description": "Criar seed com a lista fixa de categorias de peças do sistema (PartCategory). Exemplos: Motor, Câmbio, Suspensão Dianteira, Suspensão Traseira, Freios, Lataria, Vidros, Bancos e Estofamento, Painel e Elétrica, Rodas e Pneus, Direção, Arrefecimento, Ar-Condicionado, Escapamento, Capo e Para-choque. Criar também seed de usuário admin de desenvolvimento.",
@@ -342,7 +343,7 @@
       {
         "id": "M01-T02",
         "title": "Implementar cadastro por e-mail/senha e verificação",
-        "status": "planned",
+        "status": "in_progress",
         "priority": "P0",
         "estimated_days": 3,
         "epic": "E01 — Gestão de Contas",
@@ -402,7 +403,7 @@
           {
             "id": "M01-T02-ST01",
             "title": "Criar RegisterDto, AuthController e AuthService (cadastro e-mail)",
-            "status": "planned",
+            "status": "completed",
             "priority": "P0",
             "estimated_hours": 5,
             "description": "Implementar RegisterDto com class-validator (IsEmail, IsString, MinLength(8), IsEnum(UserType), IsBoolean termsAccepted). Criar AuthController com @Post('register') e @Post('verify-email'). Criar AuthService.register() que verifica duplicidade, hash a senha com bcrypt, cria User e chama o serviço de e-mail.",
@@ -443,7 +444,7 @@
           {
             "id": "M01-T02-ST02",
             "title": "Implementar serviço de e-mail de verificação via Resend",
-            "status": "planned",
+            "status": "completed",
             "priority": "P0",
             "estimated_hours": 4,
             "description": "Criar MailModule e MailService no NestJS usando o SDK do Resend. Implementar método sendVerificationEmail(userId, email) que gera token seguro (crypto.randomBytes(32)), salva hash no EmailVerificationToken com expiresAt +24h e envia e-mail HTML com o link de verificação apontando para o deep link do app Expo.",
@@ -475,8 +476,9 @@
           },
           {
             "id": "M01-T02-ST03",
-            "title": "Implementar telas de cadastro e verificação no Expo",
-            "status": "planned",
+            "title": "Refatoração Visual & UX",
+            "description": "Aplicar a identidade 'The Digital Forge' (Industrial Glassmorphism) nas telas de Cadastro e Verificação.",
+            "status": "completed",
             "priority": "P0",
             "estimated_hours": 6,
             "description": "Criar telas app/(auth)/cadastro.tsx e app/(auth)/verificar-email.tsx no Expo Router. Usar React Hook Form + Zod para validação local. Integrar com AuthService via TanStack Query (useMutation). Armazenar tokens no SecureStore. Implementar deep link handler para verificação de e-mail.",
@@ -738,7 +740,7 @@
           {
             "id": "M01-T04-ST01",
             "title": "Implementar POST /auth/login e JwtStrategy no NestJS",
-            "status": "planned",
+            "status": "completed",
             "priority": "P0",
             "estimated_hours": 4,
             "description": "Criar endpoint POST /auth/login com LoginDto (email, password). Implementar AuthService.login() com bcrypt.compare. Configurar @nestjs/jwt com JwtModule.registerAsync usando ConfigService. Criar JwtStrategy (PassportStrategy) que extrai Bearer token e retorna payload. Criar JwtAuthGuard global com exceção via @Public() decorator.",
@@ -778,7 +780,7 @@
           {
             "id": "M01-T04-ST02",
             "title": "Implementar refresh token rotation e logout",
-            "status": "planned",
+            "status": "completed",
             "priority": "P0",
             "estimated_hours": 3,
             "description": "Implementar POST /auth/refresh que recebe o refresh token, valida no banco (não expirado, não revogado), revoga o atual, gera novo par access + refresh e retorna. Implementar POST /auth/logout que revoga o refresh token (revokedAt = now()). No Expo, interceptar 401 com axios interceptor para chamar /refresh automaticamente.",
