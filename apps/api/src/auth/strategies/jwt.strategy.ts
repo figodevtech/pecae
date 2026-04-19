@@ -7,21 +7,23 @@ import { UserService } from '../../users/users.service';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
-    private readonly configService: ConfigService,
-    private readonly usersService: UserService,
+    private configService: ConfigService,
+    private usersService: UserService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET'),
+      secretOrKey: configService.get<string>('JWT_SECRET') || 'fallback_secret',
     });
   }
 
   async validate(payload: any) {
-    const user = await this.usersService.findOne(payload.sub);
+    const user = await this.usersService.findById(payload.sub);
+
     if (!user) {
-      throw new UnauthorizedException('Usuário não encontrado ou sessão inválida');
+      throw new UnauthorizedException();
     }
-    return user;
+
+    return { id: payload.sub, email: payload.email, type: user.type };
   }
 }
