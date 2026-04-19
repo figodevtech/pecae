@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -13,15 +13,17 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Ionicons } from '@expo/vector-icons';
-import { 
-  ForgeBackground, 
-  ForgeGlassCard, 
-  ForgeInput, 
-  ForgeButton 
+import {
+  ForgeBackground,
+  ForgeGlassCard,
+  ForgeInput,
+  ForgeButton,
 } from '../../src/components/ForgeUI';
 import { useForgeTheme } from '../../src/theme';
 import { api } from '../../src/services/api';
 import { useAuthStore } from '../../src/store/auth-store';
+import { useGoogleAuth } from '../../src/hooks/useGoogleAuth';
+import { useAppleAuth } from '../../src/hooks/useAppleAuth';
 
 const loginSchema = z.object({
   email: z.string().email('Credencial inválida'),
@@ -32,22 +34,21 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { colors, typography, effects } = useForgeTheme();
+  const { colors, typography } = useForgeTheme();
   const { setAuth } = useAuthStore();
-  
+
   const {
     control,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
-  });
+  } = useForm<LoginFormData>({ resolver: zodResolver(loginSchema) });
+
+  // ─── Email/Password Login ────────────────────────────────────
 
   const onSubmit = async (data: LoginFormData) => {
     try {
       const response = await api.post('/auth/login', data);
       const { user, tokens } = response.data;
-      
       await setAuth(user, tokens.accessToken, tokens.refreshToken);
       router.replace('/(tabs)');
     } catch (error: any) {
@@ -56,6 +57,26 @@ export default function LoginScreen() {
     }
   };
 
+  // ─── Google OAuth ────────────────────────────────────────────
+
+  const { signIn: signInWithGoogle, loading: googleLoading } = useGoogleAuth({
+    onSuccess: async (data) => {
+      await setAuth(data.user, data.tokens.accessToken, data.tokens.refreshToken);
+      router.replace('/(tabs)');
+    },
+    onError: (message) => Alert.alert('FALHA GOOGLE', message),
+  });
+
+  // ─── Apple OAuth (iOS only) ──────────────────────────────────
+
+  const { signIn: signInWithApple, loading: appleLoading } = useAppleAuth({
+    onSuccess: async (data) => {
+      await setAuth(data.user, data.tokens.accessToken, data.tokens.refreshToken);
+      router.replace('/(tabs)');
+    },
+    onError: (message) => Alert.alert('FALHA APPLE', message),
+  });
+
   return (
     <ForgeBackground>
       <KeyboardAvoidingView
@@ -63,30 +84,62 @@ export default function LoginScreen() {
         style={styles.container}
       >
         <View style={styles.content}>
-          {/* Tag de Status Técnica */}
-          <View style={[styles.statusTag, { backgroundColor: colors.surface + '80', borderColor: colors.brand + '40' }]}>
+          {/* Status Tag */}
+          <View
+            style={[
+              styles.statusTag,
+              { backgroundColor: colors.surface + '80', borderColor: colors.brand + '40' },
+            ]}
+          >
             <View style={[styles.statusDot, { backgroundColor: colors.brand }]} />
-            <Text style={[styles.statusText, { color: colors.textPrimary, fontFamily: typography.display }]}>
+            <Text
+              style={[
+                styles.statusText,
+                { color: colors.textPrimary, fontFamily: typography.display },
+              ]}
+            >
               CORE_AUTH_SERVICE // V1.0
             </Text>
           </View>
 
+          {/* Header */}
           <View style={styles.header}>
-            <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]}>
+            <Text
+              style={[
+                styles.title,
+                { color: colors.textPrimary, fontFamily: typography.display },
+              ]}
+            >
               PECAÊ
             </Text>
             <View style={[styles.titleUnderline, { backgroundColor: colors.brand }]} />
-            <Text style={[styles.subtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
+            <Text
+              style={[
+                styles.subtitle,
+                { color: colors.textMuted, fontFamily: typography.body },
+              ]}
+            >
               Acesso ao Terminal de Operações Industriais.
             </Text>
           </View>
 
+          {/* Glass Card */}
           <ForgeGlassCard intensity={20} style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={[styles.cardTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
+              <Text
+                style={[
+                  styles.cardTitle,
+                  { color: colors.textPrimary, fontFamily: typography.display },
+                ]}
+              >
                 SYSTEM_ACCESS
               </Text>
-              <Text style={[styles.cardSubtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
+              <Text
+                style={[
+                  styles.cardSubtitle,
+                  { color: colors.textMuted, fontFamily: typography.body },
+                ]}
+              >
                 Insira suas credenciais cadastradas.
               </Text>
             </View>
@@ -105,7 +158,9 @@ export default function LoginScreen() {
                     onChangeText={onChange}
                     value={value}
                     error={errors.email?.message}
-                    leftIcon={<Ionicons name="mail-outline" size={20} color={colors.textMuted} />}
+                    leftIcon={
+                      <Ionicons name="mail-outline" size={20} color={colors.textMuted} />
+                    }
                   />
                 )}
               />
@@ -122,16 +177,32 @@ export default function LoginScreen() {
                     onChangeText={onChange}
                     value={value}
                     error={errors.password?.message}
-                    leftIcon={<Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} />}
+                    leftIcon={
+                      <Ionicons
+                        name="lock-closed-outline"
+                        size={20}
+                        color={colors.textMuted}
+                      />
+                    }
                   />
                 )}
               />
 
-              <TouchableOpacity 
-                onPress={() => Alert.alert('RECUPERAÇÃO', 'Protocolo de redefinição será enviado para seu e-mail.')}
+              <TouchableOpacity
+                onPress={() =>
+                  Alert.alert(
+                    'RECUPERAÇÃO',
+                    'Protocolo de redefinição será enviado para seu e-mail.',
+                  )
+                }
                 style={styles.forgotPass}
               >
-                <Text style={[styles.forgotPassText, { color: colors.brand, fontFamily: typography.display }]}>
+                <Text
+                  style={[
+                    styles.forgotPassText,
+                    { color: colors.brand, fontFamily: typography.display },
+                  ]}
+                >
                   // ESQUECEU A CHAVE?
                 </Text>
               </TouchableOpacity>
@@ -143,17 +214,70 @@ export default function LoginScreen() {
                 variant="primary"
                 style={styles.loginButton}
               />
-              
-              <TouchableOpacity onPress={() => router.push('/(auth)/register')} style={styles.registerLink}>
-                <Text style={[styles.registerText, { color: colors.textMuted, fontFamily: typography.body }]}>
-                  Não possui acesso? <Text style={{ color: colors.brand, fontFamily: typography.display }}>INICIAR_FORJA</Text>
+
+              {/* Divider */}
+              <View style={styles.dividerRow}>
+                <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+                <Text
+                  style={[styles.dividerText, { color: colors.textMuted, fontFamily: typography.body }]}
+                >
+                  ou acesso rápido
+                </Text>
+                <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+              </View>
+
+              {/* Google Sign-In */}
+              <ForgeButton
+                title="GOOGLE_AUTH"
+                onPress={signInWithGoogle}
+                loading={googleLoading}
+                variant="secondary"
+                style={styles.oauthButton}
+                leftIcon={
+                  <Ionicons name="logo-google" size={18} color={colors.textPrimary} />
+                }
+              />
+
+              {/* Apple Sign-In — iOS Only */}
+              {Platform.OS === 'ios' && (
+                <ForgeButton
+                  title="APPLE_AUTH"
+                  onPress={signInWithApple}
+                  loading={appleLoading}
+                  variant="secondary"
+                  style={styles.oauthButton}
+                  leftIcon={
+                    <Ionicons name="logo-apple" size={18} color={colors.textPrimary} />
+                  }
+                />
+              )}
+
+              <TouchableOpacity
+                onPress={() => router.push('/(auth)/register')}
+                style={styles.registerLink}
+              >
+                <Text
+                  style={[
+                    styles.registerText,
+                    { color: colors.textMuted, fontFamily: typography.body },
+                  ]}
+                >
+                  Não possui acesso?{' '}
+                  <Text style={{ color: colors.brand, fontFamily: typography.display }}>
+                    INICIAR_FORJA
+                  </Text>
                 </Text>
               </TouchableOpacity>
             </View>
           </ForgeGlassCard>
 
           <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: colors.textMuted + '60', fontFamily: typography.body }]}>
+            <Text
+              style={[
+                styles.footerText,
+                { color: colors.textMuted + '60', fontFamily: typography.body },
+              ]}
+            >
               ESTA É UMA ÁREA RESTRITA E MONITORADA.
             </Text>
           </View>
@@ -164,14 +288,8 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    padding: 24,
-    justifyContent: 'center',
-  },
+  container: { flex: 1 },
+  content: { flex: 1, padding: 24, justifyContent: 'center' },
   statusTag: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -182,82 +300,31 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 40,
   },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 8,
-  },
-  statusText: {
-    fontSize: 10,
-    letterSpacing: 2,
-  },
-  header: {
-    marginBottom: 40,
+  statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
+  statusText: { fontSize: 10, letterSpacing: 2 },
+  header: { marginBottom: 40, alignItems: 'center' },
+  title: { fontSize: 42, letterSpacing: 12, textAlign: 'center' },
+  titleUnderline: { width: 60, height: 2, marginTop: 8, marginBottom: 16 },
+  subtitle: { fontSize: 12, textAlign: 'center', letterSpacing: 1.5, opacity: 0.8 },
+  card: { padding: 24 },
+  cardHeader: { marginBottom: 24 },
+  cardTitle: { fontSize: 18, letterSpacing: 4 },
+  cardSubtitle: { fontSize: 12, marginTop: 4, opacity: 0.6 },
+  form: { width: '100%' },
+  forgotPass: { alignSelf: 'flex-end', marginBottom: 32, marginTop: 8 },
+  forgotPassText: { fontSize: 10, letterSpacing: 1 },
+  loginButton: { marginTop: 8 },
+  dividerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginVertical: 24,
+    gap: 12,
   },
-  title: {
-    fontSize: 42,
-    letterSpacing: 12,
-    textAlign: 'center',
-  },
-  titleUnderline: {
-    width: 60,
-    height: 2,
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  subtitle: {
-    fontSize: 12,
-    textAlign: 'center',
-    letterSpacing: 1.5,
-    opacity: 0.8,
-  },
-  card: {
-    padding: 24,
-  },
-  cardHeader: {
-    marginBottom: 24,
-  },
-  cardTitle: {
-    fontSize: 18,
-    letterSpacing: 4,
-  },
-  cardSubtitle: {
-    fontSize: 12,
-    marginTop: 4,
-    opacity: 0.6,
-  },
-  form: {
-    width: '100%',
-  },
-  forgotPass: {
-    alignSelf: 'flex-end',
-    marginBottom: 32,
-    marginTop: 8,
-  },
-  forgotPassText: {
-    fontSize: 10,
-    letterSpacing: 1,
-  },
-  loginButton: {
-    marginTop: 8,
-  },
-  registerLink: {
-    marginTop: 32,
-    alignItems: 'center',
-  },
-  registerText: {
-    fontSize: 12,
-    letterSpacing: 0.5,
-  },
-  footer: {
-    marginTop: 40,
-    alignItems: 'center',
-  },
-  footerText: {
-    fontSize: 9,
-    letterSpacing: 2,
-    textAlign: 'center',
-  },
+  dividerLine: { flex: 1, height: 1, opacity: 0.3 },
+  dividerText: { fontSize: 10, letterSpacing: 1, opacity: 0.6 },
+  oauthButton: { marginBottom: 12 },
+  registerLink: { marginTop: 24, alignItems: 'center' },
+  registerText: { fontSize: 12, letterSpacing: 0.5 },
+  footer: { marginTop: 40, alignItems: 'center' },
+  footerText: { fontSize: 9, letterSpacing: 2, textAlign: 'center' },
 });

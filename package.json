@@ -22,23 +22,41 @@
     "ajv": "^8.18.0",
     "lodash": "^4.17.23",
     "glob": "^11.0.0",
-    "tar": "^7.5.11",
-    "send": "^0.19.0",
     "js-yaml": "^4.1.2",
     "braces": "^3.0.3",
     "micromatch": "^4.0.8",
     "ws": "^8.18.0",
     "path-to-regexp": "^0.1.12",
     "body-parser": "^1.20.3",
-    "express": "^4.21.2",
     "file-type": "^19.6.0",
     "multer": "^1.4.5-lts.1",
     "picomatch": "^4.0.4",
     "tmp": "^0.2.4",
-    "webpack": "^5.94.0",
-    "@xmldom/xmldom": "^0.9.1",
     "@tootallnate/once": "^3.0.1",
-    "@nestjs/common": "^11.1.19"
+    "@nestjs/common": "^11.1.19",
+
+    "tar": "^6.2.1",
+    "@mapbox/node-pre-gyp": {
+      "tar": "^6.2.1"
+    },
+    "cacache": {
+      "tar": "^6.2.1"
+    },
+    "@expo/cli": {
+      "tar": "^6.2.1",
+      "send": "^0.19.0",
+      "@xmldom/xmldom": "^0.9.1"
+    },
+
+    "send": "^0.19.0",
+    "@xmldom/xmldom": "^0.9.1",
+
+    "@expo/plist": {
+      "@xmldom/xmldom": "^0.9.1"
+    },
+    "express": {
+      "send": "^0.19.0"
+    }
   },
   "devDependencies": {
     "turbo": "^2.0.0",
