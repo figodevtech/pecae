@@ -37,7 +37,15 @@ export class AuthService {
   // ============================================================
 
   private async generateTokens(user: any, ip: string, userAgent: string) {
-    const payload = { sub: user.id, email: user.email, type: user.type };
+    let hasProfile = false;
+    if (user.type === UserType.SELLER || user.type === UserType.BOTH) {
+      const profile = await this.prisma.sellerProfile.findUnique({
+        where: { userId: user.id },
+      });
+      hasProfile = !!profile;
+    }
+
+    const payload = { sub: user.id, email: user.email, type: user.type, hasProfile };
 
     const accessToken = this.jwtService.sign(payload);
 
@@ -63,6 +71,7 @@ export class AuthService {
         email: user.email,
         name: user.name,
         type: user.type,
+        hasProfile,
       },
       tokens: {
         accessToken,

@@ -49,7 +49,17 @@ export default function LoginScreen() {
       const response = await api.post('/auth/login', data);
       const { user, tokens } = response.data;
       await setAuth(user, tokens.accessToken, tokens.refreshToken);
-      router.replace('/(tabs)');
+      
+      // Lógica de Redirecionamento Inteligente
+      if (user.type === 'SELLER' || user.type === 'BOTH') {
+        if (!user.hasProfile) {
+          router.replace('/(seller)/onboarding');
+        } else {
+          router.replace('/(seller)/(tabs)');
+        }
+      } else {
+        router.replace('/(tabs)');
+      }
     } catch (error: any) {
       const message = error.response?.data?.message || 'E-mail ou senha incorretos';
       Alert.alert('FALHA NO ACESSO', message);
@@ -61,7 +71,17 @@ export default function LoginScreen() {
   const { signIn: signInWithGoogle, loading: googleLoading } = useGoogleAuth({
     onSuccess: async (data) => {
       await setAuth(data.user, data.tokens.accessToken, data.tokens.refreshToken);
-      router.replace('/(tabs)');
+      
+      const { user } = data;
+      if (user.type === 'SELLER' || user.type === 'BOTH') {
+        if (!user.hasProfile) {
+          router.replace('/(seller)/onboarding');
+        } else {
+          router.replace('/(seller)/(tabs)');
+        }
+      } else {
+        router.replace('/(tabs)');
+      }
     },
     onError: (message) => Alert.alert('FALHA GOOGLE', message),
   });
