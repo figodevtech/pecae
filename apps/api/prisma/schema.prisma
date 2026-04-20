@@ -230,6 +230,7 @@ model SellerProfile {
   address     String     @db.VarChar(255)
   city        String     @db.VarChar(100)
   state       String     @db.VarChar(2)
+  zipCode     String?    @db.VarChar(10) @map("zip_code")
   lat         Float?
   lng         Float?
   whatsapp    String     @db.VarChar(20)

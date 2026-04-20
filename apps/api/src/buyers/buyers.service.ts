@@ -63,7 +63,11 @@ export class BuyersService {
       if (notificationPreferences) {
         await tx.notificationPreferences.update({
           where: { userId },
-          data: notificationPreferences,
+          data: {
+            ...(notificationPreferences.push !== undefined && { pushEnabled: notificationPreferences.push }),
+            ...(notificationPreferences.email !== undefined && { emailEnabled: notificationPreferences.email }),
+            ...(notificationPreferences.inApp !== undefined && { inAppEnabled: notificationPreferences.inApp }),
+          },
         });
       }
     });

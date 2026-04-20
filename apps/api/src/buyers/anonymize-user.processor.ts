@@ -65,13 +65,14 @@ export class AnonymizeUserProcessor extends WorkerHost {
           where: { userId },
           data: {
             // cnpj e companyName poderiam ser anonimizados aqui caso fosse aplicável
-            companyName: `Empresa Deletada ${userId.substring(0, 8)}`,
-            avatar: null,
+            storeName: `Empresa Deletada ${userId.substring(0, 8)}`,
+            logo: null,
             phone: null,
-            address: null,
-            city: null,
-            state: null,
-            zipCode: null,
+            whatsapp: "00000000000",
+            address: "Removido por LGPD",
+            city: "Removido",
+            state: "XX",
+            zipCode: "00000-000",
           },
         });
       }

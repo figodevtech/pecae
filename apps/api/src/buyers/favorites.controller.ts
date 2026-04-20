@@ -7,13 +7,13 @@ import { FavoritesService } from './favorites.service';
 export class FavoritesController {
   constructor(private readonly favoritesService: FavoritesService) {}
 
-  @Post(':listingId')
-  toggleFavorite(@Request() req, @Param('listingId') listingId: string) {
-    return this.favoritesService.toggleFavorite(req.user.id, listingId);
+  @Get('favorites')
+  getFavorites(@Request() req: any) {
+    return this.favoritesService.getFavorites(req.user.sub);
   }
 
-  @Get()
-  getFavorites(@Request() req) {
-    return this.favoritesService.getFavorites(req.user.id);
+  @Post(':listingId')
+  toggleFavorite(@Request() req: any, @Param('listingId') listingId: string) {
+    return this.favoritesService.toggleFavorite(req.user.sub, listingId);
   }
 }

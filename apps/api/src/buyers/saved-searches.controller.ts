@@ -9,22 +9,23 @@ export class SavedSearchesController {
   constructor(private readonly savedSearchesService: SavedSearchesService) {}
 
   @Post()
-  create(@Request() req, @Body() data: CreateSavedSearchDto) {
-    return this.savedSearchesService.createSavedSearch(req.user.id, data);
+  create(@Request() req: any, @Body() data: CreateSavedSearchDto) {
+    return this.savedSearchesService.createSavedSearch(req.user.sub, data);
   }
 
   @Get()
-  findAll(@Request() req) {
-    return this.savedSearchesService.getSavedSearches(req.user.id);
+  findAll(@Request() req: any) {
+    return this.savedSearchesService.getSavedSearches(req.user.sub);
   }
 
   @Delete(':id')
-  remove(@Request() req, @Param('id') id: string) {
-    return this.savedSearchesService.deleteSavedSearch(req.user.id, id);
+  remove(@Request() req: any, @Param('id') id: string) {
+    return this.savedSearchesService.deleteSavedSearch(req.user.sub, id);
   }
 
   @Patch(':id/alert')
-  toggleAlert(@Request() req, @Param('id') id: string, @Body('alertActive') alertActive: boolean) {
-    return this.savedSearchesService.toggleAlert(req.user.id, id, alertActive);
+  toggleAlert(@Request() req: any, @Param('id') id: string, @Body('alertActive') alertActive: boolean) {
+    return this.savedSearchesService.toggleAlert(req.user.sub, id, alertActive);
   }
 }
+

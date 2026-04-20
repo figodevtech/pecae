@@ -1,13 +1,14 @@
-import { Processor, Process } from '@nestjs/bullmq';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Processor('seller-stats')
-export class SellerStatsProcessor {
-  constructor(private readonly prisma: PrismaService) {}
+export class SellerStatsProcessor extends WorkerHost {
+  constructor(private readonly prisma: PrismaService) {
+    super();
+  }
 
-  @Process('update-seller-stats')
-  async handle(job: Job<{ sellerProfileId: string }>) {
+  async process(job: Job<{ sellerProfileId: string }>): Promise<any> {
     const { sellerProfileId } = job.data;
 
     // 1. Calculate active listings (PUBLISHED)
@@ -34,8 +35,6 @@ export class SellerStatsProcessor {
     });
 
     // 4. Update the seller stats
-    // Note: avgResponseTimeMinutes logic should ideally parse chat messages
-    // M03 specifies it, but since Chat module is not fully implemented, we'll keep it as is or omit it for now
     await this.prisma.sellerStats.update({
       where: { sellerProfileId },
       data: {
@@ -54,3 +53,4 @@ export class SellerStatsProcessor {
     };
   }
 }
+
