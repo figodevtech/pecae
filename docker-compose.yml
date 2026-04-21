@@ -11,18 +11,13 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pecae-pgadmin
-    restart: always
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@pecae.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
-      - "5050:80"
-    depends_on:
-      - database
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pecae_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pecae-network
 
   redis:
     image: redis:7-alpine
@@ -32,7 +27,62 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pecae-network
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: pecae-api
+    restart: always
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:password123@database:5432/pecae_db?schema=public
+      - DIRECT_URL=postgresql://postgres:password123@database:5432/pecae_db?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=super_secret_dev_key
+      - PORT=3000
+      - RESEND_API_KEY=re_dev_placeholder
+      - EMAIL_FROM=noreply@pecae.com.br
+      - STORAGE_TYPE=supabase
+      - SUPABASE_URL=https://placeholder.supabase.co
+      - SUPABASE_SERVICE_ROLE_KEY=placeholder
+    ports:
+      - "3000:3000"
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - pecae-network
+
+  mobile-web:
+    build:
+      context: .
+      dockerfile: apps/mobile/Dockerfile
+    container_name: pecae-mobile-web
+    restart: always
+    environment:
+      - EXPO_PUBLIC_API_URL=http://localhost:3000 # No browser, localhost ainda aponta para a maquina do usuario
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    networks:
+      - pecae-network
 
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  pecae-network:
+    driver: bridge

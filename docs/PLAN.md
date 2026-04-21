@@ -1,46 +1,73 @@
-# PLAN.md - Restauração da Identidade Visual PEÇAÊ (Verde)
+# Plano de Implementação: Dockerização do Ecossistema PECAÊ
 
-Este plano detalha a reversão das cores para a paleta Verde original conforme o Design System, mantendo a marca **PEÇAÊ** e eliminando referências legadas à "Forja".
+Este plano detalha a estratégia para containerizar todo o projeto PECAÊ, permitindo a execução local e o deploy em nuvem (AWS/OCI) via Docker Compose.
 
-## 🏁 Estado Atual
-- [x] Nome e Marca "PEÇAÊ" integrados.
-- [x] Responsividade Web (Container) implementada.
-- [!] Cores atuais: Âmbar (ERRADO - deve ser Verde).
-
----
-
-## 🎯 Objetivos (Orquestração de Reversão)
-
-### 1. Atualização do Design System (`frontend-specialist`)
-- [ ] Atualizar `pecae-tokens.ts` com as cores oficiais:
-  - Principal: `#2D8C4E`
-  - Vibrante: `#4ADE80`
-  - Escuro: `#14532D`
-- [ ] Atualizar `PecaeBackground.tsx` com o gradiente Dark: `#022C22` para `#064E3B`.
-- [ ] Revisar `PecaeGlassCard` para garantir bordas translúcidas nítidas.
-
-### 2. Refatoração de Telas e Navegação (`mobile-developer`)
-- [ ] Auditar `login.tsx` e `register.tsx` para garantir uso exclusivo dos tokens verdes.
-- [ ] Atualizar `onboarding.tsx` e fluxos de vendedor.
-- [ ] Ajustar as Tab Bars (Main e Seller) para usar o Verde PEÇAÊ como `activeTintColor`.
-
-### 3. Verificação e Qualidade (`test-engineer`)
-- [ ] Executar `ux_audit.py` para validar conformidade visual.
-- [ ] Executar `security_scan.py` para garantir integridade.
-- [ ] Validar renderização Web em diferentes resoluções.
+## 🛠️ Visão Geral Técnica
+- **Orquestração**: Docker Compose (V3.8+)
+- **Build System**: Turborepo (utilizando `turbo prune`)
+- **Backend**: NestJS v11 (Dockerizado em modo produção)
+- **Frontend/Mobile**: Expo SDK 51 (Versão Web servida via Nginx)
+- **Infraestrutura**: PostgreSQL 16 + Redis 7
 
 ---
 
-## 🛠️ Agentes Envolvidos
+## 📋 Fase 1: Preparação do Monorepo
 
-| Agente | Foco |
-| :--- | :--- |
-| `project-planner` | Gestão do Plano e Orquestração |
-| `frontend-specialist` | Implementação de Tokens e Componentes |
-| `mobile-developer` | Aplicação em Telas e Navegação |
-| `test-engineer` | Verificação Final e Auditoria |
+### 1.1 Criar `.dockerignore` Global
+Evitar que `node_modules`, `.git`, e builds locais entrem no contexto do Docker.
+
+### 1.2 Scripts de Pruning
+O Turborepo exige que "podemos" (prune) o monorepo para enviar apenas o necessário para cada container.
 
 ---
 
-## ⏸️ CHECKPOINT DE APROVAÇÃO
-**✅ Plano de Reversão de Cores criado. Você aprova? (Y/N)**
+## 📋 Fase 2: Dockerização do Backend (apps/api)
+
+### 2.1 Criar `apps/api/Dockerfile`
+- **Estágio 1 (Pruner)**: Usa `turbo prune @pecae/api --docker`.
+- **Estágio 2 (Installer)**: Instala apenas as dependências necessárias.
+- **Estágio 3 (Builder)**: Compila o NestJS e gera o cliente Prisma.
+- **Estágio 4 (Runner)**: Imagem final leve (alpine) executando `node dist/main`.
+
+### 2.2 Script de Inicialização (`entrypoint.sh`)
+Garantir que as migrações do Prisma (`npx prisma migrate deploy`) rodem antes da API iniciar.
+
+---
+
+## 📋 Fase 3: Dockerização do Frontend/Web (apps/mobile)
+
+### 3.1 Criar `apps/mobile/Dockerfile`
+- **Estágio 1 (Pruner)**: Usa `turbo prune @pecae/mobile --docker`.
+- **Estágio 2 (Builder)**: Roda `npx expo export --platform web`.
+- **Estágio 3 (Runner)**: Usa **Nginx** para servir os arquivos estáticos da pasta `dist/`.
+
+### 3.2 Configuração Nginx
+Criar um `nginx.conf` básico para lidar com roteamento do Expo Router (SPA).
+
+---
+
+## 📋 Fase 4: Orquestração (docker-compose.yml)
+
+### 4.1 Atualizar `docker-compose.yml` na Raiz
+Adicionar os serviços:
+- `api`: Depende de `database` e `redis`.
+- `mobile-web`: Depende da `api`.
+
+### 4.2 Gerenciamento de Variáveis de Ambiente
+Configurar as URLs internas (ex: `DATABASE_URL=postgres://user:pass@database:5432/db`) para comunicação entre containers.
+
+---
+
+## ✅ Critérios de Aceitação
+1. `docker-compose up --build` sobe todos os serviços sem erros.
+2. A API consegue conectar ao Postgres e Redis internos.
+3. O app web é acessível no navegador.
+4. O scanner de segurança não aponta segredos nos Dockerfiles.
+
+---
+
+## 🚀 Próximos Passos (PHASE 2)
+Após aprovação:
+1. Criar Dockerfiles.
+2. Atualizar docker-compose.
+3. Testar comunicação interna.
