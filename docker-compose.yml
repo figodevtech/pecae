@@ -71,7 +71,7 @@ services:
     container_name: pecae-mobile-web
     restart: always
     environment:
-      - EXPO_PUBLIC_API_URL=http://localhost:3000 # No browser, localhost ainda aponta para a maquina do usuario
+      - EXPO_PUBLIC_API_URL=http://192.168.0.37:3000
     ports:
       - "8080:80"
     depends_on:
