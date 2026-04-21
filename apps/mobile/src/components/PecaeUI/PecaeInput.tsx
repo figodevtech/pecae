@@ -13,12 +13,16 @@ interface PecaeInputProps extends TextInputProps {
   label?: string;
   error?: string;
   containerStyle?: ViewStyle;
+  leftIcon?: React.ReactNode;
+  rightIcon?: React.ReactNode;
 }
 
 export const PecaeInput: React.FC<PecaeInputProps> = ({
   label,
   error,
   containerStyle,
+  leftIcon,
+  rightIcon,
   ...props
 }) => {
   const { colors, typography, effects, isDark } = usePecaeTheme();
@@ -42,26 +46,30 @@ export const PecaeInput: React.FC<PecaeInputProps> = ({
           },
         ]}
       >
-        <TextInput
-          {...props}
-          placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)'}
-          onFocus={(e) => {
-            setIsFocused(true);
-            props.onFocus?.(e);
-          }}
-          onBlur={(e) => {
-            setIsFocused(false);
-            props.onBlur?.(e);
-          }}
-          style={[
-            styles.input,
-            {
-              color: colors.textPrimary,
-              fontFamily: typography.body,
-            },
-            props.style,
-          ]}
-        />
+        <View style={styles.inputRow}>
+          {leftIcon && <View style={styles.iconLeft}>{leftIcon}</View>}
+          <TextInput
+            {...props}
+            placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)'}
+            onFocus={(e) => {
+              setIsFocused(true);
+              props.onFocus?.(e);
+            }}
+            onBlur={(e) => {
+              setIsFocused(false);
+              props.onBlur?.(e);
+            }}
+            style={[
+              styles.input,
+              {
+                color: colors.textPrimary,
+                fontFamily: typography.body,
+              },
+              props.style,
+            ]}
+          />
+          {rightIcon && <View style={styles.iconRight}>{rightIcon}</View>}
+        </View>
       </View>
       {error && (
         <Text style={[styles.errorText, { color: colors.error, fontFamily: typography.body }]}>
@@ -85,11 +93,24 @@ const styles = StyleSheet.create({
   inputWrapper: {
     height: 56,
     justifyContent: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 4,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: '100%',
   },
   input: {
+    flex: 1,
     fontSize: 16,
     height: '100%',
+    paddingHorizontal: 12,
+  },
+  iconLeft: {
+    paddingLeft: 12,
+  },
+  iconRight: {
+    paddingRight: 12,
   },
   errorText: {
     fontSize: 12,

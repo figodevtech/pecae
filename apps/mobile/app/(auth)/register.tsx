@@ -23,6 +23,7 @@ import {
 import { usePecaeTheme } from '../../src/theme';
 import { api } from '../../src/services/api';
 import { Ionicons } from '@expo/vector-icons';
+import { useResponsive } from '../../src/theme/breakpoints';
 
 const registerSchema = z.object({
   name: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres'),
@@ -37,6 +38,7 @@ const registerSchema = z.object({
 type RegisterFormData = z.infer<typeof registerSchema>;export default function RegisterScreen() {
   const router = useRouter();
   const { colors, typography, effects } = usePecaeTheme();
+  const { isMobile, pick } = useResponsive();
   
   const {
     control,
@@ -75,12 +77,23 @@ type RegisterFormData = z.infer<typeof registerSchema>;export default function R
       >
         <PecaeScreenContainer scrollable>
           <View style={styles.header}>
-            <View style={styles.tag}>
-              <Text style={[styles.tagText, { color: colors.brand, fontFamily: typography.mono }]}>
-                PLATAFORMA_OFICIAL: v1.2
+            <View style={[styles.tag, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
+              <View style={[styles.tagDot, { backgroundColor: colors.brand }]} />
+              <Text style={[styles.tagText, { color: colors.textPrimary, fontFamily: typography.display }]}>
+                PLATAFORMA_OFICIAL // V1.2
               </Text>
             </View>
-            <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]}>
+            <Text 
+              style={[
+                styles.title, 
+                { 
+                  color: colors.textPrimary, 
+                  fontFamily: typography.display,
+                  fontSize: pick({ mobile: 32, tablet: 42, desktop: 56 }),
+                  letterSpacing: pick({ mobile: 6, tablet: 12, desktop: 16 }),
+                }
+              ]}
+            >
               NOVO CADASTRO
             </Text>
             <Text style={[styles.subtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
@@ -88,8 +101,21 @@ type RegisterFormData = z.infer<typeof registerSchema>;export default function R
             </Text>
           </View>
 
-          <PecaeGlassCard intensity={30}>
-            <View style={styles.formSection}>
+          <View style={[styles.contentWrapper, !isMobile && styles.desktopLayout]}>
+            {!isMobile && (
+              <View style={styles.brandingSection}>
+                <Text style={[styles.brandingTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
+                  // THE_DIGITAL_FORGE
+                </Text>
+                <Text style={[styles.brandingSubtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
+                  Conectando compradores e vendedores no maior marketplace de peças automotivas do Brasil.
+                </Text>
+              </View>
+            )}
+
+            <View style={[styles.formSectionWrapper, !isMobile && { maxWidth: 500 }]}>
+              <PecaeGlassCard intensity={30}>
+                <View style={styles.formSection}>
               <Controller
                 control={control}
                 name="name"
@@ -185,7 +211,10 @@ type RegisterFormData = z.infer<typeof registerSchema>;export default function R
                 </Text>
               </TouchableOpacity>
             </View>
-          </PecaeGlassCard>
+              </View>
+            </PecaeGlassCard>
+          </View>
+        </View>
         </PecaeScreenContainer>
       </KeyboardAvoidingView>
     </PecaeBackground>
@@ -196,42 +225,62 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scrollContent: {
-    padding: 24,
-    paddingTop: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexGrow: 1,
-  },
-  webWrapper: {
+  contentWrapper: {
     width: '100%',
-    maxWidth: Platform.OS === 'web' ? 500 : '100%',
     alignSelf: 'center',
+  },
+  desktopLayout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 60,
+    marginTop: 20,
+  },
+  brandingSection: {
+    flex: 1,
+    paddingRight: 40,
+  },
+  brandingTitle: {
+    fontSize: 24,
+    letterSpacing: 4,
+    marginBottom: 16,
+  },
+  brandingSubtitle: {
+    fontSize: 16,
+    lineHeight: 24,
+    opacity: 0.7,
+  },
+  formSectionWrapper: {
+    flex: 1,
+    width: '100%',
   },
   header: {
     marginBottom: 32,
     width: '100%',
   },
   tag: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 4,
-    marginBottom: 8,
+    alignSelf: 'center',
+    marginBottom: 40,
   },
+  tagDot: { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
   tagText: {
     fontSize: 10,
     letterSpacing: 2,
   },
   title: {
-    fontSize: 32,
-    letterSpacing: -1,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
-    marginTop: 8,
-    lineHeight: 24,
+    fontSize: 12,
+    textAlign: 'center',
+    letterSpacing: 1.5,
+    opacity: 0.8,
+    marginTop: 16,
   },
   formSection: {
     gap: 8,

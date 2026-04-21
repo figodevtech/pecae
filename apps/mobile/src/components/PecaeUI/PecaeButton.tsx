@@ -18,6 +18,7 @@ interface PecaeButtonProps {
   style?: ViewStyle;
   textStyle?: TextStyle;
   variant?: 'primary' | 'secondary' | 'outline';
+  leftIcon?: React.ReactNode;
 }
 
 export const PecaeButton: React.FC<PecaeButtonProps> = ({
@@ -28,6 +29,7 @@ export const PecaeButton: React.FC<PecaeButtonProps> = ({
   style,
   textStyle,
   variant = 'primary',
+  leftIcon,
 }) => {
   const { colors, typography, effects } = usePecaeTheme();
 
@@ -62,18 +64,22 @@ export const PecaeButton: React.FC<PecaeButtonProps> = ({
         {loading ? (
           <ActivityIndicator color={isPrimary ? '#000' : colors.brand} />
         ) : (
-          <Text
-            style={[
-              styles.text,
-              {
-                color: isPrimary ? '#000' : colors.brand,
-                fontFamily: typography.display,
-              },
-              textStyle,
-            ]}
-          >
-            {title.toUpperCase()}
-          </Text>
+          <View style={styles.contentRow}>
+            {leftIcon && <View style={styles.iconContainer}>{leftIcon}</View>}
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.text,
+                {
+                  color: isPrimary ? '#000' : colors.textPrimary,
+                  fontFamily: typography.display,
+                },
+                textStyle,
+              ]}
+            >
+              {title.toUpperCase()}
+            </Text>
+          </View>
         )}
       </LinearGradient>
     </TouchableOpacity>
@@ -92,9 +98,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
+  contentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconContainer: {
+    marginRight: 10,
+  },
   text: {
-    fontSize: 16,
-    letterSpacing: 1.2,
-    fontWeight: 'bold',
+    fontSize: 14,
+    letterSpacing: 2,
   },
 });

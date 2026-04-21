@@ -24,6 +24,7 @@ import { usePecaeTheme } from '../../src/theme';
 import { api } from '../../src/services/api';
 import { useAuthStore } from '../../src/store/auth-store';
 import { useGoogleAuth } from '../../src/hooks/useGoogleAuth';
+import { useResponsive } from '../../src/theme/breakpoints';
 
 const loginSchema = z.object({
   email: z.string().email('Credencial inválida'),
@@ -36,6 +37,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const { colors, typography } = usePecaeTheme();
   const { setAuth } = useAuthStore();
+  const { isMobile, isDesktop, pick } = useResponsive();
 
   const {
     control,
@@ -116,7 +118,12 @@ export default function LoginScreen() {
             <Text
               style={[
                 styles.title,
-                { color: colors.textPrimary, fontFamily: typography.display },
+                { 
+                  color: colors.textPrimary, 
+                  fontFamily: typography.display,
+                  fontSize: pick({ mobile: 32, tablet: 42, desktop: 56 }),
+                  letterSpacing: pick({ mobile: 6, tablet: 12, desktop: 16 }),
+                },
               ]}
             >
               PEÇAÊ
@@ -132,8 +139,23 @@ export default function LoginScreen() {
             </Text>
           </View>
 
-          <View style={styles.webWrapper}>
-            <PecaeGlassCard intensity={20} style={styles.card}>
+          <View style={[
+            styles.contentWrapper,
+            !isMobile && styles.desktopLayout
+          ]}>
+            {!isMobile && (
+              <View style={styles.brandingSection}>
+                <Text style={[styles.brandingTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
+                  // THE_DIGITAL_FORGE
+                </Text>
+                <Text style={[styles.brandingSubtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
+                  Construindo o futuro do mercado automotivo com tecnologia e sustentabilidade.
+                </Text>
+              </View>
+            )}
+
+            <View style={[styles.formSection, !isMobile && { maxWidth: 450 }]}>
+              <PecaeGlassCard intensity={20} style={styles.card}>
               <View style={styles.cardHeader}>
                 <Text
                   style={[
@@ -259,6 +281,7 @@ export default function LoginScreen() {
               </View>
             </PecaeGlassCard>
           </View>
+        </View>
 
           <View style={styles.footer}>
             <Text
@@ -278,15 +301,33 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { 
-    flex: 1, 
-    padding: 24, 
-    justifyContent: 'center',
+  contentWrapper: {
     width: '100%',
-    maxWidth: Platform.OS === 'web' ? 500 : '100%',
     alignSelf: 'center',
   },
-  webWrapper: {
+  desktopLayout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 40,
+    marginTop: 20,
+  },
+  brandingSection: {
+    flex: 1,
+    paddingRight: 40,
+  },
+  brandingTitle: {
+    fontSize: 24,
+    letterSpacing: 4,
+    marginBottom: 16,
+  },
+  brandingSubtitle: {
+    fontSize: 16,
+    lineHeight: 24,
+    opacity: 0.7,
+  },
+  formSection: {
+    flex: 1,
     width: '100%',
   },
   statusTag: {
