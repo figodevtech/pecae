@@ -13,7 +13,9 @@ async function bootstrap() {
   const env = config.get<string>('NODE_ENV', 'development');
 
   // --- Security ---
-  app.use(helmet());
+  if (env === 'production') {
+    app.use(helmet());
+  }
 
   // --- CORS ---
   app.enableCors({
@@ -50,8 +52,14 @@ async function bootstrap() {
     logger.log(`Swagger docs available at http://localhost:${port}/api/docs`);
   }
 
-  await app.listen(port);
-  logger.log(`🚀 PECAÊ API running on http://localhost:${port}/api/v1`);
+  await app.listen(port, '0.0.0.0');
+  
+  const publicIp = config.get<string>('API_PUBLIC_URL', `http://localhost:${port}`);
+  
+  logger.log(`🚀 PECAÊ API running on: ${publicIp}/api/v1`);
+  if (env !== 'production') {
+    logger.log(`📌 Swagger docs: ${publicIp}/api/docs`);
+  }
   logger.log(`📌 Environment: ${env}`);
 }
 

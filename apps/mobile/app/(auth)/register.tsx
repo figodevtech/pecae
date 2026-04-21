@@ -210,11 +210,10 @@ type RegisterFormData = z.infer<typeof registerSchema>;export default function R
                   Já tem uma conta? <Text style={{ color: colors.brand, fontFamily: typography.display }}>ENTRAR</Text>
                 </Text>
               </TouchableOpacity>
+                </View>
+              </PecaeGlassCard>
             </View>
-              </View>
-            </PecaeGlassCard>
           </View>
-        </View>
         </PecaeScreenContainer>
       </KeyboardAvoidingView>
     </PecaeBackground>
