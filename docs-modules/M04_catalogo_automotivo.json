@@ -372,7 +372,7 @@
               "UPSTASH_REDIS_URL via ConfigService (nunca hardcoded)",
               "Cache miss adiciona resultado ao Redis automaticamente"
             ],
-            "tech_notes": "Instalar: `@nestjs/cache-manager`, `cache-manager`, `cache-manager-ioredis-yet`, `ioredis`. ConfiguraçãoUpstash: usar `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` OU connection string ioredis `redis://default:{token}@{host}:{port}`. CacheModule: `CacheModule.registerAsync({ useFactory: (config: ConfigService) => ({ store: redisStore, host: config.get('REDIS_HOST'), port: config.get('REDIS_PORT'), password: config.get('REDIS_PASSWORD'), ttl: 86400 }) })`. Keys pattern: `pecae:catalog:brands`, `pecae:catalog:models:{brandId}`, etc."
+            "tech_notes": "Instalar: `@nestjs/cache-manager`, `cache-manager`, `cache-manager-ioredis-yet`, `ioredis`. ConfiguraçãoUpstash: usar `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` OU connection string ioredis no formato redis (protocolo) seguido de credenciais. CacheModule: `CacheModule.registerAsync({ useFactory: (config: ConfigService) => ({ store: redisStore, host: config.get('REDIS_HOST'), port: config.get('REDIS_PORT'), password: config.get('REDIS_PASSWORD'), ttl: 86400 }) })`. Keys pattern: `pecae:catalog:brands`, `pecae:catalog:models:{brandId}`, etc."
           },
           {
             "id": "M04-T02-ST03",

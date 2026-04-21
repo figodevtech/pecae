@@ -716,7 +716,7 @@
             "status": "completed",
             "priority": "P0",
             "estimated_hours": 4,
-            "description": "Criar endpoint POST /auth/login com LoginDto (email, password). Implementar AuthService.login() com bcrypt.compare. Configurar @nestjs/jwt com JwtModule.registerAsync usando ConfigService. Criar JwtStrategy (PassportStrategy) que extrai Bearer token e retorna payload. Criar JwtAuthGuard global com exceção via @Public() decorator.",
+            "description": "Criar endpoint POST /auth/login com LoginDto (email, password). Implementar AuthService.login() com bcrypt.compare. Configurar @nestjs/jwt com JwtModule.registerAsync usando ConfigService. Criar JwtStrategy (PassportStrategy) que extrai o token do tipo Bearer-Auth e retorna payload. Criar JwtAuthGuard global com exceção via @Public() decorator.",
             "user_story": "Como usuário cadastrado, quero fazer login com e-mail e senha para manter minha sessão ativa no app",
             "use_case": "UC02",
             "functional_requirements": [
@@ -748,7 +748,7 @@
               "@Req() user disponível em controllers protegidos",
               "Refresh token gerado com crypto.randomBytes(64).toString('hex')"
             ],
-            "tech_notes": "Instalar `@nestjs/jwt`, `@nestjs/passport`, `passport`, `passport-jwt`. JwtStrategy extrai token do header `Authorization: Bearer <token>`. Criar decorator `@Public()` usando `SetMetadata('isPublic', true)`. JwtAuthGuard verifica metadata com Reflector. Payload: `{ sub: string, type: UserType }`. RefreshToken: salvar hash no banco, retornar raw token para o cliente. Usar `crypto.randomBytes(64).toString('hex')` para refresh token."
+            "tech_notes": "Instalar `@nestjs/jwt`, `@nestjs/passport`, `passport`, `passport-jwt`. JwtStrategy extrai token do header Authorization. Exemplo: Bearer (TOKEN). Criar decorator `@Public()` usando `SetMetadata('isPublic', true)`. JwtAuthGuard verifica metadata com Reflector. Payload: `{ sub: string, type: UserType }`. RefreshToken: salvar hash no banco, retornar raw token para o cliente. Usar `crypto.randomBytes(64).toString('hex')` para refresh token."
           },
           {
             "id": "M01-T04-ST02",
@@ -812,7 +812,7 @@
               "EXCLUSIVE GATEWAY: User encontrado?",
               "  [Não] --> TASK (API): Retornar 200 OK (mesmo comportamento para evitar enumeração)",
               "  [Sim] --> TASK (API): Gerar token raw, salvar hash em PasswordResetToken (expiresAt +1h)",
-              "MESSAGE FLOW (API → Resend): Enviar e-mail com deep link pecae://reset-password?token=",
+              "MESSAGE FLOW (API → Resend): Enviar e-mail com deep link pecae://reset-password?token=[TOKEN]",
               "TASK (API): Retornar 200 OK",
               "TASK (Usuário): Clicar no link do e-mail",
               "TASK (App): Deep link handler navega para app/(auth)/redefinir-senha.tsx com token",
@@ -832,7 +832,7 @@
               "Todos refresh tokens do usuário revogados após reset",
               "Nova senha validada com mínimo 8 caracteres no DTO"
             ],
-            "tech_notes": "Mesmo padrão de hash e armazenamento dos tokens de verificação: raw token retornado via e-mail, hash armazenado no banco. Deep link: `pecae://reset-password?token=<rawToken>`. Tela de redefinição captura o token via `useLocalSearchParams()` do Expo Router. Após reset bem-sucedido, `prisma.refreshToken.updateMany({ where: { userId }, data: { revokedAt: new Date() } })` para revogar todos os tokens existentes."
+            "tech_notes": "Mesmo padrão de hash e armazenamento dos tokens de verificação: raw token retornado via e-mail, hash armazenado no banco. Deep link: `pecae://reset-password?token=[RAW_TOKEN]`. Tela de redefinição captura o token via `useLocalSearchParams()` do Expo Router. Após reset bem-sucedido, `prisma.refreshToken.updateMany({ where: { userId }, data: { revokedAt: new Date() } })` para revogar todos os tokens existentes."
           }
         ]
       }
