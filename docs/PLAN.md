@@ -1,72 +1,69 @@
-# Plano de Trabalho: M13 — Anúncios e Publicidade In-App
+# README Documentation Plan (PECAÊ Monorepo) - V2
 
-Este documento define o plano detalhado para o desenvolvimento e implementação do módulo M13, responsável pela monetização via anúncios programáticos (AdMob) e anúncios diretos (Sponsored Listings).
+## Objetivo
+Criar o **Manual Técnico Definitivo do Desenvolvedor** para o PECAÊ. Este `README.md` não será apenas um resumo, mas um guia operacional profundo que mapeia fluxos de dados, arquitetura de sistemas, persistência, cache, mensageria e fornece rotas claras de troubleshooting para manutenção e resolução de problemas futuros.
+
+## Estrutura do Manual Técnico Super Detalhado
+
+### 1. Visão Geral e Topologia do Sistema
+- **Contexto de Negócio:** O que é o PECAÊ e seus objetivos ("The Digital Forge").
+- **Topologia (Turborepo):** Visão geral da comunicação entre `apps/mobile` (Expo/React Native) e `apps/api` (NestJS).
+- **Ambiente de Desenvolvimento vs Produção:** Uso do Docker e configuração de portas.
+
+### 2. Infraestrutura e Persistência de Dados
+- **PostgreSQL (Prisma ORM):** 
+  - Mapa dos domínios principais (Sellers, Catalog, Ads, Moderation).
+  - Como as migrações e seeds são gerenciados (script `db:migrate` e `entrypoint.sh`).
+- **Redis (Camada de Cache):**
+  - Estratégias de invalidação e TTL.
+  - Como o `SearchService` gera cache determinístico (SHA256) baseado em filtros.
+- **BullMQ (Gerenciamento de Filas e Processamento Assíncrono):**
+  - Filas existentes (`listings`, `ads`).
+  - Fluxo de retry e fallback em caso de falha de conexão com Redis.
+- **Armazenamento de Arquivos:** Fluxo de upload seguro de imagens (Supabase/S3).
+
+### 3. Anatomia dos Módulos (Deep Dive Técnico)
+*Cada módulo incluirá:* Funcionalidade principal, tabelas impactadas, fluxo de ponta a ponta (Mobile -> API -> DB), dependências e pontos de falha.
+- **M03 (Sellers & KYC):**
+  - Transição de estados do perfil (`PENDING`, `VERIFIED`, `REJECTED`).
+  - Regras de CASL para moderadores verificando documentos.
+- **M04/M05 (Catálogo, Veículos e Anúncios):**
+  - Lifecycle de um veículo (Draft -> Publicado -> Vendido).
+  - Tracking assíncrono de visualizações (Fila `listings` no BullMQ).
+- **M13 (Publicidade e Monetização):**
+  - Processadores `AdsProcessor` (impressões e cliques).
+  - Cálculo de deduplicação (IP hash) para evitar fraude de cliques.
+  - Atualização do balanço e limites de campanha.
+- **Autenticação, Sessões e Segurança:**
+  - Fluxos Multi-Provider (JWT, Google OAuth, OTP).
+  - CASL `AbilityFactory` (Separação estrita de BUYER, SELLER, ADMIN, MODERATOR).
+  - Segurança de API (Helmet, CORS, Rate Limiting).
+
+### 4. Arquitetura Mobile (Apps/Mobile)
+- **Gerenciamento de Estado (Zustand):**
+  - Anatomia da `auth-store` e rotação silenciosa de JWT (Interceptors Axios).
+  - Anatomia da `vehicle-wizard-store` (processo em múltiplas etapas de criação de anúncio).
+- **Design System:** Diretrizes "The Digital Forge" (Glassmorphism, Nativewind).
+- **Build & Nginx Proxy:** Como o Dockerfile converte o web-build para ser servido por Nginx.
+
+### 5. Guia de Troubleshooting Avançado (Resolução de Problemas)
+- **Cenário A: Dessincronização de Métricas/Cache (Search)**
+  - Causa raiz e passo a passo de limpeza (uso de `/analytics/trigger-recalc`).
+- **Cenário B: Jobs Travados ou Falhando no BullMQ (Ads/Views)**
+  - Diagnóstico via logs e inspeção no Redis.
+- **Cenário C: Mobile Preso na Tela Branca ou Sem Conexão (Network/Auth)**
+  - Verificação de interceptors, loop infinito de refresh e `EXPO_PUBLIC_API_URL`.
+- **Cenário D: Violação de Permissões (CASL)**
+  - Como debugar testes de `Ability` falhando para moderadores ou sellers tentando modificar recursos de outros.
+
+### 6. Contratos de Configuração (Environment Variables)
+- Dicionário exaustivo de cada variável no `.env`, valores padrão esperados e seus impactos no código.
+
+## Próximos Passos (Fase 2 de Orquestração)
+Se aprovado, os agentes abaixo iniciarão a documentação técnica pesada:
+1. **`backend-specialist`**: Modelagem de Dados, Filas, Redis, Segurança e Módulos Backend.
+2. **`mobile-developer`**: Zustand, Mobile Arquitetura e Fluxos.
+3. **`documentation-writer`**: Formatação profunda, Troubleshooting Guide e diagramação macro.
 
 ---
-
-## 🎯 Objetivos & Critérios de Sucesso
-1. **Monetização Sustentável**: Integrar AdMob para banners e intersticiais sem degradar a UX.
-2. **Anúncios Diretos (Sponsored)**: Permitir que vendedores destaquem veículos no topo da busca.
-3. **Tracking Confiável**: Registrar impressões e cliques de forma assíncrona (BullMQ).
-4. **LGPD Compliance**: Solicitar consentimento via CMP antes de carregar anúncios.
-
----
-
-## 💻 Decisões de Arquitetura (Socratic Gate)
-- **IDs do AdMob:** Opção A (Test IDs fixos em ambiente de dev/homologação).
-- **Persistência do Capping:** Opção B (Multiplataforma — Armazenado no Backend/Redis para consistência).
-- **Distribuição de Sponsored:** Opção A (Distribuição Justa — Ordenação por `impressions ASC` para pacing uniforme).
-
----
-
-## 🛠️ Task Breakdown (Fase de Planejamento)
-
-### [x] M13-T01: Schema Prisma (Modelagem de Campanhas e Tracking)
-- **Agente:** `database-architect`
-- **Ação:** Criar models `AdCampaign`, `AdImpression`, `AdClick` e adicionar a flag `isSponsoredActive` no model `Listing`.
-- **INPUT:** `M13_anuncios_inapp.json` + Decisões de Arquitetura.
-- **OUTPUT:** `schema.prisma` atualizado + Migrations.
-- **VERIFY:** `npx prisma migrate dev --create-only` e validação do schema.
-
-### [x] M13-T02: Backend Core — Serviços e Validações de Campanha
-- **Agente:** `backend-specialist`
-- **Ação:** Implementar `AdCampaignService` com validações (ex: apenas listings `PUBLISHED` podem ser patrocinados) e job BullMQ para expiração automática.
-- **INPUT:** Models do Prisma.
-- **OUTPUT:** `AdCampaignService.ts`.
-- **VERIFY:** Testes unitários de validação de regras de negócio.
-
-### [x] M13-T03: Endpoints Admin & Tracking Público
-- **Agente:** `backend-specialist`
-- **Ação:** Criar endpoints CRUD para Admin gerenciar campanhas e endpoints públicos `POST /ads/track/*` (fire-and-forget via BullMQ).
-- **INPUT:** `AdCampaignService`.
-- **OUTPUT:** `AdController.ts`.
-- **VERIFY:** Requisições via Postman/cURL verificando tempo de resposta < 10ms para tracking.
-
-### [x] M13-T04: Integração com M07 (Injeção de Sponsored na Busca)
-- **Agente:** `backend-specialist`
-- **Ação:** Modificar `SearchService` para injetar até 2 Sponsored Listings no topo dos resultados, respeitando o targeting e removendo duplicatas.
-- **INPUT:** `SearchService` (M07) + `AdCampaignService`.
-- **OUTPUT:** `SearchService.ts` modificado.
-- **VERIFY:** Busca retornando anúncios patrocinados marcados com `isSponsored: true`.
-
-### [x] M13-T05: Integração Mobile (Google AdMob SDK + CMP)
-- **Agente:** `mobile-developer`
-- **Ação:** Instalar `react-native-google-mobile-ads`, configurar `app.json`, implementar diálogo CMP (UMP) e os componentes `AdBanner` e `AdInterstitial`.
-- **INPUT:** Configurações AdMob.
-- **OUTPUT:** Componentes mobile e hooks de anúncios.
-- **VERIFY:** Exibição de anúncios de teste no app sem layout shift.
-
-### [x] M13-T06: Interface Admin (Gestão de Campanhas)
-- **Agente:** `frontend-specialist`
-- **Ação:** Criar telas no painel admin para criação, pausa, cancelamento de campanhas e visualização de métricas (CTR).
-- **INPUT:** Endpoints do `AdController`.
-- **OUTPUT:** Telas de Admin.
-- **VERIFY:** Fluxo completo de criação de campanha no painel.
-
-
----
-
-## 🏁 Phase X: Verificação Final
-- [ ] Executar `python .agent/skills/vulnerability-scanner/scripts/security_scan.py .`
-- [ ] Executar `python .agent/skills/lint-and-validate/scripts/lint_runner.py .`
-- [ ] Validar build: `npm run build`
+*Aguardando sua aprovação (Y/N) para executar o manual nesta profundidade tática e técnica.*
