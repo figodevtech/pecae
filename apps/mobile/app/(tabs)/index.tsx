@@ -1,16 +1,19 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Image, ActivityIndicator, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { PecaeBackground, PecaeGlassCard } from '../../src/components/PecaeUI';
 import { usePecaeTheme } from '../../src/theme';
 import { useListings } from '../../src/hooks/useVehicles';
 import { useUIStore } from '../../src/store/ui-store';
 import { getVehicleImage } from '../../src/utils/vehicleImages';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 export default function BuyerHomeScreen() {
-  const { colors, typography } = usePecaeTheme();
+  const { colors, typography, effects } = usePecaeTheme();
   const { viewMode, themeMode, setViewMode, setThemeMode, initializeUI } = useUIStore();
   const { data: listings, isLoading } = useListings();
+  const { width } = useWindowDimensions();
+  const router = useRouter();
 
   useEffect(() => {
     initializeUI();
@@ -24,6 +27,17 @@ export default function BuyerHomeScreen() {
     setViewMode(viewMode === 'grid' ? 'list' : 'grid');
   };
 
+  const isWeb = width >= 768;
+  const columns = viewMode === 'grid' ? (isWeb ? 4 : 2) : 1;
+  const gap = 16;
+  const horizontalPadding = 24;
+  const availableWidth = width - (horizontalPadding * 2) - (gap * (columns - 1));
+  const itemWidth = Math.floor(availableWidth / columns);
+
+  const navigateToDetails = (id: string) => {
+    router.push(`/(tabs)/vehicle/${id}`);
+  };
+
   return (
     <PecaeBackground>
       <ScrollView contentContainerStyle={styles.container}>
@@ -35,7 +49,7 @@ export default function BuyerHomeScreen() {
             <View style={styles.controls}>
               <TouchableOpacity 
                 onPress={toggleTheme} 
-                style={[styles.iconButton, { backgroundColor: colors.surface }]}
+                style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
                 accessibilityLabel="Alternar Tema"
               >
                 <Ionicons 
@@ -46,7 +60,7 @@ export default function BuyerHomeScreen() {
               </TouchableOpacity>
               <TouchableOpacity 
                 onPress={toggleViewMode} 
-                style={[styles.iconButton, { backgroundColor: colors.surface }]}
+                style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
                 accessibilityLabel="Alternar Visualização"
               >
                 <Ionicons 
@@ -62,7 +76,7 @@ export default function BuyerHomeScreen() {
           </Text>
         </View>
 
-        <PecaeGlassCard intensity={20} style={styles.card}>
+        <PecaeGlassCard intensity={20} style={[styles.card, { borderRadius: effects.radius.md }]}>
           <Text style={[styles.cardTitle, { color: colors.brand, fontFamily: typography.display }]}>
             SISTEMA OPERACIONAL
           </Text>
@@ -74,66 +88,135 @@ export default function BuyerHomeScreen() {
         {isLoading ? (
           <ActivityIndicator size="large" color={colors.brand} style={{ marginTop: 20 }} />
         ) : (
-          <View style={viewMode === 'grid' ? styles.gridContainer : styles.listContainer}>
+          <View style={[viewMode === 'grid' ? (isWeb ? styles.webGrid : styles.gridContainer) : styles.listContainer, { gap }]}>
             {listings && listings.length > 0 ? (
               listings.map((vehicle: any) => {
-                const brand = vehicle.listing?.brand || vehicle.version?.model?.brand?.name;
-                const model = vehicle.listing?.model || vehicle.version?.model?.name;
+                const brand = vehicle.listing?.brand || vehicle.version?.model?.brand?.name || '';
+                const model = vehicle.listing?.model || vehicle.version?.model?.name || '';
                 const imageUrl = getVehicleImage(brand, model, vehicle.id);
-                const title = vehicle.listing?.title || `${brand || ''} ${model || ''}`;
-                const price = vehicle.listing?.price 
-                  ? `R$ ${vehicle.listing.price.toLocaleString('pt-BR')}`
-                  : 'Sob Consulta';
-                const year = vehicle.listing?.yearFab || vehicle.yearFabId || 'N/A';
+                const title = vehicle.listing?.title || `${brand} ${model}`.trim() || 'Veículo';
+                
+                // Mocks for badges
+                const isVerified = vehicle.id.charCodeAt(0) % 2 === 0;
+                const isFeatured = vehicle.id.charCodeAt(1) % 2 === 0;
 
                 if (viewMode === 'grid') {
                   return (
-                    <PecaeGlassCard key={vehicle.id} intensity={10} style={styles.gridItem}>
-                      <Image 
-                        source={{ uri: imageUrl }} 
-                        style={styles.gridImage} 
-                        resizeMode="cover"
-                      />
-                      <View style={styles.cardContent}>
-                        <Text 
-                          style={[styles.itemTitle, { color: colors.textPrimary, fontFamily: typography.display }]}
-                          numberOfLines={1}
-                        >
-                          {title}
-                        </Text>
-                        <Text style={[styles.itemPrice, { color: colors.brand, fontFamily: typography.mono }]}>
-                          {price}
-                        </Text>
-                        <Text style={[styles.itemDetails, { color: colors.textMuted, fontFamily: typography.body }]}>
-                          {year} | {vehicle.city}
-                        </Text>
-                      </View>
-                    </PecaeGlassCard>
+                    <TouchableOpacity 
+                      key={vehicle.id} 
+                      onPress={() => navigateToDetails(vehicle.id)}
+                      style={{ width: isWeb ? '100%' : itemWidth }}
+                      activeOpacity={0.8}
+                    >
+                      <PecaeGlassCard intensity={15} style={[styles.gridItem, { borderRadius: effects.radius.md }]}>
+                        <View style={styles.imageWrapper}>
+                          <Image 
+                            source={{ uri: imageUrl }} 
+                            style={styles.gridImage} 
+                            resizeMode="cover"
+                          />
+                          <View style={styles.badgeContainer}>
+                            {isFeatured && (
+                              <View style={[styles.badge, { backgroundColor: colors.vibrant }]}>
+                                <Text style={[styles.badgeText, { color: colors.dark, fontFamily: typography.display }]}>
+                                  DESTAQUE
+                                </Text>
+                              </View>
+                            )}
+                            {isVerified && (
+                              <View style={[styles.badge, { backgroundColor: colors.brand }]}>
+                                <Text style={[styles.badgeText, { color: '#FFF', fontFamily: typography.display }]}>
+                                  ✓ VERIFICADO
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                        <View style={styles.cardContent}>
+                          <Text 
+                            style={[styles.itemTitle, { color: colors.textPrimary, fontFamily: typography.display }]}
+                            numberOfLines={2}
+                          >
+                            {title}
+                          </Text>
+                          
+                          <Text style={[styles.itemDetails, { color: colors.textMuted, fontFamily: typography.body }]}>
+                            📍 {vehicle.city} - {vehicle.state}
+                          </Text>
+
+                          {vehicle.color && (
+                            <Text style={[styles.itemDetails, { color: colors.textMuted, fontFamily: typography.body }]}>
+                              🎨 Cor: {vehicle.color}
+                            </Text>
+                          )}
+
+                          {vehicle.listing?.views !== undefined && (
+                            <Text style={[styles.itemDetails, { color: colors.textMuted, fontFamily: typography.body }]}>
+                              👁️ {vehicle.listing.views} views
+                            </Text>
+                          )}
+                        </View>
+                      </PecaeGlassCard>
+                    </TouchableOpacity>
                   );
                 }
 
                 return (
-                  <PecaeGlassCard key={vehicle.id} intensity={10} style={styles.listItem}>
-                    <Image 
-                      source={{ uri: imageUrl }} 
-                      style={styles.listImage} 
-                      resizeMode="cover"
-                    />
-                    <View style={styles.listContent}>
-                      <Text 
-                        style={[styles.itemTitle, { color: colors.textPrimary, fontFamily: typography.display }]}
-                        numberOfLines={2}
-                      >
-                        {title}
-                      </Text>
-                      <Text style={[styles.itemPrice, { color: colors.brand, fontFamily: typography.mono }]}>
-                        {price}
-                      </Text>
-                      <Text style={[styles.itemDetails, { color: colors.textMuted, fontFamily: typography.body }]}>
-                        Ano: {year} | {vehicle.city} - {vehicle.state}
-                      </Text>
-                    </View>
-                  </PecaeGlassCard>
+                  <TouchableOpacity 
+                    key={vehicle.id} 
+                    onPress={() => navigateToDetails(vehicle.id)}
+                    style={{ width: '100%' }}
+                    activeOpacity={0.8}
+                  >
+                    <PecaeGlassCard intensity={15} style={[styles.listItem, { borderRadius: effects.radius.md }]}>
+                      <View style={styles.listImageWrapper}>
+                        <Image 
+                          source={{ uri: imageUrl }} 
+                          style={styles.listImage} 
+                          resizeMode="cover"
+                        />
+                        <View style={styles.badgeContainer}>
+                          {isFeatured && (
+                            <View style={[styles.badge, { backgroundColor: colors.vibrant }]}>
+                              <Text style={[styles.badgeText, { color: colors.dark, fontFamily: typography.display }]}>
+                                DESTAQUE
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      <View style={styles.listContent}>
+                        <Text 
+                          style={[styles.itemTitle, { color: colors.textPrimary, fontFamily: typography.display }]}
+                          numberOfLines={2}
+                        >
+                          {title}
+                        </Text>
+
+                        {isVerified && (
+                          <Text style={[styles.verifiedLabel, { color: colors.brand, fontFamily: typography.medium }]}>
+                            ✓ Vendedor Verificado
+                          </Text>
+                        )}
+
+                        <Text style={[styles.itemDetails, { color: colors.textMuted, fontFamily: typography.body, marginTop: 4 }]}>
+                          📍 {vehicle.city} - {vehicle.state}
+                        </Text>
+
+                        {vehicle.color && (
+                          <Text style={[styles.itemDetails, { color: colors.textMuted, fontFamily: typography.body }]}>
+                            🎨 Cor: {vehicle.color}
+                          </Text>
+                        )}
+
+                        {vehicle.listing?.views !== undefined && (
+                          <Text style={[styles.itemDetails, { color: colors.textMuted, fontFamily: typography.body }]}>
+                            👁️ {vehicle.listing.views} visualizações
+                          </Text>
+                        )}
+                      </View>
+                    </PecaeGlassCard>
+                  </TouchableOpacity>
                 );
               })
             ) : (
@@ -182,7 +265,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
   },
   card: {
     padding: 20,
@@ -200,55 +282,85 @@ const styles = StyleSheet.create({
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16,
-    justifyContent: 'space-between',
+  },
+  webGrid: {
+    display: 'grid' as any,
+    gridTemplateColumns: 'repeat(4, 1fr)' as any,
   },
   listContainer: {
     flexDirection: 'column',
-    gap: 16,
   },
   gridItem: {
-    width: '47%',
     padding: 0,
     overflow: 'hidden',
-    borderRadius: 12,
+    height: '100%',
   },
   listItem: {
     width: '100%',
     padding: 0,
     flexDirection: 'row',
     overflow: 'hidden',
-    borderRadius: 12,
+  },
+  imageWrapper: {
+    width: '100%',
+    height: 160,
+    position: 'relative',
+  },
+  listImageWrapper: {
+    width: 140,
+    height: 140,
+    position: 'relative',
   },
   gridImage: {
     width: '100%',
-    height: 120,
+    height: '100%',
   },
   listImage: {
-    width: 120,
-    height: 120,
+    width: '100%',
+    height: '100%',
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    right: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  badge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    letterSpacing: 1,
   },
   cardContent: {
     padding: 12,
+    gap: 4,
   },
   listContent: {
     flex: 1,
     padding: 12,
     justifyContent: 'center',
+    gap: 2,
   },
   itemTitle: {
     fontSize: 14,
     letterSpacing: 1,
-    marginBottom: 4,
-  },
-  itemPrice: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   itemDetails: {
     fontSize: 12,
     opacity: 0.8,
   },
+  verifiedLabel: {
+    fontSize: 11,
+    marginTop: 2,
+  },
 });
+
 
