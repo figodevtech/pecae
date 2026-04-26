@@ -92,7 +92,7 @@ export class ModerationService {
     const mappedItems = items.map((listing) => {
       const maskedListing = { ...listing };
       if (maskedListing.vehicle) {
-        maskedListing.vehicle.licensePlate = this.maskLicensePlate(maskedListing.vehicle.licensePlate);
+        maskedListing.vehicle.plate = this.maskLicensePlate(maskedListing.vehicle.plate || undefined);
       }
       return maskedListing;
     });
@@ -143,7 +143,7 @@ export class ModerationService {
 
     // Mask license plate
     if (listing.vehicle) {
-      listing.vehicle.licensePlate = this.maskLicensePlate(listing.vehicle.licensePlate);
+      listing.vehicle.plate = this.maskLicensePlate(listing.vehicle.plate || undefined);
     }
 
     return listing;
@@ -168,7 +168,7 @@ export class ModerationService {
       type: user.type,
     });
 
-    if (ability.cannot(Action.Approve, subject('Listing', listing))) {
+    if (ability.cannot(Action.Approve, subject('Listing', listing as any))) {
       throw new ForbiddenException('Você não tem permissão para aprovar este anúncio (Conflito de Interesse).');
     }
 
@@ -236,7 +236,7 @@ export class ModerationService {
       type: user.type,
     });
 
-    if (ability.cannot(Action.Reject, subject('Listing', listing))) {
+    if (ability.cannot(Action.Reject, subject('Listing', listing as any))) {
       throw new ForbiddenException('Você não tem permissão para rejeitar este anúncio (Conflito de Interesse).');
     }
 

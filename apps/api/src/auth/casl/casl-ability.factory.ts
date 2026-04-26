@@ -29,11 +29,11 @@ export class CaslAbilityFactory {
       can(Action.Reject, 'SellerVerification');
       
       // Cannot moderate own listings (Conflict of interest)
-      cannot(Action.Approve, 'Listing', { 'sellerProfile.userId': user.id });
-      cannot(Action.Reject, 'Listing', { 'sellerProfile.userId': user.id });
+      cannot(Action.Approve, 'Listing', { 'sellerProfile.userId': user.id } as any);
+      cannot(Action.Reject, 'Listing', { 'sellerProfile.userId': user.id } as any);
     } else {
       // Regular users (BUYER, SELLER, BOTH)
-      can(Action.Read, 'Listing', { status: 'PUBLISHED' });
+      can(Action.Read, 'Listing', { status: 'PUBLISHED' } as any);
       can(Action.Create, 'Listing');
       can(Action.Update, 'Listing');
       can(Action.Delete, 'Listing');

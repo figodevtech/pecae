@@ -45,7 +45,25 @@ O projeto é estruturado em um **Monorepo (Turborepo)**:
   2. Deduplicação temporal de acessos e cliques (evitando fraude).
   3. Motor principal para a estrutura de filas do BullMQ.
 - **Armazenamento de Arquivos:** Supabase Storage para armazenamento em nuvem de fotos de peças e documentos de verificação de lojas (CNH, Alvará).
-- **Dockerização:** Multi-stage builds definidos em `apps/api/Dockerfile` e `apps/mobile/Dockerfile`, utilizando Alpine, Nginx para proxy web, e execução limpa com o comando local `docker-compose up`.
+- **Dockerização:** Multi-stage builds definidos em `apps/api/Dockerfile` e `apps/mobile/Dockerfile`.
+
+### 2.1. Como Executar (Ambiente Docker)
+
+Para subir o ecossistema completo (API + Mobile Web + Banco/Cache), siga os passos abaixo:
+
+**Pré-requisitos:** Docker & Docker Compose instalados.
+
+1. Configure os arquivos `.env` na raiz ou nas respectivas pastas conforme a seção [Contratos de Configuração](#6-contratos-de-configuração).
+2. Execute o build e inicialização dos containers:
+   ```bash
+   # Build das imagens
+   docker compose build
+
+   # Inicialização em segundo plano
+   docker compose up -d
+   ```
+
+*Nota: O backend estará disponível em `http://localhost:3000` e o mobile web no proxy configurado.*
 
 ---
 
@@ -120,6 +138,19 @@ Muitas operações de atualização concorrente foram transferidas do Event Loop
 ## 5. Guia de Troubleshooting Avançado
 
 Este guia serve como base para problemas em produção ou homologação.
+
+### 🔴 Problema: Erro de Build do Docker / Espaço Insuficiente
+- **Sintoma:** O build trava na compilação do TypeScript ou acusa falta de espaço em disco.
+- **Resolução:**
+  1. Limpe o cache do Docker builder:
+     ```bash
+     docker builder prune -a
+     docker system prune -a
+     ```
+  2. Verifique se há erros estritos de tipagem rodando localmente antes do build:
+     ```bash
+     npx tsc --noEmit
+     ```
 
 ### 🔴 Problema: Métricas não estão atualizando (Search, Analytics ou Dashboard)
 - **Sintoma:** Um Lojista não vê os acessos do anúncio subirem no seu Dashboard, ou sucatas deletadas continuam sendo exibidas no App.

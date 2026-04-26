@@ -10,9 +10,9 @@ import {
   PecaeButton, 
   PecaeInput,
   StarRatingPicker
-} from '../../../../src/components/PecaeUI';
-import { usePecaeTheme } from '../../../../src/theme';
-import { api } from '../../../../src/services/api';
+} from '../../../src/components/PecaeUI';
+import { usePecaeTheme } from '../../../src/theme';
+import { api } from '../../../src/services/api';
 
 export default function EvalSellerScreen() {
   const { roomId, sellerId, storeName } = useLocalSearchParams<{ 

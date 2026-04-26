@@ -31,13 +31,13 @@ export class ModerationController {
 
   @Post('listings/:id/approve')
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Approve, 'Listing'))
-  async approveListing(@Param('id') id: string, @Body() dto: ApproveListingDto, @Request() req) {
+  async approveListing(@Param('id') id: string, @Body() dto: ApproveListingDto, @Request() req: any) {
     return this.moderationService.approveListing(id, dto, req.user);
   }
 
   @Post('listings/:id/reject')
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Reject, 'Listing'))
-  async rejectListing(@Param('id') id: string, @Body() dto: RejectListingDto, @Request() req) {
+  async rejectListing(@Param('id') id: string, @Body() dto: RejectListingDto, @Request() req: any) {
     return this.moderationService.rejectListing(id, dto, req.user);
   }
 
@@ -51,13 +51,13 @@ export class ModerationController {
 
   @Post('verifications/:id/approve')
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Approve, 'SellerVerification'))
-  async approveVerification(@Param('id') id: string, @Request() req) {
+  async approveVerification(@Param('id') id: string, @Request() req: any) {
     return this.moderationService.approveVerification(id, req.user);
   }
 
   @Post('verifications/:id/reject')
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Reject, 'SellerVerification'))
-  async rejectVerification(@Param('id') id: string, @Body() dto: RejectVerificationDto, @Request() req) {
+  async rejectVerification(@Param('id') id: string, @Body() dto: RejectVerificationDto, @Request() req: any) {
     return this.moderationService.rejectVerification(id, dto, req.user);
   }
 }

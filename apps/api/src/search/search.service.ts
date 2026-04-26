@@ -18,8 +18,8 @@ export class SearchService {
     const sortedFilters = Object.keys(filters)
       .sort()
       .reduce((acc, key) => {
-        if (filters[key] !== undefined) {
-          acc[key] = filters[key];
+        if ((filters as any)[key] !== undefined) {
+          (acc as any)[key] = (filters as any)[key];
         }
         return acc;
       }, {});

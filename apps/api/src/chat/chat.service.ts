@@ -14,7 +14,7 @@ export class ChatService {
     if (!this.messageStreams.has(roomId)) {
       this.messageStreams.set(roomId, new Subject<any>());
     }
-    return this.messageStreams.get(roomId);
+    return this.messageStreams.get(roomId)!;
   }
 
   getMessageStream(roomId: string): Observable<any> {
@@ -249,7 +249,7 @@ export class ChatService {
     let nextCursor: string | undefined = undefined;
     if (messages.length > limit) {
       const nextItem = messages.pop();
-      nextCursor = nextItem.id;
+      nextCursor = nextItem?.id;
     }
 
     return {
