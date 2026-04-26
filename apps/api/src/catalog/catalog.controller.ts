@@ -1,5 +1,5 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CatalogService } from './catalog.service';
 
 @ApiTags('Catalog')
@@ -40,5 +40,31 @@ export class CatalogController {
   @ApiResponse({ status: 200, description: 'Return all part categories' })
   async getPartCategories() {
     return this.catalogService.getPartCategories();
+  }
+
+  @Get('brands/:brandId/years')
+  @ApiOperation({ summary: 'List distinct years for a brand' })
+  @ApiParam({ name: 'brandId', description: 'Unique identifier of the vehicle brand', type: 'string' })
+  @ApiResponse({ status: 200, description: 'Return distinct years for the brand' })
+  async getYearsByBrand(@Param('brandId') brandId: string) {
+    return this.catalogService.getYearsByBrand(brandId);
+  }
+
+  @Get('brands/:brandId/years/:yearFab/:yearModel/models')
+  @ApiOperation({ summary: 'List models for a brand and specific years' })
+  @ApiParam({ name: 'brandId', description: 'Unique identifier of the vehicle brand', type: 'string' })
+  @ApiParam({ name: 'yearFab', description: 'Year of manufacturing', type: 'number' })
+  @ApiParam({ name: 'yearModel', description: 'Model year', type: 'number' })
+  @ApiResponse({ status: 200, description: 'Return models' })
+  async getModelsByBrandAndYear(
+    @Param('brandId') brandId: string,
+    @Param('yearFab') yearFab: string,
+    @Param('yearModel') yearModel: string,
+  ) {
+    return this.catalogService.getModelsByBrandAndYear(
+      brandId,
+      Number(yearFab),
+      Number(yearModel),
+    );
   }
 }

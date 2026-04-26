@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, ActivityIndicator, TouchableOpacity, useWindowDimensions, TextInput, Modal } from 'react-native';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { StyleSheet, View, Text, ScrollView, Image, ActivityIndicator, TouchableOpacity, useWindowDimensions, TextInput, Modal, Animated } from 'react-native';
 import { PecaeBackground, PecaeGlassCard } from '../../src/components/PecaeUI';
 import { VehicleSelector } from '../../src/components/Catalog';
 import { usePecaeTheme } from '../../src/theme';
@@ -20,6 +20,28 @@ export default function BuyerHomeScreen() {
   const [appliedFilter, setAppliedFilter] = useState<any>(null);
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
 
+  const slideAnim = useRef(new Animated.Value(width)).current;
+
+  const closeFilterModal = () => {
+    Animated.timing(slideAnim, {
+      toValue: width,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setIsFilterModalVisible(false);
+    });
+  };
+
+  useEffect(() => {
+    if (isFilterModalVisible) {
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isFilterModalVisible, width]);
+
   const clearFilters = () => {
     setSearchText('');
     setAppliedFilter(null);
@@ -38,8 +60,8 @@ export default function BuyerHomeScreen() {
         title.includes(searchText.toLowerCase());
         
       const matchesCatalog = !appliedFilter || (
-        brand.includes(appliedFilter.brand.name.toLowerCase()) &&
-        (appliedFilter.model ? model.includes(appliedFilter.model.name.toLowerCase()) : true)
+        (!appliedFilter.brand || brand.includes(appliedFilter.brand.name.toLowerCase())) &&
+        (!appliedFilter.model || model.includes(appliedFilter.model.name.toLowerCase()))
       );
       
       return matchesSearch && matchesCatalog;
@@ -153,36 +175,7 @@ export default function BuyerHomeScreen() {
           </View>
         )}
 
-        {isFilterModalVisible && (
-          <Modal
-            visible={isFilterModalVisible}
-            animationType="slide"
-            transparent={false}
-            onRequestClose={() => setIsFilterModalVisible(false)}
-          >
-            <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-              <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-                <Text style={[styles.modalTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
-                  FILTROS DE CATÁLOGO
-                </Text>
-                <TouchableOpacity 
-                  onPress={() => setIsFilterModalVisible(false)}
-                  style={[styles.closeModalButton, { backgroundColor: colors.surface }]}
-                  accessibilityLabel="Fechar modal"
-                >
-                  <Ionicons name="close" size={24} color={colors.textPrimary} />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={{ flex: 1 }}>
-                <VehicleSelector onSelect={(selection) => {
-                  setAppliedFilter(selection);
-                  setIsFilterModalVisible(false);
-                }} />
-              </View>
-            </View>
-          </Modal>
-        )}
+
 
         <PecaeGlassCard intensity={20} style={[styles.card, { borderRadius: effects.radius.md }]}>
           <Text style={[styles.cardTitle, { color: colors.brand, fontFamily: typography.display }]}>
@@ -335,6 +328,45 @@ export default function BuyerHomeScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Modal
+        transparent={true}
+        visible={isFilterModalVisible}
+        onRequestClose={closeFilterModal}
+        animationType="fade"
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.7)', flexDirection: 'row', justifyContent: 'flex-end' }}>
+          <TouchableOpacity 
+            style={{ flex: 1 }} 
+            activeOpacity={1} 
+            onPress={closeFilterModal} 
+          />
+          <Animated.View style={[styles.sidebarContainer, { backgroundColor: colors.background, transform: [{ translateX: slideAnim }] }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
+                FILTROS
+              </Text>
+              <TouchableOpacity 
+                onPress={closeFilterModal}
+                style={[styles.closeModalButton, { backgroundColor: colors.surface }]}
+                accessibilityLabel="Fechar filtros"
+              >
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={{ flex: 1 }}>
+              <VehicleSelector 
+                resultsCount={filteredListings.length}
+                onSelect={(selection) => {
+                  setAppliedFilter(selection);
+                  closeFilterModal();
+                }} 
+              />
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
     </PecaeBackground>
   );
 }
@@ -394,9 +426,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalContainer: {
-    flex: 1,
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+  },
+  sidebarContainer: {
+    width: '85%',
+    height: '100%',
     paddingTop: 40,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
   },
   modalHeader: {
     flexDirection: 'row',

@@ -1,62 +1,65 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, FlatList } from 'react-native';
 import { usePecaeTheme } from '../../theme';
 import { PecaeGlassCard } from '../PecaeUI/PecaeGlassCard';
-import { useBrands, useModels, useVersions, useYears } from '../../hooks/useCatalog';
+import { useBrands, useBrandYears, useModelsByYear } from '../../hooks/useCatalog';
 import { Ionicons } from '@expo/vector-icons';
 
-type SelectionLevel = 'brand' | 'model' | 'version' | 'year';
+type SelectionLevel = 'brand' | 'year' | 'model';
 
 interface VehicleSelectorProps {
+  resultsCount?: number;
   onSelect?: (selection: {
     brand: any;
-    model: any;
-    version: any;
     year: any;
-  }) => void;
+    model: any;
+  } | null) => void;
 }
 
-export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ onSelect }) => {
+export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount = 0, onSelect }) => {
   const { colors, typography, effects } = usePecaeTheme();
   
   const [level, setLevel] = useState<SelectionLevel>('brand');
   const [search, setSearch] = useState('');
   
   const [selectedBrand, setSelectedBrand] = useState<any>(null);
+  const [selectedYear, setSelectedYear] = useState<any>(null);
   const [selectedModel, setSelectedModel] = useState<any>(null);
-  const [selectedVersion, setSelectedVersion] = useState<any>(null);
 
   // Queries
   const { data: brands, isLoading: loadingBrands } = useBrands();
-  const { data: models, isLoading: loadingModels } = useModels(selectedBrand?.id);
-  const { data: versions, isLoading: loadingVersions } = useVersions(selectedModel?.id);
-  const { data: years, isLoading: loadingYears } = useYears(selectedVersion?.id);
+  const { data: years, isLoading: loadingYears } = useBrandYears(selectedBrand?.id);
+  const { data: models, isLoading: loadingModels } = useModelsByYear(
+    selectedBrand?.id, 
+    selectedYear?.yearFab, 
+    selectedYear?.yearModel
+  );
 
   const currentData = useMemo(() => {
     let data = [];
     if (level === 'brand') data = brands || [];
-    else if (level === 'model') data = models || [];
-    else if (level === 'version') data = versions || [];
     else if (level === 'year') data = years || [];
+    else if (level === 'model') data = models || [];
 
     if (search) {
-      return data.filter((item: any) => 
-        (item.name || item.year?.toString()).toLowerCase().includes(search.toLowerCase())
-      );
+      return data.filter((item: any) => {
+        if (level === 'year') {
+          const yearStr = `${item.yearFab}/${item.yearModel}`;
+          return yearStr.includes(search);
+        }
+        return (item.name || '').toLowerCase().includes(search.toLowerCase());
+      });
     }
     return data;
-  }, [level, brands, models, versions, years, search]);
+  }, [level, brands, years, models, search]);
 
-  const isLoading = loadingBrands || loadingModels || loadingVersions || loadingYears;
+  const isLoading = loadingBrands || loadingYears || loadingModels;
 
   const handleBack = () => {
     setSearch('');
-    if (level === 'year') {
-      setLevel('version');
-    } else if (level === 'version') {
-      setLevel('model');
-    } else if (level === 'model') {
+    if (level === 'model') {
+      setLevel('year');
+    } else if (level === 'year') {
       setLevel('brand');
     }
   };
@@ -65,74 +68,123 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ onSelect }) =>
     setSearch('');
     if (level === 'brand') {
       setSelectedBrand(item);
+      setLevel('year');
+    } else if (level === 'year') {
+      setSelectedYear(item);
       setLevel('model');
     } else if (level === 'model') {
       setSelectedModel(item);
-      setLevel('version');
-    } else if (level === 'version') {
-      setSelectedVersion(item);
-      setLevel('year');
-    } else if (level === 'year') {
-      onSelect?.({
-        brand: selectedBrand,
-        model: selectedModel,
-        version: selectedVersion,
-        year: item,
-      });
     }
   };
 
-  const renderItem = useCallback(({ item }: { item: any }) => (
-    <TouchableOpacity 
-      activeOpacity={0.7} 
-      onPress={() => handleSelect(item)}
-      style={styles.itemContainer}
-    >
-      <PecaeGlassCard intensity={15} style={styles.card}>
-        <View style={styles.itemContent}>
-          <Text style={[styles.itemText, { color: colors.textPrimary, fontFamily: typography.medium }]}>
-            {item.name || item.year}
-          </Text>
-          <Ionicons name="chevron-forward" size={20} color={colors.brand} />
-        </View>
-      </PecaeGlassCard>
-    </TouchableOpacity>
-  ), [level, colors, typography, selectedBrand, selectedModel, selectedVersion]);
+  const clearSelection = () => {
+    setSelectedBrand(null);
+    setSelectedYear(null);
+    setSelectedModel(null);
+    setLevel('brand');
+    setSearch('');
+    onSelect?.(null);
+  };
+
+  const handleApply = () => {
+    onSelect?.({
+      brand: selectedBrand,
+      year: selectedYear,
+      model: selectedModel,
+    });
+  };
+
+  const renderItem = useCallback(({ item }: { item: any }) => {
+    let itemText = item.name;
+    if (level === 'year') {
+      itemText = `Fabricação: ${item.yearFab} / Modelo: ${item.yearModel}`;
+    }
+    
+    const isSelected = 
+      (level === 'brand' && selectedBrand?.id === item.id) ||
+      (level === 'year' && selectedYear?.yearFab === item.yearFab && selectedYear?.yearModel === item.yearModel) ||
+      (level === 'model' && selectedModel?.id === item.id);
+
+    return (
+      <TouchableOpacity 
+        activeOpacity={0.7} 
+        onPress={() => handleSelect(item)}
+        style={styles.itemContainer}
+      >
+        <PecaeGlassCard 
+          intensity={isSelected ? 30 : 15} 
+          style={[
+            styles.card, 
+            isSelected && { borderColor: colors.brand, borderWidth: 1 }
+          ]}
+        >
+          <View style={styles.itemContent}>
+            <Text style={[styles.itemText, { color: colors.textPrimary, fontFamily: typography.body }]}>
+              {itemText}
+            </Text>
+            {isSelected ? (
+              <Ionicons name="checkmark-circle" size={20} color={colors.brand} />
+            ) : (
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            )}
+          </View>
+        </PecaeGlassCard>
+      </TouchableOpacity>
+    );
+  }, [level, colors, typography, selectedBrand, selectedYear, selectedModel]);
 
   return (
     <View style={styles.container}>
-      {/* Header / Breadcrumbs */}
+      {/* Breadcrumbs */}
+      <View style={styles.breadcrumbs}>
+        <TouchableOpacity 
+          onPress={() => { setLevel('brand'); }} 
+          style={[styles.breadcrumbItem, level === 'brand' && styles.activeBreadcrumb]}
+        >
+          <Text style={[styles.breadcrumbText, { color: selectedBrand ? colors.brand : colors.textMuted, fontFamily: typography.body }]}>
+            {selectedBrand ? selectedBrand.name : 'Marca'}
+          </Text>
+        </TouchableOpacity>
+        
+        <Ionicons name="chevron-forward" size={12} color={colors.textMuted} style={styles.crumbSeparator} />
+        
+        <TouchableOpacity 
+          onPress={() => { if (selectedBrand) setLevel('year'); }} 
+          style={[styles.breadcrumbItem, level === 'year' && styles.activeBreadcrumb]}
+          disabled={!selectedBrand}
+        >
+          <Text style={[styles.breadcrumbText, { color: selectedYear ? colors.brand : colors.textMuted, fontFamily: typography.body }]}>
+            {selectedYear ? `${selectedYear.yearFab}/${selectedYear.yearModel}` : 'Ano'}
+          </Text>
+        </TouchableOpacity>
+
+        <Ionicons name="chevron-forward" size={12} color={colors.textMuted} style={styles.crumbSeparator} />
+
+        <TouchableOpacity 
+          onPress={() => { if (selectedYear) setLevel('model'); }} 
+          style={[styles.breadcrumbItem, level === 'model' && styles.activeBreadcrumb]}
+          disabled={!selectedYear}
+        >
+          <Text style={[styles.breadcrumbText, { color: selectedModel ? colors.brand : colors.textMuted, fontFamily: typography.body }]}>
+            {selectedModel ? selectedModel.name : 'Modelo'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Header */}
       <View style={styles.header}>
         {level !== 'brand' && (
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
         )}
-        <View style={styles.titleContainer}>
-          <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.heading }]}>
-            {level === 'brand' ? 'Selecione a Marca' : 
-             level === 'model' ? 'Selecione o Modelo' :
-             level === 'version' ? 'Selecione a Versão' : 'Selecione o Ano'}
-          </Text>
-          {selectedBrand && level !== 'brand' && (
-            <Text style={[styles.subtitle, { color: colors.brand, fontFamily: typography.body }]}>
-              {selectedBrand.name} {selectedModel ? `• ${selectedModel.name}` : ''}
-            </Text>
-          )}
-        </View>
+        <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]}>
+          {level === 'brand' ? 'Selecione a Marca' : 
+           level === 'year' ? 'Selecione o Ano' : 'Selecione o Modelo'}
+        </Text>
       </View>
 
-      {/* Search Bar */}
-      <View style={[styles.searchContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Ionicons name="search" size={20} color={colors.textMuted} />
-        <TextInput
-          placeholder="Buscar..."
-          placeholderTextColor={colors.textMuted}
-          style={[styles.searchInput, { color: colors.textPrimary, fontFamily: typography.body }]}
-          value={search}
-          onChangeText={setSearch}
-        />
-      </View>
+
 
       {/* List */}
       {isLoading ? (
@@ -140,21 +192,42 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ onSelect }) =>
           <ActivityIndicator size="large" color={colors.brand} />
         </View>
       ) : (
-        <FlashList
+        <FlatList
           data={currentData}
           renderItem={renderItem}
-          estimatedItemSize={80}
           contentContainerStyle={styles.listContent}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item, index) => item.id || `${item.yearFab}-${item.yearModel}` || index.toString()}
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={{ color: colors.textMuted, fontFamily: typography.body }}>
-                Nenhum resultado encontrado.
+                Nenhum resultado disponível.
               </Text>
             </View>
           }
         />
       )}
+
+      {/* Action Footer */}
+      <View style={[styles.footer, { borderTopColor: colors.border }]}>
+        <TouchableOpacity 
+          onPress={clearSelection} 
+          style={[styles.clearButton, { borderColor: colors.border }]}
+        >
+          <Text style={[styles.clearButtonText, { color: colors.textPrimary, fontFamily: typography.body }]}>
+            Limpar
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          onPress={handleApply} 
+          style={[styles.applyButton, { backgroundColor: selectedBrand ? colors.brand : colors.surface }]}
+          disabled={!selectedBrand}
+        >
+          <Text style={[styles.applyButtonText, { color: selectedBrand ? '#000' : colors.textMuted, fontFamily: typography.display }]}>
+            Ver Resultados ({resultsCount})
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
@@ -163,24 +236,40 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  breadcrumbs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 5,
+    flexWrap: 'wrap',
+  },
+  breadcrumbItem: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+  },
+  activeBreadcrumb: {
+    backgroundColor: 'rgba(63, 255, 139, 0.1)',
+  },
+  breadcrumbText: {
+    fontSize: 13,
+  },
+  crumbSeparator: {
+    marginHorizontal: 4,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingVertical: 10,
   },
   backButton: {
     marginRight: 15,
   },
-  titleContainer: {
-    flex: 1,
-  },
   title: {
-    fontSize: 20,
-  },
-  subtitle: {
-    fontSize: 14,
-    marginTop: 2,
+    fontSize: 18,
+    letterSpacing: 1,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -188,33 +277,34 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 15,
     paddingHorizontal: 12,
-    height: 48,
+    height: 44,
     borderRadius: 12,
     borderWidth: 1,
   },
   searchInput: {
     flex: 1,
     marginLeft: 10,
-    fontSize: 16,
+    fontSize: 15,
   },
   listContent: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 100,
   },
   itemContainer: {
-    marginBottom: 10,
+    marginBottom: 8,
   },
   card: {
-    padding: 0, // Reset default padding from GlassCard to handle it inside
+    padding: 0,
+    borderRadius: 12,
   },
   itemContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: 14,
   },
   itemText: {
-    fontSize: 16,
+    fontSize: 15,
   },
   center: {
     flex: 1,
@@ -222,4 +312,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 40,
   },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    flexDirection: 'row',
+    gap: 12,
+    borderTopWidth: 1,
+    backgroundColor: 'rgba(10, 14, 20, 0.95)',
+  },
+  clearButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  clearButtonText: {
+    fontSize: 15,
+  },
+  applyButton: {
+    flex: 2,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  applyButtonText: {
+    fontSize: 15,
+    letterSpacing: 1,
+  },
 });
+

@@ -237,6 +237,8 @@ Abaixo estão as rotas completas do backend implementadas via Decorators (`@Cont
 
 ### 🚘 Catálogo Automotivo (`/catalog`)
 - `GET /catalog/brands`: Busca de montadoras (Fiat, Ford, etc.).
+- `GET /catalog/brands/:brandId/years`: Anos disponíveis (Fabricação/Modelo) para uma marca.
+- `GET /catalog/brands/:brandId/years/:yearFab/:yearModel/models`: Modelos de uma marca em anos específicos.
 - `GET /catalog/brands/:brandId/models`: Modelos associados à marca.
 - `GET /catalog/models/:modelId/versions`: Versões específicas de um modelo.
 - `GET /catalog/versions/:versionId/years`: Anos de fabricação de uma versão.

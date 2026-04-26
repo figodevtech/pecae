@@ -111,4 +111,65 @@ export class CatalogService {
       where: { name },
     });
   }
+
+  /**
+   * List distinct years for a brand with cache
+   */
+  async getYearsByBrand(brandId: string) {
+    const cacheKey = `catalog:brand:${brandId}:years`;
+    const cached = await this.redis.get<any[]>(cacheKey);
+    if (cached) return cached;
+
+    const years = await this.prisma.vehicleYear.findMany({
+      where: {
+        version: {
+          model: {
+            brandId,
+          },
+        },
+      },
+      select: {
+        yearFab: true,
+        yearModel: true,
+      },
+      distinct: ['yearFab', 'yearModel'],
+      orderBy: [
+        { yearFab: 'desc' },
+        { yearModel: 'desc' },
+      ],
+    });
+
+    await this.redis.set(cacheKey, years, this.CACHE_TTL);
+    return years;
+  }
+
+  /**
+   * List models for a brand and specific years with cache
+   */
+  async getModelsByBrandAndYear(brandId: string, yearFab: number, yearModel: number) {
+    const cacheKey = `catalog:brand:${brandId}:yearFab:${yearFab}:yearModel:${yearModel}:models`;
+    const cached = await this.redis.get<any[]>(cacheKey);
+    if (cached) return cached;
+
+    const models = await this.prisma.vehicleModel.findMany({
+      where: {
+        brandId,
+        versions: {
+          some: {
+            years: {
+              some: {
+                yearFab,
+                yearModel,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    await this.redis.set(cacheKey, models, this.CACHE_TTL);
+    return models;
+  }
 }
+

@@ -99,3 +99,30 @@ export const usePartCategories = () => {
     staleTime: STALE_TIME,
   });
 };
+
+export const useBrandYears = (brandId?: string) => {
+  return useQuery({
+    queryKey: ['catalog', 'brand', brandId, 'years'],
+    queryFn: async () => {
+      if (!brandId) return [];
+      const { data } = await api.get<any[]>(`/catalog/brands/${brandId}/years`);
+      return data;
+    },
+    enabled: !!brandId,
+    staleTime: STALE_TIME,
+  });
+};
+
+export const useModelsByYear = (brandId?: string, yearFab?: number, yearModel?: number) => {
+  return useQuery({
+    queryKey: ['catalog', 'brand', brandId, 'yearFab', yearFab, 'yearModel', yearModel, 'models'],
+    queryFn: async () => {
+      if (!brandId || yearFab === undefined || yearModel === undefined) return [];
+      const { data } = await api.get<any[]>(`/catalog/brands/${brandId}/years/${yearFab}/${yearModel}/models`);
+      return data;
+    },
+    enabled: !!brandId && yearFab !== undefined && yearModel !== undefined,
+    staleTime: STALE_TIME,
+  });
+};
+
