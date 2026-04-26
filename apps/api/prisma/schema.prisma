@@ -90,6 +90,7 @@ model User {
   chatRoomsAsSeller        ChatRoom[]               @relation("ChatSeller")
   chatMessages             ChatMessage[]
   chatReads                ChatRead[]
+  notifications            Notification[]
 
   @@index([email])
   @@index([status])
@@ -562,7 +563,11 @@ model NotificationPreferences {
   pushEnabled  Boolean  @default(true) @map("push_enabled")
   emailEnabled Boolean  @default(true) @map("email_enabled")
   inAppEnabled Boolean  @default(true) @map("in_app_enabled")
+
+  pushToken    String?  @map("push_token") @db.Text
   createdAt    DateTime @default(now()) @map("created_at")
+
+
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -655,3 +660,61 @@ model ChatRead {
   @@unique([roomId, userId])
   @@map("chat_reads")
 }
+
+// ============================================================
+// M11 — NOTIFICAÇÕES
+// ============================================================
+
+enum NotificationType {
+  LISTING_PUBLISHED
+  LISTING_REJECTED
+  VERIFICATION_APPROVED
+  VERIFICATION_REJECTED
+  CHAT_NEW_MESSAGE
+  SAVED_SEARCH_ALERT
+  LISTING_EXPIRING
+}
+
+enum NotificationChannel {
+  PUSH
+  EMAIL
+  IN_APP
+}
+
+enum NotificationStatus {
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String           @map("user_id")
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?
+  isRead    Boolean          @default(false) @map("is_read")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs      NotificationLog[]
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model NotificationLog {
+  id             String              @id @default(uuid())
+  notificationId String              @map("notification_id")
+  channel        NotificationChannel
+  status         NotificationStatus
+  error          String?             @db.Text
+  sentAt         DateTime            @default(now()) @map("sent_at")
+
+  notification   Notification        @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@map("notification_logs")
+}
+
