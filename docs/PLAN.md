@@ -1,13 +1,13 @@
-# Plano de Trabalho: M06 — Avaliações e Reputação
+# Plano de Trabalho: M07 — Busca e Descoberta
 
-Este documento define o plano detalhado para a implementação do módulo M06, permitindo que compradores avaliem vendedores após negociações.
+Este documento define o plano detalhado para o desenvolvimento e implementação do módulo M07, que integra o mecanismo de busca textual e em cascata para sucatas no PECAÊ.
 
 ---
 
 ## 🎯 Objetivos & Critérios de Sucesso
-1. **Integridade dos Dados:** Constraint de unicidade por `chatRoomId` e validação de rating (1-5) no banco e na API.
-2. **Segurança & LGPD:** Anonimização dos nomes dos compradores tanto no Backend quanto no Frontend.
-3. **Regra de Negócio:** Avaliação disponível apenas se houver interação no chat.
+1. **Performance sub-200ms:** Implementação de Cache-Aside com Redis.
+2. **Qualidade dos Dados:** Retornar exclusivamente sucatas completas (`PUBLISHED`).
+3. **Filtros Avançados:** Filtro cascata (Marca → Modelo → Ano), localização e texto livre (FTS).
 
 ---
 
@@ -16,61 +16,47 @@ Este documento define o plano detalhado para a implementação do módulo M06, p
 - **Tech Stack:**
   - Backend: NestJS + Prisma ORM + PostgreSQL
   - Mobile: React Native (Expo) + Expo Router
-  - Queue: BullMQ
+  - Cache: Redis via Upstash
 
 ---
 
-## 📁 Arquivos Afetados
-- `apps/api/prisma/schema.prisma`
-- `apps/api/src/modules/review/...` (A ser criado)
-- `apps/mobile/app/chat/[roomId]/avaliar.tsx` (A ser criado)
-- `apps/mobile/app/seller/[id].tsx` (Atualizar perfil)
+## 📁 Arquivos Afetados / A Criar
+### Backend:
+- `apps/api/src/search/search.module.ts` (Novo)
+- `apps/api/src/search/search.service.ts` (Novo)
+- `apps/api/src/search/search.controller.ts` (Novo)
+- `apps/api/src/search/dto/search-filters.dto.ts` (Novo)
+
+### Mobile:
+- `apps/mobile/app/(tabs)/busca.tsx` (Novo/Atualizar)
+- `apps/mobile/app/resultados.tsx` (Novo)
+- `apps/mobile/app/anuncio/[id].tsx` (Novo/Atualizar)
 
 ---
 
 ## 🛠️ Task Breakdown (Execução Individual)
 
-### Fase 1: Backend & Banco de Dados (P0)
-
-#### [x] M06-T01-ST01: Schema Prisma — Review & SellerStats
-- **Agente:** `database-architect`
-- **Ação:** Criar model `Review` e atualizar `SellerStats`. Adicionar CHECK constraint via SQL raw.
-- **INPUT:** `apps/api/prisma/schema.prisma`
-- **OUTPUT:** Migration aplicada e schema atualizado.
-- **VERIFY:** `npx prisma migrate dev` executa sem erros.
-
-#### [x] M06-T01-ST02: API — CRUD de Avaliações
+### Fase 1: Backend (PostgreSQL FTS & Cache)
+#### [x] M07-T01-ST01: SearchService — Filtros em Cascata
 - **Agente:** `backend-specialist`
-- **Ação:** Implementar endpoints POST /reviews e GET /sellers/:id/reviews. Validar interação e anonimização.
-- **INPUT:** Prisma Service.
-- **OUTPUT:** Endpoints funcionais.
-- **VERIFY:** Testes manuais/unitários.
+- **Ação:** Criar serviço de busca utilizando Prisma com filtros dinâmicos de marca, modelo, ano, localização e texto livre.
+- **OUTPUT:** Método `search()` implementado com paginação cursor.
 
-#### [x] M06-T01-ST03: Worker BullMQ
+#### [x] M07-T01-ST02: Cache Redis (Look-aside)
 - **Agente:** `backend-specialist`
-- **Ação:** Criar worker para recálculo assíncrono do rating médio.
-- **INPUT:** BullMQ config.
-- **OUTPUT:** Job processor ativo.
-- **VERIFY:** `SellerStats` atualizado após nova review.
+- **Ação:** Integrar Redis para cachear queries de busca frequentes por 5 minutos.
+- **OUTPUT:** TTL e chaves SHA256 aplicadas.
 
-### Fase 2: Mobile (P2)
+#### [x] M07-T01-ST03: Autocomplete Sugestões
+- **Agente:** `backend-specialist`
+- **Ação:** Endpoint de sugestões rápidas para Marca/Modelo.
+- **OUTPUT:** `GET /search/suggestions`.
 
-#### [ ] M06-T02-ST01: Tela/Modal de Avaliação
-- **Agente:** `mobile-developer`
-- **Ação:** Componente `StarRatingPicker` e lógica no chat.
-- **INPUT:** Chat screen.
-- **OUTPUT:** UI interativa.
-- **VERIFY:** Visualização no Expo.
-
-#### [ ] M06-T02-ST02: Exibição no Perfil do Vendedor
-- **Agente:** `mobile-developer`
-- **Ação:** Renderizar reviews anonimizadas no perfil.
-- **INPUT:** Perfil do vendedor.
-- **OUTPUT:** UI atualizada.
-- **VERIFY:** Visualização no Expo.
+### Fase 2: Listing Detail (Anúncio)
+#### [x] M07-T03-ST01: Endpoint de Detalhe Completo
+- **Agente:** `backend-specialist`
+- **Ação:** `GET /listings/:id` puxando Vehicle, Photos, Seller Mascarado.
 
 ---
 
-## 🔍 Phase X: Verificação Final
-- [ ] Lint & Type Check: `npm run lint`
-- [ ] Testes de Integração
+## ⏸️ Aguardando Aprovação

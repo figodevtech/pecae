@@ -1,0 +1,107 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { ListingDetailResponseDto } from './dto/listing-detail-response.dto';
+
+@Injectable()
+export class ListingsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue('listings') private readonly listingsQueue: Queue,
+  ) {}
+
+  async findOne(id: string, ip: string): Promise<ListingDetailResponseDto> {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id },
+      include: {
+        vehicle: {
+          include: {
+            photos: {
+              orderBy: { order: 'asc' },
+            },
+            version: {
+              include: {
+                model: {
+                  include: {
+                    brand: true,
+                  },
+                },
+              },
+            },
+            yearFab: true,
+          },
+        },
+        sellerProfile: {
+          include: {
+            stats: true,
+          },
+        },
+      },
+    });
+
+    if (!listing || listing.status !== 'PUBLISHED') {
+      throw new NotFoundException(`Anúncio com ID ${id} não encontrado.`);
+    }
+
+    // Increment views via BullMQ
+    try {
+      await this.listingsQueue.add(
+        'increment-listing-views',
+        { listingId: id, ip },
+        { priority: 10, removeOnComplete: true }
+      );
+    } catch (error) {
+      console.error('Failed to add increment-listing-views job:', error);
+    }
+
+    // Resolve part categories
+    const partCategories = await this.prisma.partCategory.findMany();
+    const pcMap = new Map(partCategories.map((pc) => [pc.id, { name: pc.name, icon: pc.icon }]));
+
+    const availablePartsIds = Array.isArray(listing.vehicle.availableParts)
+      ? (listing.vehicle.availableParts as string[])
+      : [];
+
+    const availableParts = availablePartsIds
+      .map((id) => pcMap.get(id))
+      .filter(Boolean) as { name: string; icon: string }[];
+
+    return {
+      id: listing.id,
+      title: listing.title,
+      description: listing.description,
+      views: listing.views,
+      favoritesCount: listing.favoritesCount,
+      createdAt: listing.createdAt,
+      publishedAt: listing.publishedAt,
+      vehicle: {
+        id: listing.vehicle.id,
+        color: listing.vehicle.color,
+        city: listing.vehicle.city,
+        state: listing.vehicle.state,
+        observations: listing.vehicle.observations,
+        year: listing.vehicle.yearFab.yearFab,
+        modelName: listing.vehicle.version.model.name,
+        brandName: listing.vehicle.version.model.brand.name,
+        versionName: listing.vehicle.version.name,
+        photos: listing.vehicle.photos.map((p) => ({
+          id: p.id,
+          url: p.url,
+          order: p.order,
+          type: p.type,
+        })),
+        availableParts,
+      },
+      seller: {
+        id: listing.sellerProfile.id,
+        storeName: listing.sellerProfile.storeName,
+        city: listing.sellerProfile.city,
+        state: listing.sellerProfile.state,
+        avatar: listing.sellerProfile.logo,
+        isVerified: listing.sellerProfile.isVerified,
+        rating: listing.sellerProfile.stats?.rating ?? null,
+      },
+    };
+  }
+}
