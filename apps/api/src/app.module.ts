@@ -19,6 +19,7 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { SearchModule } from './search/search.module';
 import { ListingsModule } from './listings/listings.module';
 import { ChatModule } from './chat/chat.module';
+import { ModerationModule } from './moderation/moderation.module';
 
 
 @Module({
@@ -73,6 +74,7 @@ import { ChatModule } from './chat/chat.module';
     SearchModule,
     ListingsModule,
     ChatModule,
+    ModerationModule,
   ],
   providers: [
     // Register ThrottlerGuard globally so @Throttle() decorators are enforced

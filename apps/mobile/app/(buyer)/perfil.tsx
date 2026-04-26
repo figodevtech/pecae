@@ -11,7 +11,7 @@ export default function PerfilComprador() {
   const { colors, typography, spacing, glassmorphism } = usePecaeTheme();
   const router = useRouter();
   const { data: profile, isLoading, error } = useBuyerProfile();
-  const { clearAuth } = useAuthStore();
+  const { clearAuth, user } = useAuthStore();
 
   const handleLogout = async () => {
     // A chamada de POST /auth/logout poderia estar no clearAuth, mas vamos apenas deslogar localmente por enquanto, ou chamar a API se precisarmos.
@@ -123,6 +123,17 @@ export default function PerfilComprador() {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.textMuted, fontFamily: typography.primary }]}>CONTA</Text>
           
+          {(user?.role === 'MODERATOR' || user?.role === 'ADMIN' || user?.type === 'MODERATOR' || user?.type === 'ADMIN') && (
+            <TouchableOpacity 
+              style={[styles.rowButton, { borderBottomColor: colors.border }]}
+              onPress={() => router.push('/(moderator)')}
+            >
+              <Ionicons name="shield-checkmark-outline" size={22} color={colors.brand} />
+              <Text style={[styles.rowText, { color: colors.brand, fontFamily: typography.primary }]}>Painel de Moderação</Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.brand} />
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity 
             style={[styles.rowButton, { borderBottomColor: colors.border }]}
             onPress={() => router.push('/(buyer)/perfil-editar')}

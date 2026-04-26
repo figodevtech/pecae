@@ -25,6 +25,15 @@ export class SupabaseStorageProvider implements StorageProvider {
     };
   }
 
+  async generateDownloadUrl(bucket: string, path: string, expiresIn = 3600): Promise<string> {
+    const { data, error } = await this.supabase.storage
+      .from(bucket)
+      .createSignedUrl(path, expiresIn);
+
+    if (error) throw error;
+    return data.signedUrl;
+  }
+
   async deleteFile(bucket: string, path: string): Promise<void> {
     await this.supabase.storage.from(bucket).remove([path]);
   }

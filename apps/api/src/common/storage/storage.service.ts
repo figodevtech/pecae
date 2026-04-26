@@ -30,6 +30,11 @@ export class StorageService implements OnModuleInit {
     return this.provider.generateUploadUrl(bucket, path);
   }
 
+  async getSignedUrl(bucket: string, path: string, expiresIn = 3600) {
+    this.ensureProvider();
+    return this.provider.generateDownloadUrl(bucket, path, expiresIn);
+  }
+
   async getPublicUrl(bucket: string, path: string) {
     this.ensureProvider();
     const data = await this.provider.generateUploadUrl(bucket, path);
