@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, ActivityIndicator, TouchableOpacity, useWindowDimensions } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import { StyleSheet, View, Text, ScrollView, Image, ActivityIndicator, TouchableOpacity, useWindowDimensions, TextInput, Modal } from 'react-native';
 import { PecaeBackground, PecaeGlassCard } from '../../src/components/PecaeUI';
+import { VehicleSelector } from '../../src/components/Catalog';
 import { usePecaeTheme } from '../../src/theme';
 import { useListings } from '../../src/hooks/useVehicles';
 import { useUIStore } from '../../src/store/ui-store';
@@ -14,6 +15,36 @@ export default function BuyerHomeScreen() {
   const { data: listings, isLoading } = useListings();
   const { width } = useWindowDimensions();
   const router = useRouter();
+
+  const [searchText, setSearchText] = useState('');
+  const [appliedFilter, setAppliedFilter] = useState<any>(null);
+  const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
+
+  const clearFilters = () => {
+    setSearchText('');
+    setAppliedFilter(null);
+  };
+
+  const filteredListings = useMemo(() => {
+    if (!listings) return [];
+    return listings.filter((vehicle: any) => {
+      const brand = (vehicle.listing?.brand || vehicle.version?.model?.brand?.name || '').toLowerCase();
+      const model = (vehicle.listing?.model || vehicle.version?.model?.name || '').toLowerCase();
+      const title = (vehicle.listing?.title || `${brand} ${model}`).toLowerCase();
+      
+      const matchesSearch = !searchText || 
+        brand.includes(searchText.toLowerCase()) || 
+        model.includes(searchText.toLowerCase()) || 
+        title.includes(searchText.toLowerCase());
+        
+      const matchesCatalog = !appliedFilter || (
+        brand.includes(appliedFilter.brand.name.toLowerCase()) &&
+        (appliedFilter.model ? model.includes(appliedFilter.model.name.toLowerCase()) : true)
+      );
+      
+      return matchesSearch && matchesCatalog;
+    });
+  }, [listings, searchText, appliedFilter]);
 
   useEffect(() => {
     initializeUI();
@@ -76,6 +107,83 @@ export default function BuyerHomeScreen() {
           </Text>
         </View>
 
+        <View style={styles.searchSection}>
+          <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons name="search" size={20} color={colors.textMuted} />
+            <TextInput
+              style={[styles.input, { color: colors.textPrimary, fontFamily: typography.body }]}
+              placeholder="Ex: Motor AP, Para-choque Civic..."
+              placeholderTextColor={colors.textMuted}
+              value={searchText}
+              onChangeText={setSearchText}
+            />
+            {searchText ? (
+              <TouchableOpacity onPress={() => setSearchText('')} style={{ padding: 4 }}>
+                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          
+          <TouchableOpacity 
+            onPress={() => setIsFilterModalVisible(true)} 
+            style={[styles.filterButton, { backgroundColor: appliedFilter ? colors.brand : colors.surface, borderColor: colors.border }]}
+            accessibilityLabel="Filtros de Catálogo"
+          >
+            <Ionicons 
+              name="options-outline" 
+              size={20} 
+              color={appliedFilter ? '#FFF' : colors.textPrimary} 
+            />
+          </TouchableOpacity>
+        </View>
+
+        {appliedFilter && (
+          <View style={styles.activeFiltersContainer}>
+            <Text style={[styles.filterLabel, { color: colors.textMuted, fontFamily: typography.body }]}>
+              Filtro ativo:
+            </Text>
+            <View style={[styles.filterBadge, { backgroundColor: colors.surface, borderColor: colors.brand }]}>
+              <Text style={[styles.filterBadgeText, { color: colors.textPrimary, fontFamily: typography.medium }]}>
+                {appliedFilter.brand.name} {appliedFilter.model?.name}
+              </Text>
+              <TouchableOpacity onPress={clearFilters} style={styles.clearBadgeButton} accessibilityLabel="Limpar filtros">
+                <Ionicons name="close" size={14} color={colors.brand} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {isFilterModalVisible && (
+          <Modal
+            visible={isFilterModalVisible}
+            animationType="slide"
+            transparent={false}
+            onRequestClose={() => setIsFilterModalVisible(false)}
+          >
+            <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+              <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+                <Text style={[styles.modalTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
+                  FILTROS DE CATÁLOGO
+                </Text>
+                <TouchableOpacity 
+                  onPress={() => setIsFilterModalVisible(false)}
+                  style={[styles.closeModalButton, { backgroundColor: colors.surface }]}
+                  accessibilityLabel="Fechar modal"
+                >
+                  <Ionicons name="close" size={24} color={colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={{ flex: 1 }}>
+                <VehicleSelector onSelect={(selection) => {
+                  setAppliedFilter(selection);
+                  setIsFilterModalVisible(false);
+                }} />
+              </View>
+            </View>
+          </Modal>
+        )}
+
         <PecaeGlassCard intensity={20} style={[styles.card, { borderRadius: effects.radius.md }]}>
           <Text style={[styles.cardTitle, { color: colors.brand, fontFamily: typography.display }]}>
             SISTEMA OPERACIONAL
@@ -89,8 +197,8 @@ export default function BuyerHomeScreen() {
           <ActivityIndicator size="large" color={colors.brand} style={{ marginTop: 20 }} />
         ) : (
           <View style={[viewMode === 'grid' ? (isWeb ? styles.webGrid : styles.gridContainer) : styles.listContainer, { gap }]}>
-            {listings && listings.length > 0 ? (
-              listings.map((vehicle: any) => {
+            {filteredListings && filteredListings.length > 0 ? (
+              filteredListings.map((vehicle: any) => {
                 const brand = vehicle.listing?.brand || vehicle.version?.model?.brand?.name || '';
                 const model = vehicle.listing?.model || vehicle.version?.model?.name || '';
                 const imageUrl = getVehicleImage(brand, model, vehicle.id);
@@ -221,7 +329,7 @@ export default function BuyerHomeScreen() {
               })
             ) : (
               <Text style={[styles.cardText, { color: colors.textMuted, fontFamily: typography.body, width: '100%', textAlign: 'center', marginTop: 20 }]}>
-                Nenhum veículo disponível no momento.
+                {searchText || appliedFilter ? 'Nenhum veículo encontrado para a sua busca.' : 'Nenhum veículo disponível no momento.'}
               </Text>
             )}
           </View>
@@ -232,6 +340,83 @@ export default function BuyerHomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  searchSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 20,
+  },
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    height: 50,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  input: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 14,
+  },
+  filterButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  activeFiltersContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  filterLabel: {
+    fontSize: 14,
+  },
+  filterBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
+  },
+  filterBadgeText: {
+    fontSize: 12,
+  },
+  clearBadgeButton: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    flex: 1,
+    paddingTop: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 16,
+    letterSpacing: 2,
+  },
+  closeModalButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   container: {
     padding: 24,
     paddingTop: 60,

@@ -40,6 +40,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="search"
         options={{
+          href: null,
           title: 'BUSCAR',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="search-outline" size={size} color={color} />
@@ -49,6 +50,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="catalog"
         options={{
+          href: null,
           title: 'CATÁLOGO',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="car-outline" size={size} color={color} />
