@@ -17,19 +17,19 @@ export class ChatController {
   @Post('rooms')
   @ApiOperation({ summary: 'Inicia ou recupera uma sala de chat' })
   async getOrCreateRoom(@Request() req: any, @Body() createRoomDto: CreateRoomDto) {
-    return this.chatService.getOrCreateRoom(req.user.sub, createRoomDto.listingId);
+    return this.chatService.getOrCreateRoom(req.user.id, createRoomDto.listingId);
   }
 
   @Get('rooms')
   @ApiOperation({ summary: 'Lista todas as salas de chat do usuário autenticado' })
   async findMyRooms(@Request() req: any) {
-    return this.chatService.findMyRooms(req.user.sub);
+    return this.chatService.findMyRooms(req.user.id);
   }
 
   @Get('rooms/:id')
   @ApiOperation({ summary: 'Recupera detalhes de uma sala de chat específica' })
   async findRoomById(@Request() req: any, @Param('id') roomId: string) {
-    return this.chatService.findRoomById(roomId, req.user.sub);
+    return this.chatService.findRoomById(roomId, req.user.id);
   }
 
   @Get('rooms/:id/messages')
@@ -40,7 +40,7 @@ export class ChatController {
     @Param('id') roomId: string,
     @Query('cursor') cursor?: string,
   ) {
-    return this.chatService.findMessages(roomId, req.user.sub, cursor);
+    return this.chatService.findMessages(roomId, req.user.id, cursor);
   }
 
   @Post('rooms/:id/messages')
@@ -50,13 +50,13 @@ export class ChatController {
     @Param('id') roomId: string,
     @Body() sendMessageDto: SendMessageDto,
   ) {
-    return this.chatService.sendMessage(roomId, req.user.sub, sendMessageDto.content);
+    return this.chatService.sendMessage(roomId, req.user.id, sendMessageDto.content);
   }
 
   @Put('rooms/:id/read')
   @ApiOperation({ summary: 'Marca todas as mensagens da sala como lidas' })
   async markAsRead(@Request() req: any, @Param('id') roomId: string) {
-    return this.chatService.markAsRead(roomId, req.user.sub);
+    return this.chatService.markAsRead(roomId, req.user.id);
   }
 
   @Sse('rooms/:id/stream')

@@ -9,11 +9,11 @@ export class FavoritesController {
 
   @Get('favorites')
   getFavorites(@Request() req: any) {
-    return this.favoritesService.getFavorites(req.user.sub);
+    return this.favoritesService.getFavorites(req.user.id);
   }
 
   @Post(':listingId')
   toggleFavorite(@Request() req: any, @Param('listingId') listingId: string) {
-    return this.favoritesService.toggleFavorite(req.user.sub, listingId);
+    return this.favoritesService.toggleFavorite(req.user.id, listingId);
   }
 }

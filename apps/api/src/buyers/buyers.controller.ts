@@ -11,7 +11,7 @@ export class BuyersController {
 
   @Get('me')
   async getMyProfile(@Request() req: any) {
-    return this.buyersService.getMyProfile(req.user.sub);
+    return this.buyersService.getMyProfile(req.user.id);
   }
 
   @Put('me')
@@ -19,7 +19,7 @@ export class BuyersController {
     @Request() req: any,
     @Body() updateBuyerDto: UpdateBuyerDto,
   ) {
-    return this.buyersService.updateMyProfile(req.user.sub, updateBuyerDto);
+    return this.buyersService.updateMyProfile(req.user.id, updateBuyerDto);
   }
 
   @Delete('me')
@@ -28,6 +28,6 @@ export class BuyersController {
     @Request() req: any,
     @Body() deleteAccountDto: DeleteAccountDto,
   ) {
-    return this.buyersService.deleteAccount(req.user.sub, deleteAccountDto);
+    return this.buyersService.deleteAccount(req.user.id, deleteAccountDto);
   }
 }

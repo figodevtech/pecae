@@ -20,24 +20,24 @@ export class NotificationController {
     @Query('cursor') cursor?: string,
   ) {
     const parsedLimit = limit ? parseInt(limit, 10) : 20;
-    return this.notificationService.getUserNotifications(req.user.sub, parsedLimit, cursor);
+    return this.notificationService.getUserNotifications(req.user.id, parsedLimit, cursor);
   }
 
   @Get('unread-count')
   @ApiOperation({ summary: 'Retorna a contagem de notificações não lidas' })
   async getUnreadCount(@Request() req: any) {
-    return this.notificationService.getUnreadCount(req.user.sub);
+    return this.notificationService.getUnreadCount(req.user.id);
   }
 
   @Put('read-all')
   @ApiOperation({ summary: 'Marca todas as notificações do usuário como lidas' })
   async markAllAsRead(@Request() req: any) {
-    return this.notificationService.markAllAsRead(req.user.sub);
+    return this.notificationService.markAllAsRead(req.user.id);
   }
 
   @Put(':id/read')
   @ApiOperation({ summary: 'Marca uma notificação específica como lida' })
   async markAsRead(@Request() req: any, @Param('id') id: string) {
-    return this.notificationService.markAsRead(req.user.sub, id);
+    return this.notificationService.markAsRead(req.user.id, id);
   }
 }
