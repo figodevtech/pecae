@@ -30,6 +30,14 @@ export const PecaeTokens = {
     medium: 'Manrope_500Medium',
     mono: 'Manrope_400Regular', // Using Manrope as fallback if Mono not loaded
   },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 16,
+    lg: 24,
+    xl: 32,
+    xxl: 48,
+  },
   effects: {
     blur: 16,
     radius: {

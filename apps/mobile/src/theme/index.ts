@@ -13,6 +13,7 @@ export const usePecaeTheme = () => {
     isDark,
     colors,
     typography: PecaeTokens.typography,
+    spacing: PecaeTokens.spacing,
     effects: PecaeTokens.effects,
   };
 };
