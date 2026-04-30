@@ -39,6 +39,16 @@ export class SearchFiltersDto {
   @IsOptional()
   @IsString()
   q?: string;
+  
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  priceMin?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  priceMax?: number;
 
   @IsOptional()
   @IsString()

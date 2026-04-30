@@ -296,5 +296,15 @@ export const useVehicleActions = () => {
     },
   });
 
-  return { markAsSold };
+  const deleteVehicle = useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await api.delete(`/listings/${id}`);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vehicles', 'me'] });
+    },
+  });
+
+  return { markAsSold, deleteVehicle };
 };

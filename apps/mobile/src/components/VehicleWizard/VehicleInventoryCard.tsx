@@ -13,7 +13,7 @@ interface VehicleInventoryCardProps {
 
 export const VehicleInventoryCard: React.FC<VehicleInventoryCardProps> = ({ vehicle }) => {
   const { colors, typography } = usePecaeTheme();
-  const { markAsSold } = useVehicleActions();
+  const { markAsSold, deleteVehicle } = useVehicleActions();
   const loadVehicle = useVehicleWizardStore(s => s.loadVehicle);
   const router = useRouter();
 
@@ -74,9 +74,14 @@ export const VehicleInventoryCard: React.FC<VehicleInventoryCardProps> = ({ vehi
             </Text>
           </View>
 
-          <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.bold }]} numberOfLines={1}>
-            {vehicle.title}
-          </Text>
+          <View style={styles.titleRow}>
+            <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]} numberOfLines={1}>
+              {vehicle.title?.toUpperCase() || 'VEÍCULO S/ TÍTULO'}
+            </Text>
+            <Text style={[styles.idText, { color: colors.brand, fontFamily: typography.mono }]}>
+              ID: {vehicle.id.substring(0, 8).toUpperCase()}
+            </Text>
+          </View>
           
           <Text style={[styles.details, { color: colors.textMuted, fontFamily: typography.body }]}>
             {vehicle.color} • {vehicle.city}/{vehicle.state}
@@ -96,6 +101,27 @@ export const VehicleInventoryCard: React.FC<VehicleInventoryCardProps> = ({ vehi
             <Text style={[styles.actionText, { color: colors.brand, fontFamily: typography.medium }]}>Vendido</Text>
           </TouchableOpacity>
         )}
+
+        <TouchableOpacity 
+          style={styles.actionBtn} 
+          onPress={() => {
+            Alert.alert(
+              'Remover Anúncio',
+              'Tem certeza que deseja remover este anúncio? Esta ação não pode ser desfeita.',
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                { 
+                  text: 'Remover', 
+                  style: 'destructive',
+                  onPress: () => deleteVehicle.mutate(vehicle.id) 
+                }
+              ]
+            );
+          }}
+        >
+          <Ionicons name="trash-outline" size={20} color={colors.error} />
+          <Text style={[styles.actionText, { color: colors.error, fontFamily: typography.medium }]}>Remover</Text>
+        </TouchableOpacity>
       </View>
     </PecaeGlassCard>
   );
@@ -141,12 +167,25 @@ const styles = StyleSheet.create({
   date: {
     fontSize: 10,
   },
-  title: {
-    fontSize: 16,
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
     marginBottom: 2,
   },
+  title: {
+    fontSize: 15,
+    flex: 1,
+    marginRight: 8,
+  },
+  idText: {
+    fontSize: 10,
+    opacity: 0.8,
+    letterSpacing: 1,
+  },
   details: {
-    fontSize: 12,
+    fontSize: 11,
+    opacity: 0.7,
   },
   actions: {
     flexDirection: 'row',

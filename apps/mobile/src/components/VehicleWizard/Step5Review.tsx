@@ -95,7 +95,7 @@ export const Step5Review: React.FC = () => {
         'Seu veículo foi cadastrado e está em análise pela nossa equipe.',
         [{ text: 'OK', onPress: () => {
           resetWizard();
-          router.replace('/(seller)/(tabs)/dashboard');
+          router.replace('/(seller)/(tabs)/inventory');
         }}]
       );
     } catch (error: any) {

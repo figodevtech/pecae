@@ -59,6 +59,8 @@ export const PecaeButton: React.FC<PecaeButtonProps> = ({
             borderRadius: effects.radius.md,
             borderWidth: variant === 'outline' ? 1 : 0,
             borderColor: colors.brand,
+            borderTopWidth: isPrimary ? 1 : 0,
+            borderTopColor: 'rgba(255, 255, 255, 0.3)', // Inner highlight
           },
         ]}
       >

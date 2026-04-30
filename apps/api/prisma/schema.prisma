@@ -6,6 +6,7 @@
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  previewFeatures = ["fullTextSearch"]
 }
 
 datasource db {
@@ -345,6 +346,7 @@ model SellerProfile {
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   stats         SellerStats?
@@ -479,6 +481,7 @@ model Vehicle {
 
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
 
   seller          SellerProfile  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   version         VehicleVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
@@ -517,6 +520,7 @@ model Listing {
   status          ListingStatus @default(PENDING) // RN14: Default PENDING
   
   // Metrics
+  price           Float?
   views           Int           @default(0)
   favoritesCount  Int           @default(0) @map("favorites_count")
   
@@ -535,6 +539,7 @@ model Listing {
   
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
 
   sellerProfile   SellerProfile @relation(fields: [sellerProfileId], references: [id], onDelete: Cascade)
   vehicle         Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
@@ -560,6 +565,7 @@ model BuyerProfile {
   avatar    String?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ListingDetailResponseDto } from './dto/listing-detail-response.dto';
+import { CreateListingDto } from './dto/create-listing.dto';
+import { UpdateListingDto } from './dto/update-listing.dto';
 
 @Injectable()
 export class ListingsService {
@@ -11,9 +13,76 @@ export class ListingsService {
     @InjectQueue('listings') private readonly listingsQueue: Queue,
   ) {}
 
+  async create(userId: string, dto: CreateListingDto) {
+    const seller = await this.prisma.sellerProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!seller) {
+      throw new ForbiddenException('Apenas vendedores podem criar anúncios.');
+    }
+
+    const { photos, ...vehicleData } = dto;
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Create Vehicle
+      const vehicle = await tx.vehicle.create({
+        data: {
+          sellerId: seller.id,
+          versionId: vehicleData.versionId,
+          yearFabId: vehicleData.yearFabId,
+          color: vehicleData.color,
+          plate: vehicleData.plate,
+          city: vehicleData.city,
+          state: vehicleData.state,
+          availableParts: vehicleData.availableParts,
+          observations: vehicleData.observations,
+          status: 'PENDING',
+          photos: {
+            create: photos.map((p) => ({
+              url: p.url,
+              order: p.order,
+              type: p.type,
+            })),
+          },
+        },
+      });
+
+      // 2. Create Listing
+      return tx.listing.create({
+        data: {
+          sellerProfileId: seller.id,
+          vehicleId: vehicle.id,
+          title: dto.title,
+          description: dto.description,
+          price: dto.price,
+          status: 'PENDING',
+        },
+      });
+    });
+  }
+
+  async findAll(query: any) {
+    // Basic implementation for discovery, filtered by soft delete
+    return this.prisma.listing.findMany({
+      where: {
+        deletedAt: null,
+        status: 'PUBLISHED',
+      },
+      include: {
+        vehicle: {
+          include: {
+            photos: { where: { order: 0 }, take: 1 },
+            version: { include: { model: { include: { brand: true } } } },
+          },
+        },
+      },
+    });
+  }
+
   async findOne(id: string, ip: string): Promise<ListingDetailResponseDto> {
-    const listing = await this.prisma.listing.findUnique({
-      where: { id },
+    const listing = await this.prisma.listing.findFirst({
+      where: { id, deletedAt: null },
       include: {
         vehicle: {
           include: {
@@ -41,7 +110,7 @@ export class ListingsService {
     });
 
     if (!listing || listing.status !== 'PUBLISHED') {
-      throw new NotFoundException(`Anúncio com ID ${id} não encontrado.`);
+      throw new NotFoundException(`Anúncio com ID ${id} não encontrado ou foi removido.`);
     }
 
     // Increment views via BullMQ
@@ -71,6 +140,7 @@ export class ListingsService {
       id: listing.id,
       title: listing.title,
       description: listing.description,
+      price: listing.price,
       views: listing.views,
       favoritesCount: listing.favoritesCount,
       createdAt: listing.createdAt,
@@ -103,5 +173,58 @@ export class ListingsService {
         rating: listing.sellerProfile.stats?.rating ?? null,
       },
     };
+  }
+
+  async update(id: string, userId: string, dto: UpdateListingDto) {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id },
+      include: { sellerProfile: true },
+    });
+
+    if (!listing || listing.deletedAt) {
+      throw new NotFoundException('Anúncio não encontrado.');
+    }
+
+    if (listing.sellerProfile.userId !== userId) {
+      throw new ForbiddenException('Você não tem permissão para alterar este anúncio.');
+    }
+
+    const { title, description, price, ...vehicleFields } = dto;
+    const { photos, ...directVehicleFields } = vehicleFields as any;
+
+    return this.prisma.listing.update({
+      where: { id },
+      data: {
+        title,
+        description,
+        price,
+        vehicle: Object.keys(directVehicleFields).length > 0 ? {
+          update: directVehicleFields
+        } : undefined,
+      },
+    });
+  }
+
+  async softDelete(id: string, userId: string) {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id },
+      include: { sellerProfile: true },
+    });
+
+    if (!listing) {
+      throw new NotFoundException('Anúncio não encontrado.');
+    }
+
+    if (listing.sellerProfile.userId !== userId) {
+      throw new ForbiddenException('Você não tem permissão para remover este anúncio.');
+    }
+
+    return this.prisma.listing.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        status: 'EXPIRED', // Marking as expired/removed from public view
+      },
+    });
   }
 }

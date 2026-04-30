@@ -49,6 +49,8 @@ export class SearchService {
       city,
       state,
       q,
+      priceMin,
+      priceMax,
       cursor,
       limit = 10,
     } = filters;
@@ -63,12 +65,6 @@ export class SearchService {
       ...(versionId && { versionId }),
       ...(city && { city: { contains: city, mode: 'insensitive' } }),
       ...(state && { state: state.toUpperCase() }),
-      ...(q && {
-        OR: [
-          { observations: { contains: q, mode: 'insensitive' } },
-          { version: { model: { name: { contains: q, mode: 'insensitive' } } } },
-        ],
-      }),
     };
 
     if (yearMin || yearMax) {
@@ -84,6 +80,24 @@ export class SearchService {
       status: 'PUBLISHED',
       vehicle: vehicleWhere,
     };
+
+    // Full-Text Search with Prisma fullTextSearch feature
+    if (q) {
+      // Use search on Listing title/description and Vehicle observations
+      where.OR = [
+        { title: { search: q.trim().split(/\s+/).join(' & ') } },
+        { description: { search: q.trim().split(/\s+/).join(' & ') } },
+        { vehicle: { observations: { search: q.trim().split(/\s+/).join(' & ') } } },
+      ];
+    }
+
+    // Price Filter
+    if (priceMin !== undefined || priceMax !== undefined) {
+      where.price = {
+        ...(priceMin !== undefined && { gte: priceMin }),
+        ...(priceMax !== undefined && { lte: priceMax }),
+      };
+    }
 
     // Execute query with take: limit + 1 for pagination
     const listings = await this.prisma.listing.findMany({
@@ -186,6 +200,7 @@ export class SearchService {
         title: item.title,
         description: item.description,
         publishedAt: item.publishedAt,
+        price: item.price,
         views: item.views,
         favoritesCount: item.favoritesCount,
         sellerId: item.sellerProfileId,
