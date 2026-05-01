@@ -76,9 +76,9 @@ export default function BuyerLayout() {
           }} 
         />
         <Stack.Screen 
-          name="compras" 
+          name="negociacoes" 
           options={{ 
-            title: 'Minhas Compras',
+            title: 'Minhas Negociações',
             headerShown: true
           }} 
         />

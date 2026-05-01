@@ -6,6 +6,9 @@ import { usePecaeTheme } from '../../../src/theme';
 import { useListings } from '../../../src/hooks/useVehicles';
 import { getVehicleImage } from '../../../src/utils/vehicleImages';
 import { Ionicons } from '@expo/vector-icons';
+import { useChat } from '../../../src/hooks/useChat';
+import { useState } from 'react';
+import { ActivityIndicator, Alert } from 'react-native';
 
 export default function VehicleDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -39,13 +42,23 @@ export default function VehicleDetailsScreen() {
   
   const isVerified = vehicle.id.charCodeAt(0) % 2 === 0;
 
-  const handleContact = () => {
-    // Mocking contact opening
-    const message = `Olá, gostaria de saber mais sobre o veículo ${title} anunciado no PECAÊ.`;
-    const url = `whatsapp://send?text=${encodeURIComponent(message)}`;
-    Linking.openURL(url).catch(() => {
-      alert('Não foi possível abrir o WhatsApp. Simulação de contato enviada!');
-    });
+  const { createRoom } = useChat();
+  const [isStartingChat, setIsStartingChat] = useState(false);
+
+  const handleContact = async () => {
+    if (isStartingChat) return;
+    
+    setIsStartingChat(true);
+    try {
+      const room = await createRoom.mutateAsync(mainListing.id);
+      router.push(`/chat/${room.id}`);
+    } catch (error: any) {
+      console.error('Error starting chat:', error);
+      const message = error.response?.data?.message || 'Não foi possível iniciar a negociação.';
+      Alert.alert('Erro', message);
+    } finally {
+      setIsStartingChat(false);
+    }
   };
 
   const isWeb = width >= 768;
@@ -144,12 +157,23 @@ export default function VehicleDetailsScreen() {
 
               <TouchableOpacity 
                 onPress={handleContact} 
-                style={[styles.contactButton, { backgroundColor: colors.brand, borderRadius: effects.radius.md }]}
+                disabled={isStartingChat}
+                style={[
+                  styles.contactButton, 
+                  { backgroundColor: colors.brand, borderRadius: effects.radius.md },
+                  isStartingChat && { opacity: 0.7 }
+                ]}
               >
-                <Ionicons name="logo-whatsapp" size={24} color="#FFF" style={{ marginRight: 8 }} />
-                <Text style={[styles.contactButtonText, { fontFamily: typography.display }]}>
-                  ENTRAR EM CONTATO
-                </Text>
+                {isStartingChat ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <>
+                    <Ionicons name="chatbubbles" size={24} color="#000" style={{ marginRight: 8 }} />
+                    <Text style={[styles.contactButtonText, { fontFamily: typography.display, color: '#000' }]}>
+                      INICIAR NEGOCIAÇÃO
+                    </Text>
+                  </>
+                )}
               </TouchableOpacity>
             </PecaeGlassCard>
           </View>

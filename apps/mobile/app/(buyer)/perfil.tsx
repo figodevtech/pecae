@@ -151,13 +151,13 @@ export default function PerfilCompradorMenu() {
 
               <TouchableOpacity 
                 style={styles.menuItem}
-                onPress={() => router.push('/(buyer)/compras')}
+                onPress={() => router.push('/(buyer)/negociacoes')}
               >
-                <View style={[styles.menuIconBox, { backgroundColor: '#10b98115' }]}>
-                  <Ionicons name="cart" size={18} color="#10b981" />
+                <View style={[styles.menuIconBox, { backgroundColor: colors.brand + '15' }]}>
+                  <Ionicons name="chatbubbles" size={18} color={colors.brand} />
                 </View>
                 <Text style={[styles.menuItemText, { color: colors.textPrimary, fontFamily: typography.body }]}>
-                  Minhas Compras
+                  Minhas Negociações
                 </Text>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
               </TouchableOpacity>

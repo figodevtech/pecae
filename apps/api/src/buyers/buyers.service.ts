@@ -125,4 +125,53 @@ export class BuyersService {
 
     return { message: 'Conta agendada para exclusão com sucesso.' };
   }
+
+  /**
+   * Returns listings the buyer has interacted with (Negotiations).
+   */
+  async getNegotiations(userId: string) {
+    const chatRooms = await this.prisma.chatRoom.findMany({
+      where: { buyerId: userId },
+      include: {
+        listing: {
+          include: {
+            vehicle: {
+              include: {
+                photos: { where: { order: 0 }, take: 1 },
+                version: { include: { model: { include: { brand: true } } } },
+              },
+            },
+            sellerProfile: true,
+          },
+        },
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return chatRooms.map((room) => ({
+      id: room.id,
+      listing: {
+        id: room.listing.id,
+        title: room.listing.title,
+        status: room.listing.status,
+        price: room.listing.price,
+        thumbnail: room.listing.vehicle?.photos[0]?.url || null,
+        vehicleInfo: room.listing.vehicle ? {
+          brand: room.listing.vehicle.version.model.brand.name,
+          model: room.listing.vehicle.version.model.name,
+          version: room.listing.vehicle.version.name,
+        } : null,
+      },
+      seller: {
+        id: room.listing.sellerProfile.id,
+        storeName: room.listing.sellerProfile.storeName,
+      },
+      lastInteraction: room.messages[0]?.createdAt || room.updatedAt,
+      lastMessage: room.messages[0]?.content || null,
+    }));
+  }
 }

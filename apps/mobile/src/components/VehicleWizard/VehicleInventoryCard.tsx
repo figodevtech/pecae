@@ -13,7 +13,7 @@ interface VehicleInventoryCardProps {
 
 export const VehicleInventoryCard: React.FC<VehicleInventoryCardProps> = ({ vehicle }) => {
   const { colors, typography } = usePecaeTheme();
-  const { markAsSold, deleteVehicle } = useVehicleActions();
+  const { markAsSold, markAsRemoved } = useVehicleActions();
   const loadVehicle = useVehicleWizardStore(s => s.loadVehicle);
   const router = useRouter();
 
@@ -106,21 +106,21 @@ export const VehicleInventoryCard: React.FC<VehicleInventoryCardProps> = ({ vehi
           style={styles.actionBtn} 
           onPress={() => {
             Alert.alert(
-              'Remover Anúncio',
-              'Tem certeza que deseja remover este anúncio? Esta ação não pode ser desfeita.',
+              'Retirar Anúncio',
+              'Deseja retirar este anúncio? Ele não será mais visível para compradores, mas continuará no seu histórico.',
               [
                 { text: 'Cancelar', style: 'cancel' },
                 { 
-                  text: 'Remover', 
+                  text: 'Retirar', 
                   style: 'destructive',
-                  onPress: () => deleteVehicle.mutate(vehicle.id) 
+                  onPress: () => markAsRemoved.mutate(vehicle.id) 
                 }
               ]
             );
           }}
         >
-          <Ionicons name="trash-outline" size={20} color={colors.error} />
-          <Text style={[styles.actionText, { color: colors.error, fontFamily: typography.medium }]}>Remover</Text>
+          <Ionicons name="eye-off-outline" size={20} color={colors.error} />
+          <Text style={[styles.actionText, { color: colors.error, fontFamily: typography.medium }]}>Retirar</Text>
         </TouchableOpacity>
       </View>
     </PecaeGlassCard>

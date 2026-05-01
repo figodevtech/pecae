@@ -30,4 +30,9 @@ export class BuyersController {
   ) {
     return this.buyersService.deleteAccount(req.user.id, deleteAccountDto);
   }
+
+  @Get('negotiations')
+  async getNegotiations(@Request() req: any) {
+    return this.buyersService.getNegotiations(req.user.id);
+  }
 }

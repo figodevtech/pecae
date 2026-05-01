@@ -307,9 +307,9 @@ export const useVehicleActions = () => {
     },
   });
 
-  const deleteVehicle = useMutation({
+  const markAsRemoved = useMutation({
     mutationFn: async (id: string) => {
-      const { data } = await api.delete(`/listings/${id}`);
+      const { data } = await api.patch(`/vehicles/${id}/removed`);
       return data;
     },
     onSuccess: () => {
@@ -317,5 +317,5 @@ export const useVehicleActions = () => {
     },
   });
 
-  return { markAsSold, deleteVehicle };
+  return { markAsSold, markAsRemoved, deleteVehicle };
 };

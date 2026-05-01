@@ -194,6 +194,33 @@ export class VehiclesService {
     });
   }
 
+  /**
+   * Marks a vehicle as REMOVED (Retirado).
+   */
+  async markAsRemoved(id: string, sellerId: string) {
+    const vehicle = await this.prisma.vehicle.findUnique({
+      where: { id },
+      select: { sellerId: true },
+    });
+
+    if (!vehicle) throw new NotFoundException('Veículo não encontrado');
+    if (vehicle.sellerId !== sellerId) throw new ForbiddenException('Ação não permitida');
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.vehicle.update({
+        where: { id },
+        data: { status: VehicleStatus.INACTIVE },
+      });
+
+      await tx.listing.updateMany({
+        where: { vehicleId: id },
+        data: { 
+          status: ListingStatus.EXPIRED,
+        },
+      });
+    });
+  }
+
   async findBySeller(sellerId: string) {
     return this.prisma.vehicle.findMany({
       where: { sellerId },
