@@ -1,85 +1,67 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Switch, ActivityIndicator, Alert, ScrollView, SafeAreaView, Platform } from 'react-native';
-import { Stack } from 'expo-router';
-import * as Notifications from 'expo-notifications';
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { usePecaeTheme } from '../../src/theme';
-import { useBuyerProfile, useUpdateNotificationPreferences } from '../../src/hooks/useBuyer';
 import { PecaeBackground } from '../../src/components/PecaeUI/PecaeBackground';
 import { PecaeGlassCard } from '../../src/components/PecaeUI/PecaeGlassCard';
 
-export default function Configuracoes() {
+/**
+ * 🤖 Applying knowledge of @frontend-specialist...
+ * Refactoring Settings Hub
+ * Following Industrial Glassmorphism standards
+ */
+
+interface SettingsItemProps {
+  icon: keyof typeof Ionicons.glyphMap | keyof typeof MaterialCommunityIcons.glyphMap;
+  iconType?: 'ionic' | 'material';
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+  color?: string;
+}
+
+const SettingsItem: React.FC<SettingsItemProps> = ({ 
+  icon, 
+  iconType = 'ionic', 
+  title, 
+  subtitle, 
+  onPress,
+  color
+}) => {
   const { colors, typography, isDark } = usePecaeTheme();
   
-  const { data: profile, isLoading } = useBuyerProfile();
-  const updatePrefsMutation = useUpdateNotificationPreferences();
-
-  const [pushEnabled, setPushEnabled] = useState(false);
-  const [emailEnabled, setEmailEnabled] = useState(false);
-  const [inAppEnabled, setInAppEnabled] = useState(false);
-
-  useEffect(() => {
-    if (profile?.notificationPreferences) {
-      setPushEnabled(profile.notificationPreferences.push ?? false);
-      setEmailEnabled(profile.notificationPreferences.email ?? false);
-      setInAppEnabled(profile.notificationPreferences.inApp ?? false);
-    }
-  }, [profile]);
-
-  const handleTogglePush = async (value: boolean) => {
-    try {
-      if (value) {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        
-        if (existingStatus !== 'granted') {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-        }
-        
-        if (finalStatus !== 'granted') {
-          Alert.alert('Atenção', 'Você precisa habilitar notificações nas configurações do sistema para receber alertas push.');
-          setPushEnabled(false);
-          return;
-        }
-      }
-
-      setPushEnabled(value);
-      await updatePrefsMutation.mutateAsync({ push: value });
-    } catch (error) {
-      setPushEnabled(!value);
-      Alert.alert('Erro', 'Não foi possível atualizar a preferência.');
-    }
-  };
-
-  const handleToggleEmail = async (value: boolean) => {
-    try {
-      setEmailEnabled(value);
-      await updatePrefsMutation.mutateAsync({ email: value });
-    } catch (error) {
-      setEmailEnabled(!value);
-      Alert.alert('Erro', 'Não foi possível atualizar a preferência.');
-    }
-  };
-
-  const handleToggleInApp = async (value: boolean) => {
-    try {
-      setInAppEnabled(value);
-      await updatePrefsMutation.mutateAsync({ inApp: value });
-    } catch (error) {
-      setInAppEnabled(!value);
-      Alert.alert('Erro', 'Não foi possível atualizar a preferência.');
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <PecaeBackground>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.brand} />
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={styles.itemWrapper}>
+      <PecaeGlassCard style={styles.itemCard} intensity={isDark ? 8 : 15}>
+        <View style={styles.itemRow}>
+          <View style={[styles.iconContainer, { backgroundColor: (color || colors.brand) + '15' }]}>
+            {iconType === 'ionic' ? (
+              <Ionicons name={icon as any} size={22} color={color || colors.brand} />
+            ) : (
+              <MaterialCommunityIcons name={icon as any} size={22} color={color || colors.brand} />
+            )}
+          </View>
+          
+          <View style={styles.textContainer}>
+            <Text style={[styles.itemTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
+              {title}
+            </Text>
+            <Text style={[styles.itemSubtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
+              {subtitle}
+            </Text>
+          </View>
+          
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} style={{ opacity: 0.5 }} />
         </View>
-      </PecaeBackground>
-    );
-  }
+      </PecaeGlassCard>
+    </TouchableOpacity>
+  );
+};
+
+export default function Configuracoes() {
+  const { colors, typography } = usePecaeTheme();
+  const router = useRouter();
 
   return (
     <PecaeBackground>
@@ -87,80 +69,67 @@ export default function Configuracoes() {
         <Stack.Screen 
           options={{
             headerShown: true,
-            title: 'Configurações',
+            title: 'CONFIGURAÇÕES',
             headerTransparent: true,
             headerTintColor: colors.textPrimary,
-            headerTitleStyle: { fontFamily: typography.display, fontSize: 18 },
+            headerTitleStyle: { fontFamily: typography.display, fontSize: 16, letterSpacing: 1.5 },
           }}
         />
 
         <View style={styles.headerSpacer} />
 
-        <ScrollView contentContainerStyle={styles.listContent}>
-          <Text style={[styles.sectionTitle, { color: colors.brand, fontFamily: typography.display }]}>
-            NOTIFICAÇÕES
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <Text style={[styles.sectionTitle, { color: colors.brand, fontFamily: typography.mono }]}>
+            [01] PREFERÊNCIAS
           </Text>
           
-          <PecaeGlassCard style={styles.card} intensity={isDark ? 10 : 30}>
-            <View style={styles.row}>
-              <View style={styles.textContainer}>
-                <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]}>Notificações Push</Text>
-                <Text style={[styles.subtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
-                  Receba alertas no seu celular mesmo com o app fechado
-                </Text>
-              </View>
-              <Switch
-                trackColor={{ false: colors.border, true: colors.brand }}
-                thumbColor={Platform.OS === 'ios' ? undefined : '#fff'}
-                ios_backgroundColor={colors.border}
-                onValueChange={handleTogglePush}
-                value={pushEnabled}
-                disabled={updatePrefsMutation.isPending}
-              />
-            </View>
+          <SettingsItem 
+            icon="notifications"
+            title="Notificações"
+            subtitle="Canais de alerta, e-mail e push"
+            onPress={() => router.push('/(buyer)/configuracoes-notificacao')}
+          />
 
-            <View style={[styles.separator, { backgroundColor: colors.border + '30' }]} />
+          <SettingsItem 
+            icon="shield-checkmark"
+            title="Segurança"
+            subtitle="Senha, biometria e privacidade"
+            onPress={() => router.push('/(buyer)/seguranca')}
+          />
 
-            <View style={styles.row}>
-              <View style={styles.textContainer}>
-                <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]}>E-mail</Text>
-                <Text style={[styles.subtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
-                  Receba resumos e ofertas importantes por e-mail
-                </Text>
-              </View>
-              <Switch
-                trackColor={{ false: colors.border, true: colors.brand }}
-                thumbColor={Platform.OS === 'ios' ? undefined : '#fff'}
-                ios_backgroundColor={colors.border}
-                onValueChange={handleToggleEmail}
-                value={emailEnabled}
-                disabled={updatePrefsMutation.isPending}
-              />
-            </View>
+          <Text style={[styles.sectionTitle, { color: colors.brand, fontFamily: typography.mono, marginTop: 24 }]}>
+            [02] CONTA
+          </Text>
 
-            <View style={[styles.separator, { backgroundColor: colors.border + '30' }]} />
+          <SettingsItem 
+            icon="account-edit"
+            iconType="material"
+            title="Editar Perfil"
+            subtitle="Dados pessoais e foto de exibição"
+            onPress={() => router.push('/(buyer)/perfil-editar')}
+          />
 
-            <View style={styles.row}>
-              <View style={styles.textContainer}>
-                <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]}>In-App</Text>
-                <Text style={[styles.subtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
-                  Receba alertas dentro do app (mensagens, atualizações)
-                </Text>
-              </View>
-              <Switch
-                trackColor={{ false: colors.border, true: colors.brand }}
-                thumbColor={Platform.OS === 'ios' ? undefined : '#fff'}
-                ios_backgroundColor={colors.border}
-                onValueChange={handleToggleInApp}
-                value={inAppEnabled}
-                disabled={updatePrefsMutation.isPending}
-              />
-            </View>
-          </PecaeGlassCard>
+          <SettingsItem 
+            icon="help-circle"
+            title="Ajuda & Suporte"
+            subtitle="FAQ, contato e termos de uso"
+            onPress={() => router.push('/(buyer)/ajuda')}
+          />
 
-          <View style={styles.footerInfo}>
+          <SettingsItem 
+            icon="trash-outline"
+            title="Excluir Conta"
+            subtitle="Remover seus dados permanentemente"
+            onPress={() => router.push('/(buyer)/excluir-conta')}
+            color="#EF4444"
+          />
+
+          <View style={styles.footer}>
             <Text style={[styles.versionText, { color: colors.textMuted, fontFamily: typography.mono }]}>
-              Versão 1.2.4 (Build 20240428)
+              PECAÊ APP v1.2.4
+            </Text>
+            <Text style={[styles.buildText, { color: colors.textMuted, fontFamily: typography.mono }]}>
+              BUILD_ID: 20260501_REFINEMENT
             </Text>
           </View>
         </ScrollView>
@@ -173,58 +142,62 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   headerSpacer: {
-    height: 80,
+    height: 100,
   },
-  listContent: {
-    padding: 16,
+  scrollContent: {
+    padding: 20,
     paddingBottom: 40,
   },
   sectionTitle: {
-    fontSize: 11,
+    fontSize: 10,
     letterSpacing: 2,
     marginBottom: 16,
     paddingLeft: 4,
     opacity: 0.6,
   },
-  card: {
-    padding: 8,
+  itemWrapper: {
+    marginBottom: 12,
   },
-  row: {
+  itemCard: {
+    padding: 0,
+    borderWidth: 0,
+  },
+  itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     padding: 16,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
   },
   textContainer: {
     flex: 1,
-    paddingRight: 16,
   },
-  title: {
-    fontSize: 15,
-    marginBottom: 4,
+  itemTitle: {
+    fontSize: 16,
+    marginBottom: 2,
   },
-  subtitle: {
+  itemSubtitle: {
     fontSize: 12,
-    lineHeight: 18,
-    opacity: 0.7,
+    opacity: 0.6,
   },
-  separator: {
-    height: 1,
-    marginHorizontal: 16,
-  },
-  footerInfo: {
-    marginTop: 40,
+  footer: {
+    marginTop: 48,
     alignItems: 'center',
+    opacity: 0.4,
   },
   versionText: {
     fontSize: 10,
     letterSpacing: 1,
-    opacity: 0.5,
+  },
+  buildText: {
+    fontSize: 8,
+    marginTop: 4,
   },
 });

@@ -10,7 +10,18 @@ export interface VehicleListing {
   listing?: {
     id: string;
     status: string;
+    title?: string;
+    brand?: string;
+    model?: string;
+    views?: number;
   };
+  listings?: Array<{
+    id: string;
+    status: string;
+    title?: string;
+    views?: number;
+  }>;
+  availableParts?: string[];
 }
 
 export const useVehicles = () => {

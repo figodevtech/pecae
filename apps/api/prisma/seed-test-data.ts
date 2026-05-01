@@ -142,15 +142,15 @@ async function main() {
             { url: `https://loremflickr.com/800/600/car,scrap/all?lock=${i}4`, order: 3 },
           ]
         },
-        listing: {
-          create: {
+        listings: {
+          create: [{
             sellerProfileId: sellerProfile.id,
             title: `${firstModel.brand.name} ${firstModel.name} ${version.name} - Teste ${i + 1}`,
             description: `Veículo de teste número ${i + 1} para validação do sistema PECAÊ.`,
             status: status,
             publishedAt: status === ListingStatus.PUBLISHED ? new Date() : null,
             soldAt: status === ListingStatus.SOLD ? new Date() : null,
-          }
+          }]
         }
       }
     });

@@ -487,7 +487,7 @@ model Vehicle {
   version         VehicleVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
   yearFab         VehicleYear    @relation(fields: [yearFabId], references: [id], onDelete: Cascade)
   photos          VehiclePhoto[]
-  listing         Listing?
+  listings        Listing[]
 
   @@index([sellerId, status])
   @@index([city, state])
@@ -513,7 +513,7 @@ model VehiclePhoto {
 model Listing {
   id              String        @id @default(uuid())
   sellerProfileId String        @map("seller_profile_id")
-  vehicleId       String        @unique @map("vehicle_id")
+  vehicleId       String        @map("vehicle_id")
   
   title           String        @db.VarChar(255)
   description     String?       @db.Text

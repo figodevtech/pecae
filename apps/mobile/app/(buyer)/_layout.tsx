@@ -69,6 +69,13 @@ export default function BuyerLayout() {
           }} 
         />
         <Stack.Screen 
+          name="configuracoes-notificacao" 
+          options={{ 
+            title: 'Notificações',
+            headerShown: true
+          }} 
+        />
+        <Stack.Screen 
           name="compras" 
           options={{ 
             title: 'Minhas Compras',

@@ -31,10 +31,11 @@ export default function VehicleDetailsScreen() {
     );
   }
 
-  const brand = vehicle.listing?.brand || vehicle.version?.model?.brand?.name || '';
-  const model = vehicle.listing?.model || vehicle.version?.model?.name || '';
+  const mainListing = vehicle.listing || (vehicle.listings && vehicle.listings[0]);
+  const brand = mainListing?.brand || vehicle.version?.model?.brand?.name || '';
+  const model = mainListing?.model || vehicle.version?.model?.name || '';
   const imageUrl = getVehicleImage(brand, model, vehicle.id);
-  const title = vehicle.listing?.title || `${brand} ${model}`.trim() || 'Veículo';
+  const title = mainListing?.title || `${brand} ${model}`.trim() || 'Veículo';
   
   const isVerified = vehicle.id.charCodeAt(0) % 2 === 0;
 
@@ -103,13 +104,31 @@ export default function VehicleDetailsScreen() {
                     <Text style={[styles.specValue, { color: colors.textPrimary, fontFamily: typography.medium }]}>{vehicle.plate}</Text>
                   </View>
                 )}
-                {vehicle.listing?.views !== undefined && (
+                {mainListing?.views !== undefined && (
                   <View style={styles.specItem}>
                     <Text style={[styles.specLabel, { color: colors.textMuted, fontFamily: typography.body }]}>Visualizações</Text>
-                    <Text style={[styles.specValue, { color: colors.textPrimary, fontFamily: typography.medium }]}>{vehicle.listing.views}</Text>
+                    <Text style={[styles.specValue, { color: colors.textPrimary, fontFamily: typography.medium }]}>{mainListing.views}</Text>
                   </View>
                 )}
               </View>
+
+              {vehicle.availableParts && vehicle.availableParts.length > 0 && (
+                <>
+                  <View style={[styles.separator, { backgroundColor: colors.border }]} />
+                  <Text style={[styles.sectionTitle, { color: colors.textPrimary, fontFamily: typography.heading }]}>
+                    Peças Disponíveis
+                  </Text>
+                  <View style={styles.partsGrid}>
+                    {(vehicle.availableParts as string[]).map((part, idx) => (
+                      <View key={idx} style={[styles.partBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <Text style={[styles.partBadgeText, { color: colors.textPrimary, fontFamily: typography.body }]}>
+                          {part}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
 
               {vehicle.observations && (
                 <>
@@ -266,5 +285,21 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 14,
     letterSpacing: 1,
+  },
+  partsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  partBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    opacity: 0.8,
+  },
+  partBadgeText: {
+    fontSize: 12,
   },
 });

@@ -200,7 +200,7 @@ export class SearchService {
         title: item.title,
         description: item.description,
         publishedAt: item.publishedAt,
-        price: item.price,
+        price: (item as any).price,
         views: item.views,
         favoritesCount: item.favoritesCount,
         sellerId: item.sellerProfileId,

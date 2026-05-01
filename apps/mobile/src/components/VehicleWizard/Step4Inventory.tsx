@@ -13,10 +13,10 @@ export const Step4Inventory: React.FC = () => {
   const { data, updateData, nextStep, prevStep } = useVehicleWizardStore();
   const { data: categories, isLoading } = usePartCategories();
 
-  const togglePart = (id: string) => {
-    const newParts = data.availableParts.includes(id)
-      ? data.availableParts.filter((p) => p !== id)
-      : [...data.availableParts, id];
+  const togglePart = (name: string) => {
+    const newParts = data.availableParts.includes(name)
+      ? data.availableParts.filter((p) => p !== name)
+      : [...data.availableParts, name];
     updateData({ availableParts: newParts });
   };
 
@@ -49,12 +49,12 @@ export const Step4Inventory: React.FC = () => {
       ) : (
         <View style={styles.grid}>
           {categories?.map((cat) => {
-            const isSelected = data.availableParts.includes(cat.id);
+            const isSelected = data.availableParts.includes(cat.name);
             return (
               <TouchableOpacity 
                 key={cat.id} 
                 style={styles.partCardWrapper}
-                onPress={() => togglePart(cat.id)}
+                onPress={() => togglePart(cat.name)}
               >
                 <PecaeGlassCard 
                   intensity={isSelected ? 30 : 10} 

@@ -7,7 +7,7 @@ import { FavoritesService } from './favorites.service';
 export class FavoritesController {
   constructor(private readonly favoritesService: FavoritesService) {}
 
-  @Get('favorites')
+  @Get()
   getFavorites(@Request() req: any) {
     return this.favoritesService.getFavorites(req.user.id);
   }

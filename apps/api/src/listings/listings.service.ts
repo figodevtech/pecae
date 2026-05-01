@@ -39,7 +39,7 @@ export class ListingsService {
           observations: vehicleData.observations,
           status: 'PENDING',
           photos: {
-            create: photos.map((p) => ({
+            create: photos.map((p: any) => ({
               url: p.url,
               order: p.order,
               type: p.type,
@@ -173,13 +173,13 @@ export class ListingsService {
         availableParts,
       },
       seller: {
-        id: listing.sellerProfile.id,
-        storeName: listing.sellerProfile.storeName,
-        city: listing.sellerProfile.city,
-        state: listing.sellerProfile.state,
-        avatar: listing.sellerProfile.logo,
-        isVerified: listing.sellerProfile.isVerified,
-        rating: listing.sellerProfile.stats?.rating ?? null,
+        id: (listing as any).sellerProfile.id,
+        storeName: (listing as any).sellerProfile.storeName,
+        city: (listing as any).sellerProfile.city,
+        state: (listing as any).sellerProfile.state,
+        avatar: (listing as any).sellerProfile.logo,
+        isVerified: (listing as any).sellerProfile.isVerified,
+        rating: (listing as any).sellerProfile.stats?.rating ?? null,
       },
     };
   }
@@ -190,7 +190,7 @@ export class ListingsService {
       include: { sellerProfile: true },
     });
 
-    if (!listing || listing.deletedAt) {
+    if (!listing || (listing as any).deletedAt) {
       throw new NotFoundException('Anúncio não encontrado.');
     }
 

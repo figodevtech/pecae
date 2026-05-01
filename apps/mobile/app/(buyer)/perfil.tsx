@@ -199,6 +199,19 @@ export default function PerfilCompradorMenu() {
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
               </TouchableOpacity>
 
+              <TouchableOpacity 
+                style={styles.menuItem}
+                onPress={() => router.push('/(buyer)/configuracoes')}
+              >
+                <View style={[styles.menuIconBox, { backgroundColor: '#94a3b815' }]}>
+                  <Ionicons name="settings" size={18} color="#94a3b8" />
+                </View>
+                <Text style={[styles.menuItemText, { color: colors.textPrimary, fontFamily: typography.body }]}>
+                  Configurações
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+
               <View style={[styles.separator, { backgroundColor: colors.border }]} />
 
               <TouchableOpacity 
