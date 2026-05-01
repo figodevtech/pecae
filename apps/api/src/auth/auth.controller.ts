@@ -19,6 +19,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Request } from 'express';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Public } from './decorators/public.decorator';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -28,6 +29,7 @@ export class AuthController {
   // ─── Email/Password ───────────────────────────────────────────
 
   // 20 tentativas por minuto — previne abuso em cadastro em massa
+  @Public()
   @Throttle({ default: { ttl: 60000, limit: 20 } })
   @Post('register')
   @ApiOperation({ summary: 'Registrar um novo usuário' })
@@ -43,6 +45,7 @@ export class AuthController {
   }
 
   // 10 tentativas por minuto — previne brute-force de senha
+  @Public()
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -61,6 +64,7 @@ export class AuthController {
     return this.authService.login(loginDto, ip, userAgent);
   }
 
+  @Public()
   @Post('verify-email')
   @ApiOperation({ summary: 'Verificar e-mail do usuário' })
   @ApiResponse({ status: 200, description: 'E-mail verificado com sucesso' })
@@ -71,6 +75,7 @@ export class AuthController {
 
   // ─── Session Management ───────────────────────────────────────
 
+  @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Renovar access token usando refresh token' })
@@ -95,6 +100,7 @@ export class AuthController {
   // ─── OAuth ───────────────────────────────────────────────────
 
   // 5 tentativas por minuto — OAuth é vetor de token stuffing
+  @Public()
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Post('google')
   @HttpCode(HttpStatus.OK)
@@ -120,6 +126,7 @@ export class AuthController {
 
   // ─── Phone OTP ───────────────────────────────────────────────
 
+  @Public()
   @Throttle({ default: { ttl: 60000, limit: 3 } }) // 3 envios por minuto
   @Post('phone/send-otp')
   @HttpCode(HttpStatus.OK)
@@ -128,6 +135,7 @@ export class AuthController {
     return this.authService.sendOtp(dto.phone);
   }
 
+  @Public()
   @Throttle({ default: { ttl: 60000, limit: 5 } }) // 5 tentativas por minuto
   @Post('phone/verify-otp')
   @HttpCode(HttpStatus.OK)
@@ -143,6 +151,7 @@ export class AuthController {
 
   // ─── Password Recovery ───────────────────────────────────────
 
+  @Public()
   @Throttle({ default: { ttl: 60000, limit: 3 } })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
@@ -151,6 +160,7 @@ export class AuthController {
     return this.authService.forgotPassword(dto.email);
   }
 
+  @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Redefinir senha usando token' })

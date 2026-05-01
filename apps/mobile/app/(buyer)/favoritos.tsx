@@ -1,14 +1,16 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, SafeAreaView } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useFavorites } from '../../src/hooks/useFavorites';
 import { usePecaeTheme } from '../../src/theme';
+import { PecaeBackground } from '../../src/components/PecaeUI/PecaeBackground';
+import { PecaeGlassCard } from '../../src/components/PecaeUI/PecaeGlassCard';
 
 export default function FavoritosScreen() {
   const router = useRouter();
-  const { colors, typography } = usePecaeTheme();
+  const { colors, typography, isDark, spacing } = usePecaeTheme();
   const { getFavorites, toggleFavorite } = useFavorites();
 
   const handleToggleFavorite = (listingId: string) => {
@@ -16,78 +18,117 @@ export default function FavoritosScreen() {
   };
 
   const renderItem = ({ item }: { item: any }) => {
+    const listing = item.listing;
+    if (!listing) return null;
+
     return (
-      <TouchableOpacity 
-        style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]} 
-        onPress={() => router.push(`/(tabs)/vehicle/${item.listing.id}`)}
+      <PecaeGlassCard 
+        style={styles.card} 
+        intensity={isDark ? 10 : 35}
       >
-        <View style={styles.cardInfo}>
-          <Text style={[styles.cardTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
-            {item.listing?.title || 'Anúncio sem título'}
-          </Text>
-          <Text style={[styles.cardPrice, { color: colors.brand, fontFamily: typography.mono }]}>
-            {item.listing?.price ? `R$ ${item.listing.price}` : 'Preço sob consulta'}
-          </Text>
-        </View>
         <TouchableOpacity 
-          style={styles.favoriteButton}
-          onPress={() => handleToggleFavorite(item.listing.id)}
+          style={styles.cardInner} 
+          onPress={() => router.push(`/(tabs)/vehicle/${listing.id}`)}
         >
-          <Ionicons name="heart" size={24} color={colors.danger} />
+          <View style={styles.cardInfo}>
+            <Text 
+              style={[styles.cardTitle, { color: colors.textPrimary, fontFamily: typography.display }]}
+              numberOfLines={2}
+            >
+              {listing.title || 'Anúncio sem título'}
+            </Text>
+            <View style={styles.priceRow}>
+              <Text style={[styles.cardPrice, { color: colors.brand, fontFamily: typography.mono }]}>
+                {listing.price ? `R$ ${listing.price.toLocaleString('pt-BR')}` : 'Preço sob consulta'}
+              </Text>
+            </View>
+            {listing.city && (
+              <View style={styles.locationRow}>
+                <Ionicons name="location-outline" size={12} color={colors.textMuted} />
+                <Text style={[styles.locationText, { color: colors.textMuted, fontFamily: typography.body }]}>
+                  {listing.city}, {listing.state}
+                </Text>
+              </View>
+            )}
+          </View>
+          
+          <TouchableOpacity 
+            style={[styles.favoriteButton, { backgroundColor: colors.error + '15' }]}
+            onPress={() => handleToggleFavorite(listing.id)}
+          >
+            <Ionicons name="heart" size={20} color={colors.error} />
+          </TouchableOpacity>
         </TouchableOpacity>
-      </TouchableOpacity>
+      </PecaeGlassCard>
     );
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Stack.Screen 
-        options={{
-          title: 'Favoritos',
-          headerLeft: () => (
-            <TouchableOpacity onPress={() => router.back()} style={{ marginLeft: 16 }}>
-              <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-            </TouchableOpacity>
-          ),
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerTintColor: colors.textPrimary,
-        }}
-      />
-
-      {getFavorites.isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.brand} />
-        </View>
-      ) : getFavorites.isError ? (
-        <View style={styles.center}>
-          <Text style={[styles.errorText, { color: colors.danger, fontFamily: typography.primary }]}>
-            Erro ao carregar favoritos.
-          </Text>
-        </View>
-      ) : (
-        <FlashList
-          data={getFavorites.data || []}
-          renderItem={renderItem}
-          estimatedItemSize={100}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="heart-outline" size={64} color={colors.textMuted} />
-              <Text style={[styles.emptyTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
-                Nenhum favorito ainda
-              </Text>
-              <Text style={[styles.emptySubtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
-                Os anúncios que você curtir aparecerão aqui.
-              </Text>
-            </View>
-          }
-          refreshing={getFavorites.isFetching}
-          onRefresh={getFavorites.refetch}
+    <PecaeBackground>
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen 
+          options={{
+            headerShown: true,
+            title: 'Meus Favoritos',
+            headerTransparent: true,
+            headerTintColor: colors.textPrimary,
+            headerTitleStyle: { fontFamily: typography.display, fontSize: 18 },
+          }}
         />
-      )}
-    </View>
+
+        <View style={styles.headerSpacer} />
+
+        {getFavorites.isLoading ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={colors.brand} />
+          </View>
+        ) : getFavorites.isError ? (
+          <View style={styles.center}>
+            <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
+            <Text style={[styles.errorText, { color: colors.textPrimary, fontFamily: typography.display }]}>
+              Ops! Algo deu errado
+            </Text>
+            <Text style={[styles.errorSubtext, { color: colors.textMuted, fontFamily: typography.body }]}>
+              Não foi possível carregar seus favoritos.
+            </Text>
+            <TouchableOpacity 
+              style={[styles.retryButton, { backgroundColor: colors.brand }]}
+              onPress={() => getFavorites.refetch()}
+            >
+              <Text style={styles.retryButtonText}>Tentar Novamente</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <FlashList
+            data={getFavorites.data || []}
+            renderItem={renderItem}
+            estimatedItemSize={120}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <View style={[styles.emptyIconBox, { backgroundColor: colors.brand + '10' }]}>
+                  <Ionicons name="heart-outline" size={48} color={colors.brand} />
+                </View>
+                <Text style={[styles.emptyTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
+                  Nenhum favorito ainda
+                </Text>
+                <Text style={[styles.emptySubtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
+                  Salve anúncios que você gostou para vê-los aqui mais tarde.
+                </Text>
+                <TouchableOpacity 
+                  style={[styles.browseButton, { backgroundColor: colors.brand }]}
+                  onPress={() => router.push('/(tabs)')}
+                >
+                  <Text style={styles.browseButtonText}>Explorar Marketplace</Text>
+                </TouchableOpacity>
+              </View>
+            }
+            refreshing={getFavorites.isFetching}
+            onRefresh={getFavorites.refetch}
+          />
+        )}
+      </SafeAreaView>
+    </PecaeBackground>
   );
 }
 
@@ -95,54 +136,115 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  headerSpacer: {
+    height: 80,
+  },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
   },
   listContent: {
     padding: 16,
+    paddingBottom: 40,
   },
   card: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    marginBottom: 16,
+    padding: 0,
+  },
+  cardInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
+    padding: 16,
+    gap: 16,
   },
   cardInfo: {
     flex: 1,
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    marginBottom: 4,
+    fontSize: 16,
+    lineHeight: 22,
+    marginBottom: 6,
+  },
+  priceRow: {
+    marginBottom: 8,
   },
   cardPrice: {
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '700',
   },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  locationText: {
+    fontSize: 12,
+    opacity: 0.8,
+  },
   favoriteButton: {
-    padding: 8,
-  },
-  errorText: {
-    fontSize: 16,
-  },
-  emptyContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 64,
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  errorText: {
+    fontSize: 20,
     marginTop: 16,
     marginBottom: 8,
   },
-  emptySubtitle: {
-    fontSize: 14,
+  errorSubtext: {
+    fontSize: 15,
     textAlign: 'center',
-    paddingHorizontal: 32,
+    marginBottom: 24,
+    opacity: 0.7,
+  },
+  retryButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    color: '#000',
+    fontWeight: '700',
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 100,
+    paddingHorizontal: 40,
+  },
+  emptyIconBox: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 32,
+    opacity: 0.7,
+    lineHeight: 22,
+  },
+  browseButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  browseButtonText: {
+    color: '#000',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

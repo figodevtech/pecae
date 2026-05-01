@@ -101,6 +101,15 @@ export class VehiclesController {
     return this.vehiclesService.markAsSold(id, sellerId);
   }
 
+  @Patch(':id/removed')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserType.SELLER, UserType.BOTH)
+  @ApiOperation({ summary: 'Marca o veículo como RETIRADO (Inativo)' })
+  async markAsRemoved(@Param('id') id: string, @Req() req: any) {
+    const sellerId = await this.getSellerId(req.user.id);
+    return this.vehiclesService.markAsRemoved(id, sellerId);
+  }
+
   @Post(':id/photos/upload-url')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserType.SELLER, UserType.BOTH)

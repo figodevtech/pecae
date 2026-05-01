@@ -21,70 +21,107 @@ export class ChatService {
     return this.getOrCreateStream(roomId).asObservable();
   }
 
-  async getOrCreateRoom(buyerId: string, listingId: string) {
-    const listing = await this.prisma.listing.findUnique({
-      where: { id: listingId },
-      include: {
-        sellerProfile: true,
-      },
-    });
+  async getOrCreateRoom(buyerId: string, data: { listingId?: string, vehicleId?: string }) {
+    const { listingId, vehicleId } = data;
 
-    if (!listing) {
-      throw new NotFoundException(`Anúncio com ID ${listingId} não encontrado.`);
+    if (!listingId && !vehicleId) {
+      throw new NotFoundException('É necessário informar listingId ou vehicleId.');
     }
 
-    if (listing.status !== 'PUBLISHED') {
-      throw new ForbiddenException(`Não é possível iniciar chat para um anúncio com status ${listing.status}.`);
-    }
+    let sellerId: string;
+    let targetListingId: string | null = listingId || null;
+    let targetVehicleId: string | null = vehicleId || null;
 
-    const sellerId = listing.sellerProfile.userId;
+    if (vehicleId) {
+      const vehicle = await this.prisma.vehicle.findUnique({
+        where: { id: vehicleId },
+        include: { seller: true },
+      });
+
+      if (!vehicle) {
+        throw new NotFoundException(`Veículo com ID ${vehicleId} não encontrado.`);
+      }
+
+      sellerId = vehicle.seller.userId;
+    } else {
+      const listing = await this.prisma.listing.findUnique({
+        where: { id: listingId },
+        include: { sellerProfile: true },
+      });
+
+      if (!listing) {
+        throw new NotFoundException(`Anúncio com ID ${listingId} não encontrado.`);
+      }
+
+      sellerId = listing.sellerProfile.userId;
+    }
 
     if (buyerId === sellerId) {
-      throw new ForbiddenException('Vendedores não podem iniciar chat no próprio anúncio.');
+      throw new ForbiddenException('Vendedores não podem iniciar chat no próprio anúncio/veículo.');
     }
 
     // Busca ou cria a sala de chat (idempotente)
-    const room = await this.prisma.chatRoom.upsert({
+    // Usamos findFirst/create em vez de upsert por causa da unicidade condicional
+    let room = await this.prisma.chatRoom.findFirst({
       where: {
-        buyerId_listingId: {
-          buyerId,
-          listingId,
-        },
-      },
-      create: {
         buyerId,
-        sellerId,
-        listingId,
+        listingId: targetListingId,
+        vehicleId: targetVehicleId,
       },
-      update: {},
       include: {
         listing: {
           select: {
             title: true,
             vehicle: {
               select: {
-                photos: {
-                  where: { order: 0 },
-                  take: 1,
-                },
+                version: { include: { model: { include: { brand: true } } } },
+                photos: { where: { order: 0 }, take: 1 },
               },
             },
           },
         },
-        buyer: {
+        vehicle: {
           select: {
-            name: true,
-            avatar: true,
+            version: { include: { model: { include: { brand: true } } } },
+            photos: { where: { order: 0 }, take: 1 },
           },
         },
-        seller: {
-          select: {
-            name: true,
-            avatar: true,
-          },
-        },
+        buyer: { select: { name: true, avatar: true } },
+        seller: { select: { name: true, avatar: true } },
       },
     });
+
+    if (!room) {
+      room = await this.prisma.chatRoom.create({
+        data: {
+          buyerId,
+          sellerId,
+          listingId: targetListingId,
+          vehicleId: targetVehicleId,
+        },
+        include: {
+          listing: {
+            select: {
+              title: true,
+              vehicle: {
+                select: {
+                  version: { include: { model: { include: { brand: true } } } },
+                  photos: { where: { order: 0 }, take: 1 },
+                },
+              },
+            },
+          },
+          vehicle: {
+            select: {
+              version: { include: { model: { include: { brand: true } } } },
+              photos: { where: { order: 0 }, take: 1 },
+            },
+          },
+          buyer: { select: { name: true, avatar: true } },
+          seller: { select: { name: true, avatar: true } },
+        },
+      });
+    }
 
     return room;
   }
@@ -108,40 +145,28 @@ export class ChatService {
             title: true,
             vehicle: {
               select: {
-                photos: {
-                  where: { order: 0 },
-                  take: 1,
-                },
+                version: { include: { model: { include: { brand: true } } } },
+                photos: { where: { order: 0 }, take: 1 },
               },
             },
           },
         },
-        buyer: {
+        vehicle: {
           select: {
-            name: true,
-            avatar: true,
+            version: { include: { model: { include: { brand: true } } } },
+            photos: { where: { order: 0 }, take: 1 },
           },
         },
-        seller: {
-          select: {
-            name: true,
-            avatar: true,
-          },
-        },
-        reads: {
-          where: { userId },
-        },
+        buyer: { select: { name: true, avatar: true } },
+        seller: { select: { name: true, avatar: true } },
+        reads: { where: { userId } },
       },
-      orderBy: {
-        updatedAt: 'desc',
-      },
+      orderBy: { updatedAt: 'desc' },
     });
 
-    // Calcular unreadCount para cada sala
     return Promise.all(
       rooms.map(async (room) => {
         const lastRead = room.reads[0]?.lastReadAt || new Date(0);
-        
         const unreadCount = await this.prisma.chatMessage.count({
           where: {
             roomId: room.id,
@@ -151,20 +176,30 @@ export class ChatService {
         });
 
         const lastMessage = room.messages[0] || null;
+        
+        let title = 'Conversa';
+        let thumbnail = null;
+
+        if (room.vehicle) {
+          title = `${room.vehicle.version.model.brand.name} ${room.vehicle.version.model.name}`;
+          thumbnail = room.vehicle.photos[0]?.url || null;
+        } else if (room.listing) {
+          title = room.listing.title;
+          thumbnail = room.listing.vehicle?.photos[0]?.url || null;
+        }
 
         return {
           id: room.id,
           listingId: room.listingId,
-          listingTitle: room.listing.title,
-          listingThumbnail: room.listing.vehicle?.photos[0]?.url || null,
+          vehicleId: room.vehicleId,
+          listingTitle: title,
+          listingThumbnail: thumbnail,
           interlocutor: userId === room.buyerId ? room.seller : room.buyer,
-          lastMessage: lastMessage
-            ? {
-                content: lastMessage.content,
-                senderId: lastMessage.senderId,
-                createdAt: lastMessage.createdAt,
-              }
-            : null,
+          lastMessage: lastMessage ? {
+            content: lastMessage.content,
+            senderId: lastMessage.senderId,
+            createdAt: lastMessage.createdAt,
+          } : null,
           unreadCount,
           updatedAt: room.updatedAt,
         };
@@ -182,28 +217,21 @@ export class ChatService {
             title: true,
             vehicle: {
               select: {
-                photos: {
-                  where: { order: 0 },
-                  take: 1,
-                },
+                version: { include: { model: { include: { brand: true } } } },
+                photos: { where: { order: 0 }, take: 1 },
               },
             },
           },
         },
-        buyer: {
+        vehicle: {
           select: {
             id: true,
-            name: true,
-            avatar: true,
+            version: { include: { model: { include: { brand: true } } } },
+            photos: { where: { order: 0 }, take: 1 },
           },
         },
-        seller: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-          },
-        },
+        buyer: { select: { id: true, name: true, avatar: true } },
+        seller: { select: { id: true, name: true, avatar: true } },
       },
     });
 
@@ -215,11 +243,23 @@ export class ChatService {
       throw new ForbiddenException('Você não tem permissão para acessar esta conversa.');
     }
 
+    let title = 'Conversa';
+    let thumbnail = null;
+
+    if (room.vehicle) {
+      title = `${room.vehicle.version.model.brand.name} ${room.vehicle.version.model.name}`;
+      thumbnail = room.vehicle.photos[0]?.url || null;
+    } else if (room.listing) {
+      title = room.listing.title;
+      thumbnail = room.listing.vehicle?.photos[0]?.url || null;
+    }
+
     return {
       id: room.id,
-      listingId: room.listing.id,
-      listingTitle: room.listing.title,
-      listingThumbnail: room.listing.vehicle?.photos[0]?.url || null,
+      listingId: room.listingId,
+      vehicleId: room.vehicleId,
+      listingTitle: title,
+      listingThumbnail: thumbnail,
       interlocutor: userId === room.buyerId ? room.seller : room.buyer,
     };
   }

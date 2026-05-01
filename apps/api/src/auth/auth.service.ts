@@ -15,6 +15,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { OAuth2Client } from 'google-auth-library';
+import { SmsService } from '../common/sms/sms.service';
 
 @Injectable()
 export class AuthService {
@@ -26,6 +27,7 @@ export class AuthService {
     private readonly mailService: MailService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly smsService: SmsService,
   ) {
     this.googleClient = new OAuth2Client(
       this.configService.get<string>('GOOGLE_CLIENT_ID'),
@@ -36,7 +38,7 @@ export class AuthService {
   // PRIVATE: Token Generation (shared by all auth methods)
   // ============================================================
 
-  private async generateTokens(user: any, ip: string, userAgent: string) {
+  private async generateTokens(user: { id: string; email: string; name: string; type: UserType }, ip: string, userAgent: string) {
     let hasProfile = false;
     if (user.type === UserType.SELLER || user.type === UserType.BOTH) {
       const profile = await this.prisma.sellerProfile.findUnique({
@@ -204,10 +206,12 @@ export class AuthService {
       },
     });
 
-    // 4. "Enviar" via SMS
-    console.log(`[OTP] Enviado para ${phone}: ${code}`);
+    // 4. Enviar via SMS
+    await this.smsService.sendSms(
+      phone,
+      `Seu código de acesso PECAÊ é: ${code}`,
+    );
 
-    // TODO: Integrar com serviço de SMS (ex: Twilio, AWS SNS)
     return {
       message:
         'Se este telefone estiver cadastrado, você receberá um código em instantes.',
@@ -339,14 +343,17 @@ export class AuthService {
 
   async login(loginDto: LoginDto, ip: string, userAgent: string) {
     const { email, password } = loginDto;
-
-    const user = await this.usersService.findByEmail(email);
+    const normalizedEmail = email.toLowerCase();
+    const user = await this.usersService.findByEmail(normalizedEmail);
+    
     if (!user) {
+      console.warn(`[AuthService] Login failed: User not found for email ${normalizedEmail}`);
       throw new UnauthorizedException('Credenciais inválidas.');
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash || '');
     if (!isPasswordValid) {
+      console.warn(`[AuthService] Login failed: Invalid password for user ${normalizedEmail}`);
       throw new UnauthorizedException('Credenciais inválidas.');
     }
 
@@ -471,7 +478,11 @@ export class AuthService {
         }),
         this.prisma.user.update({
           where: { id: verificationToken.userId },
-          data: { status: UserStatus.ACTIVE },
+          data: { 
+            status: UserStatus.ACTIVE,
+            emailVerified: true,
+            emailVerifiedAt: new Date(),
+          },
         }),
       ]);
 

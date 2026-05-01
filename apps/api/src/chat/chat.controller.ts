@@ -17,7 +17,7 @@ export class ChatController {
   @Post('rooms')
   @ApiOperation({ summary: 'Inicia ou recupera uma sala de chat' })
   async getOrCreateRoom(@Request() req: any, @Body() createRoomDto: CreateRoomDto) {
-    return this.chatService.getOrCreateRoom(req.user.id, createRoomDto.listingId);
+    return this.chatService.getOrCreateRoom(req.user.id, createRoomDto);
   }
 
   @Get('rooms')

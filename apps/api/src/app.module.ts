@@ -23,6 +23,8 @@ import { ModerationModule } from './moderation/moderation.module';
 import { NotificationModule } from './notifications/notification.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AdsModule } from './ads/ads.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { SmsModule } from './common/sms/sms.module';
 
 
 
@@ -83,12 +85,18 @@ import { AdsModule } from './ads/ads.module';
     NotificationModule,
     AnalyticsModule,
     AdsModule,
+    SmsModule,
   ],
   providers: [
     // Register ThrottlerGuard globally so @Throttle() decorators are enforced
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    // Global JWT Auth Guard: All routes are private by default
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
     },
   ],
 })

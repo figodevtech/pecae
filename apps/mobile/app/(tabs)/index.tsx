@@ -3,7 +3,7 @@ import { StyleSheet, View, Text, ScrollView, Image, ActivityIndicator, Touchable
 import { PecaeBackground, PecaeGlassCard } from '../../src/components/PecaeUI';
 import { VehicleSelector } from '../../src/components/Catalog';
 import { usePecaeTheme } from '../../src/theme';
-import { useListings } from '../../src/hooks/useVehicles';
+import { useSearchVehicles } from '../../src/hooks/useVehicles';
 import { useUIStore } from '../../src/store/ui-store';
 import { useAuthStore } from '../../src/store/auth-store';
 import { getVehicleImage } from '../../src/utils/vehicleImages';
@@ -13,7 +13,10 @@ import { useRouter } from 'expo-router';
 export default function BuyerHomeScreen() {
   const { colors, typography, effects } = usePecaeTheme();
   const { viewMode, themeMode, setViewMode, setThemeMode, initializeUI } = useUIStore();
-  const { data: listings, isLoading } = useListings();
+  
+  // Usando useSearchVehicles (Hook real) em vez de useListings
+  const { data: searchResponse, isLoading } = useSearchVehicles();
+  const listings = searchResponse?.data || [];
   const { width } = useWindowDimensions();
   const router = useRouter();
 
@@ -68,8 +71,9 @@ export default function BuyerHomeScreen() {
   };
 
   const filteredListings = useMemo(() => {
-    if (!listings) return [];
+    if (!listings || !Array.isArray(listings)) return [];
     return listings.filter((vehicle: any) => {
+      if (!vehicle) return false;
       const brand = (vehicle.listing?.brand || vehicle.version?.model?.brand?.name || '').toLowerCase();
       const model = (vehicle.listing?.model || vehicle.version?.model?.name || '').toLowerCase();
       const title = (vehicle.listing?.title || `${brand} ${model}`).toLowerCase();

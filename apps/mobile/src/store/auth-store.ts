@@ -88,7 +88,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   initializeAuth: async () => {
-    console.log('initializeAuth called!');
+    if (typeof window === 'undefined') return;
+    
+    console.log('[AuthStore] 🔄 Initializing Auth...');
+    set({ isLoading: true });
+
     try {
       let token = null;
       let refreshToken = null;
@@ -98,26 +102,36 @@ export const useAuthStore = create<AuthState>((set) => ({
         token = await SecureStore.getItemAsync(TOKEN_KEY);
         refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
         userData = await SecureStore.getItemAsync(USER_KEY);
-      } else if (typeof window !== 'undefined') {
+      } else {
         token = localStorage.getItem(TOKEN_KEY);
         refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
         userData = localStorage.getItem(USER_KEY);
       }
 
-      if (token && userData) {
-        set({ 
-          user: JSON.parse(userData), 
-          token, 
-          refreshToken,
-          isAuthenticated: true, 
-          isLoading: false 
-        });
+      console.log(`[AuthStore] 🔍 Persistence: token=${!!token}, user=${!!userData}`);
+
+      if (token && userData && userData !== 'undefined' && userData !== 'null') {
+        try {
+          const parsedUser = JSON.parse(userData);
+          set({ 
+            user: parsedUser, 
+            token, 
+            refreshToken,
+            isAuthenticated: true, 
+            isLoading: false 
+          });
+          console.log('[AuthStore] ✅ Session restored:', parsedUser.email);
+        } catch (e) {
+          console.error('[AuthStore] ❌ Error parsing user data:', e);
+          set({ isLoading: false, isAuthenticated: false });
+        }
       } else {
-        set({ isLoading: false });
+        console.log('[AuthStore] ℹ️ No session found in storage');
+        set({ isLoading: false, isAuthenticated: false });
       }
     } catch (error) {
-      console.error('Error initializing auth state:', error);
-      set({ isLoading: false });
+      console.error('[AuthStore] 🚨 Critical error during auth initialization:', error);
+      set({ isLoading: false, isAuthenticated: false });
     }
   },
 }));

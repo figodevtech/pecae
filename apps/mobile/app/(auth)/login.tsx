@@ -50,7 +50,11 @@ export default function LoginScreen() {
 
   const onSubmit = async (data: LoginFormData) => {
     try {
-      const response = await api.post('/auth/login', data);
+      const normalizedData = {
+        ...data,
+        email: data.email.toLowerCase().trim(),
+      };
+      const response = await api.post('/auth/login', normalizedData);
       const { user, tokens } = response.data;
       await setAuth(user, tokens.accessToken, tokens.refreshToken);
       
@@ -59,7 +63,7 @@ export default function LoginScreen() {
         if (!user.hasProfile) {
           router.replace('/(seller)/onboarding');
         } else {
-          router.replace('/(seller)/(tabs)');
+          router.replace('/(seller)/(seller-tabs)');
         }
       } else {
         // Força o redirecionamento limpo para as tabs do comprador, limpando histórico anterior
@@ -94,7 +98,7 @@ export default function LoginScreen() {
         if (!user.hasProfile) {
           router.replace('/(seller)/onboarding');
         } else {
-          router.replace('/(seller)/(tabs)');
+          router.replace('/(seller)/(seller-tabs)');
         }
       } else {
         try {

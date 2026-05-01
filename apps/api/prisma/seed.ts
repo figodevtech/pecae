@@ -196,7 +196,11 @@ async function seedAdminUser() {
 
   await prisma.user.upsert({
     where: { email: adminEmail },
-    update: {},
+    update: {
+      passwordHash,
+      type: UserType.ADMIN,
+      status: UserStatus.ACTIVE,
+    },
     create: {
       id: crypto.randomUUID(),
       name: 'Admin PECAÊ',
@@ -364,14 +368,14 @@ async function seedTestVehicles() {
             { url: carImages[(i + 1) % carImages.length], order: 1 },
           ],
         },
-        listing: {
-          create: {
+        listings: {
+          create: [{
             sellerProfileId: sellerProfile.id,
             title: `${model.brand.name} ${model.name} - Estado de Novo`,
             description: `Veículo em ótimo estado para retirada de peças. Pouco rodado.`,
             status: ListingStatus.PUBLISHED,
             publishedAt: new Date(),
-          },
+          }],
         },
       },
     });

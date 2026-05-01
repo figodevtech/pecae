@@ -15,7 +15,7 @@ export const PecaeBackground: React.FC<PecaeBackgroundProps> = ({ children }) =>
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={colors.background as [string, string, ...string[]]}
+        colors={colors.backgroundGradient as [string, string, ...string[]]}
         style={StyleSheet.absoluteFill}
       />
       
@@ -43,6 +43,9 @@ export const PecaeBackground: React.FC<PecaeBackgroundProps> = ({ children }) =>
         ]} 
       />
 
+      {/* Scanlines Pattern (Industrial Feel) */}
+      <View style={styles.scanlines} pointerEvents="none" />
+
       <View style={styles.content}>{children}</View>
     </View>
   );
@@ -63,5 +66,14 @@ const styles = StyleSheet.create({
     // Blur is handled by the overall feel, 
     // in RN we use a large borderRadius and low opacity.
     // For real blur on generic views, we'd need @react-native-masked-view/masked-view + blur
+  },
+  scanlines: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    opacity: 0.03,
+    // Em RN, simulamos scanlines com um background repetido ou bordas
+    // Aqui usaremos uma cor sólida com opacidade baixíssima e deixaremos 
+    // a textura para um componente de imagem se necessário, 
+    // mas o grid/glow já ajuda.
   },
 });

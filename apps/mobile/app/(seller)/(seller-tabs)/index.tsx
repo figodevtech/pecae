@@ -2,5 +2,5 @@ import React from 'react';
 import { Redirect } from 'expo-router';
 
 export default function Index() {
-  return <Redirect href="/(seller)/(tabs)/inventory" />;
+  return <Redirect href="/(seller)/(seller-tabs)/inventory" />;
 }

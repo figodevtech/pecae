@@ -61,7 +61,7 @@ export default function SellerOnboardingScreen() {
     try {
       await api.post('/sellers', data);
       Alert.alert('PERFIL CONCLUÍDO', 'Seu perfil de vendedor foi ativado. Bem-vindo à rede.', [
-        { text: 'ACESSAR DASHBOARD', onPress: () => router.replace('/(seller)/(tabs)') },
+        { text: 'ACESSAR DASHBOARD', onPress: () => router.replace('/(seller)/(seller-tabs)') },
       ]);
     } catch (error: any) {
       const message = error.response?.data?.message || 'Erro ao criar perfil de vendedor';

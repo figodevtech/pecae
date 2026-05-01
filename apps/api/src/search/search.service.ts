@@ -49,6 +49,8 @@ export class SearchService {
       city,
       state,
       q,
+      priceMin,
+      priceMax,
       cursor,
       limit = 10,
     } = filters;
@@ -57,22 +59,17 @@ export class SearchService {
     const partCategories = await this.prisma.partCategory.findMany();
     const partCategoryMap = new Map(partCategories.map((pc) => [pc.id, pc.name]));
 
-    const vehicleWhere: any = {
+    const where: any = {
+      status: 'ACTIVE', // Status do veículo no catálogo
       ...(brandId && { version: { model: { brandId } } }),
       ...(modelId && { version: { modelId } }),
       ...(versionId && { versionId }),
       ...(city && { city: { contains: city, mode: 'insensitive' } }),
       ...(state && { state: state.toUpperCase() }),
-      ...(q && {
-        OR: [
-          { observations: { contains: q, mode: 'insensitive' } },
-          { version: { model: { name: { contains: q, mode: 'insensitive' } } } },
-        ],
-      }),
     };
 
     if (yearMin || yearMax) {
-      vehicleWhere.yearFab = {
+      where.yearFab = {
         yearFab: {
           ...(yearMin && { gte: yearMin }),
           ...(yearMax && { lte: yearMax }),
@@ -80,34 +77,34 @@ export class SearchService {
       };
     }
 
-    const where: any = {
-      status: 'PUBLISHED',
-      vehicle: vehicleWhere,
-    };
+    // Full-Text Search on Vehicle observations and version/model names
+    if (q) {
+      const searchQuery = q.trim().split(/\s+/).join(' & ');
+      where.OR = [
+        { observations: { search: searchQuery } },
+        { version: { name: { contains: q, mode: 'insensitive' } } },
+        { version: { model: { name: { contains: q, mode: 'insensitive' } } } },
+      ];
+    }
 
-    // Execute query with take: limit + 1 for pagination
-    const listings = await this.prisma.listing.findMany({
+    // Execute query for Vehicles
+    const vehicles = await this.prisma.vehicle.findMany({
       where,
       include: {
-        vehicle: {
+        photos: {
+          orderBy: { order: 'asc' },
+        },
+        version: {
           include: {
-            photos: {
-              where: { order: 0 },
-              take: 1,
-            },
-            version: {
+            model: {
               include: {
-                model: {
-                  include: {
-                    brand: true,
-                  },
-                },
+                brand: true,
               },
             },
-            yearFab: true,
           },
         },
-        sellerProfile: {
+        yearFab: true,
+        seller: {
           select: {
             id: true,
             storeName: true,
@@ -119,62 +116,18 @@ export class SearchService {
       },
       take: limit + 1,
       cursor: cursor ? { id: cursor } : undefined,
-      skip: cursor ? 1 : 0, // Avoid returning the cursor item itself
-      orderBy: { publishedAt: 'desc' },
+      skip: cursor ? 1 : 0,
+      orderBy: { createdAt: 'desc' },
     });
 
-    const hasMore = listings.length > limit;
-    const dataItems = hasMore ? listings.slice(0, limit) : listings;
+    const hasMore = vehicles.length > limit;
+    const dataItems = hasMore ? vehicles.slice(0, limit) : vehicles;
     const nextCursor = hasMore ? dataItems[dataItems.length - 1].id : null;
 
-    let sponsoredData: any[] = [];
-    if (!cursor) {
-      try {
-        const sponsoredListings = await this.adsService.getSponsoredListings(2);
-        sponsoredData = sponsoredListings.map((item: any) => {
-          const partsIds = Array.isArray(item.vehicle?.availableParts)
-            ? (item.vehicle.availableParts as string[])
-            : [];
-          
-          const partNames = partsIds
-            .map((id) => partCategoryMap.get(id))
-            .filter(Boolean) as string[];
-
-          return {
-            id: item.id,
-            title: item.title,
-            description: item.description,
-            publishedAt: item.publishedAt,
-            views: item.views,
-            favoritesCount: item.favoritesCount,
-            sellerId: item.sellerProfileId,
-            seller: item.sellerProfile,
-            isSponsored: true,
-            campaignId: item.campaignId,
-            vehicle: item.vehicle ? {
-              id: item.vehicle.id,
-              color: item.vehicle.color,
-              city: item.vehicle.city,
-              state: item.vehicle.state,
-              observations: item.vehicle.observations,
-              brand: item.vehicle.version?.model?.brand?.name || '',
-              model: item.vehicle.version?.model?.name || '',
-              version: item.vehicle.version?.name || '',
-              yearFab: item.vehicle.yearFab?.yearFab || 0,
-              thumbnail: item.vehicle.photos?.[0]?.url || null,
-              availableParts: partNames,
-            } : null,
-          };
-        });
-      } catch (error) {
-        console.error('Failed to fetch sponsored listings:', error);
-      }
-    }
-
-    // Map output according to criteria
+    // Map output to match the UI expectations for Vehicle-Centric
     const data = dataItems.map((item) => {
-      const partsIds = Array.isArray(item.vehicle.availableParts)
-        ? (item.vehicle.availableParts as string[])
+      const partsIds = Array.isArray(item.availableParts)
+        ? (item.availableParts as string[])
         : [];
       
       const partNames = partsIds
@@ -183,38 +136,30 @@ export class SearchService {
 
       return {
         id: item.id,
-        title: item.title,
-        description: item.description,
-        publishedAt: item.publishedAt,
-        views: item.views,
-        favoritesCount: item.favoritesCount,
-        sellerId: item.sellerProfileId,
-        seller: item.sellerProfile,
+        brand: item.version.model.brand.name,
+        model: item.version.model.name,
+        version: item.version.name,
+        yearFab: item.yearFab.yearFab,
+        color: item.color,
+        city: item.city,
+        state: item.state,
+        thumbnail: item.photos[0]?.url || null,
+        photos: item.photos.map(p => p.url),
+        availablePartsCount: partNames.length,
+        availableParts: partNames,
+        seller: item.seller,
         isSponsored: false,
-        campaignId: null,
-        vehicle: {
-          id: item.vehicle.id,
-          color: item.vehicle.color,
-          city: item.vehicle.city,
-          state: item.vehicle.state,
-          observations: item.vehicle.observations,
-          brand: item.vehicle.version.model.brand.name,
-          model: item.vehicle.version.model.name,
-          version: item.vehicle.version.name,
-          yearFab: item.vehicle.yearFab.yearFab,
-          thumbnail: item.vehicle.photos[0]?.url || null,
-          availableParts: partNames,
-        },
+        createdAt: item.createdAt,
       };
     });
 
     const result = {
-      data: [...sponsoredData, ...data],
+      data,
       nextCursor,
       hasMore,
     };
 
-    // Cache for 5 minutes (300 seconds)
+    // Cache for 5 minutes
     await this.redis.set(cacheKey, result, 300);
 
     return result;

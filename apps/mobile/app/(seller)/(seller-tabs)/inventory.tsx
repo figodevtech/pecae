@@ -9,7 +9,7 @@ import { VehicleInventoryCard } from '../../../src/components/VehicleWizard/Vehi
 import { Ionicons } from '@expo/vector-icons';
 
 export default function InventoryScreen() {
-  const { colors, typography } = usePecaeTheme();
+  const { colors, typography, isDark } = usePecaeTheme();
   const router = useRouter();
   const { data: vehicles, isLoading, refetch } = useVehicles();
 
@@ -18,7 +18,7 @@ export default function InventoryScreen() {
       "Perfil",
       "O que você deseja fazer?",
       [
-        { text: "Ver Perfil", onPress: () => router.push('/(seller)/(tabs)/perfil') },
+        { text: "Ver Perfil", onPress: () => router.push('/(seller)/(seller-tabs)/perfil') },
         { 
           text: "Sair da Conta", 
           onPress: async () => {
@@ -37,8 +37,17 @@ export default function InventoryScreen() {
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.titleRow}>
-            <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.heading }]}>
-              Meu Inventário
+            <Text style={[
+              styles.title, 
+              { 
+                color: colors.textPrimary, 
+                fontFamily: typography.display,
+                textShadowColor: colors.brand,
+                textShadowOffset: { width: 0, height: 0 },
+                textShadowRadius: isDark ? 10 : 0
+              }
+            ]}>
+              MEU INVENTÁRIO
             </Text>
             <TouchableOpacity 
               onPress={handleProfilePress}

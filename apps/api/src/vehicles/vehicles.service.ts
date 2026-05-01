@@ -56,8 +56,8 @@ export class VehiclesService {
         },
       });
 
-      // 2. Create Listing (RN14)
-      const listing = await tx.listing.create({
+      // 2. Create Main Listing (The vehicle itself)
+      const mainListing = await tx.listing.create({
         data: {
           sellerProfileId: sellerId,
           vehicleId: vehicle.id,
@@ -69,7 +69,25 @@ export class VehiclesService {
         },
       });
 
-      return { vehicle, listing, warnings: isDuplicate ? ['Anúncio similar já existente.'] : [] };
+      // 3. Create individual listings for each part (Desmembramento)
+      // We only do this if there are available parts and it's a new vehicle (not duplicate)
+      if (availableParts && Array.isArray(availableParts) && !isDuplicate) {
+        await Promise.all(
+          (availableParts as string[]).map((partName) =>
+            tx.listing.create({
+              data: {
+                sellerProfileId: sellerId,
+                vehicleId: vehicle.id,
+                title: `${partName} - ${title}`,
+                description: `Peça retirada de: ${title}. ${description || ''}`,
+                status: ListingStatus.PENDING,
+              },
+            })
+          )
+        );
+      }
+
+      return { vehicle, listing: mainListing, warnings: isDuplicate ? ['Anúncio similar já existente.'] : [] };
     });
   }
 
@@ -77,11 +95,11 @@ export class VehiclesService {
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id },
       include: {
-        listing: true,
+        listings: true,
         photos: { orderBy: { order: 'asc' } },
         version: { include: { model: { include: { brand: true } } } },
         yearFab: true,
-      },
+      } as any,
     });
 
     if (!vehicle) throw new NotFoundException('Veículo não encontrado');
@@ -109,15 +127,21 @@ export class VehiclesService {
         data: { ...vehicleData, status: VehicleStatus.PENDING },
       });
 
-      const updatedListing = await tx.listing.update({
-        where: { vehicleId: id },
-        data: { 
-          title, 
-          description, 
-          status: ListingStatus.PENDING,
-          publishedAt: null // RN14: Reset publication date
-        },
-      });
+      const listings = await tx.listing.findMany({ where: { vehicleId: id } });
+      const mainListingId = listings[0]?.id;
+
+      let updatedListing = null;
+      if (mainListingId) {
+        updatedListing = await tx.listing.update({
+          where: { id: mainListingId },
+          data: { 
+            title, 
+            description, 
+            status: ListingStatus.PENDING,
+            publishedAt: null
+          },
+        });
+      }
 
       return { vehicle: updatedVehicle, listing: updatedListing };
     });
@@ -160,7 +184,7 @@ export class VehiclesService {
         data: { status: VehicleStatus.SOLD },
       });
 
-      return tx.listing.update({
+      await tx.listing.updateMany({
         where: { vehicleId: id },
         data: { 
           status: ListingStatus.SOLD,
@@ -170,10 +194,37 @@ export class VehiclesService {
     });
   }
 
+  /**
+   * Marks a vehicle as REMOVED (Retirado).
+   */
+  async markAsRemoved(id: string, sellerId: string) {
+    const vehicle = await this.prisma.vehicle.findUnique({
+      where: { id },
+      select: { sellerId: true },
+    });
+
+    if (!vehicle) throw new NotFoundException('Veículo não encontrado');
+    if (vehicle.sellerId !== sellerId) throw new ForbiddenException('Ação não permitida');
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.vehicle.update({
+        where: { id },
+        data: { status: VehicleStatus.INACTIVE },
+      });
+
+      await tx.listing.updateMany({
+        where: { vehicleId: id },
+        data: { 
+          status: ListingStatus.EXPIRED,
+        },
+      });
+    });
+  }
+
   async findBySeller(sellerId: string) {
     return this.prisma.vehicle.findMany({
       where: { sellerId },
-      include: { listing: true, photos: { take: 1, orderBy: { order: 'asc' } } },
+      include: { listings: true, photos: { take: 1, orderBy: { order: 'asc' } } } as any,
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -184,8 +235,10 @@ export class VehiclesService {
   async findAllPublished(filters: { city?: string; state?: string }) {
     const whereClause: any = {
       status: VehicleStatus.ACTIVE,
-      listing: {
-        status: ListingStatus.PUBLISHED,
+      listings: {
+        some: {
+          status: ListingStatus.PUBLISHED,
+        },
       },
     };
 
@@ -195,11 +248,11 @@ export class VehiclesService {
     return this.prisma.vehicle.findMany({
       where: whereClause,
       include: {
-        listing: true,
+        listings: true,
         photos: { orderBy: { order: 'asc' } },
         version: { include: { model: { include: { brand: true } } } },
         yearFab: true,
-      },
+      } as any,
       orderBy: { createdAt: 'desc' },
     });
   }

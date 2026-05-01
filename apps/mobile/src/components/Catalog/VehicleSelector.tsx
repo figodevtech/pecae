@@ -2,17 +2,18 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, FlatList } from 'react-native';
 import { usePecaeTheme } from '../../theme';
 import { PecaeGlassCard } from '../PecaeUI/PecaeGlassCard';
-import { useBrands, useBrandYears, useModelsByYear } from '../../hooks/useCatalog';
+import { useBrands, useModels, useVersions, useYears } from '../../hooks/useCatalog';
 import { Ionicons } from '@expo/vector-icons';
 
-type SelectionLevel = 'brand' | 'year' | 'model';
+type SelectionLevel = 'brand' | 'model' | 'version' | 'year';
 
 interface VehicleSelectorProps {
   resultsCount?: number;
   onSelect?: (selection: {
     brand: any;
-    year: any;
     model: any;
+    version: any;
+    year: any;
   } | null) => void;
 }
 
@@ -23,29 +24,27 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
   const [search, setSearch] = useState('');
   
   const [selectedBrand, setSelectedBrand] = useState<any>(null);
-  const [selectedYear, setSelectedYear] = useState<any>(null);
   const [selectedModel, setSelectedModel] = useState<any>(null);
+  const [selectedVersion, setSelectedVersion] = useState<any>(null);
+  const [selectedYear, setSelectedYear] = useState<any>(null);
 
   // Queries
   const { data: brands, isLoading: loadingBrands } = useBrands();
-  const { data: years, isLoading: loadingYears } = useBrandYears(selectedBrand?.id);
-  const { data: models, isLoading: loadingModels } = useModelsByYear(
-    selectedBrand?.id, 
-    selectedYear?.yearFab, 
-    selectedYear?.yearModel
-  );
+  const { data: models, isLoading: loadingModels } = useModels(selectedBrand?.id);
+  const { data: versions, isLoading: loadingVersions } = useVersions(selectedModel?.id);
+  const { data: years, isLoading: loadingYears } = useYears(selectedVersion?.id);
 
   const currentData = useMemo(() => {
     let data = [];
     if (level === 'brand') data = brands || [];
-    else if (level === 'year') data = years || [];
     else if (level === 'model') data = models || [];
+    else if (level === 'version') data = versions || [];
+    else if (level === 'year') data = years || [];
 
     if (search) {
       return data.filter((item: any) => {
         if (level === 'year') {
-          const yearStr = `${item.yearFab}/${item.yearModel}`;
-          return yearStr.includes(search);
+          return `${item.yearFab}/${item.yearModel}`.includes(search);
         }
         return (item.name || '').toLowerCase().includes(search.toLowerCase());
       });
@@ -53,13 +52,15 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
     return data;
   }, [level, brands, years, models, search]);
 
-  const isLoading = loadingBrands || loadingYears || loadingModels;
+  const isLoading = loadingBrands || loadingModels || loadingVersions || loadingYears;
 
   const handleBack = () => {
     setSearch('');
-    if (level === 'model') {
-      setLevel('year');
-    } else if (level === 'year') {
+    if (level === 'year') {
+      setLevel('version');
+    } else if (level === 'version') {
+      setLevel('model');
+    } else if (level === 'model') {
       setLevel('brand');
     }
   };
@@ -68,19 +69,23 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
     setSearch('');
     if (level === 'brand') {
       setSelectedBrand(item);
-      setLevel('year');
-    } else if (level === 'year') {
-      setSelectedYear(item);
       setLevel('model');
     } else if (level === 'model') {
       setSelectedModel(item);
+      setLevel('version');
+    } else if (level === 'version') {
+      setSelectedVersion(item);
+      setLevel('year');
+    } else if (level === 'year') {
+      setSelectedYear(item);
     }
   };
 
   const clearSelection = () => {
     setSelectedBrand(null);
-    setSelectedYear(null);
     setSelectedModel(null);
+    setSelectedVersion(null);
+    setSelectedYear(null);
     setLevel('brand');
     setSearch('');
     onSelect?.(null);
@@ -89,8 +94,9 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
   const handleApply = () => {
     onSelect?.({
       brand: selectedBrand,
-      year: selectedYear,
       model: selectedModel,
+      version: selectedVersion,
+      year: selectedYear,
     });
   };
 
@@ -102,8 +108,9 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
     
     const isSelected = 
       (level === 'brand' && selectedBrand?.id === item.id) ||
-      (level === 'year' && selectedYear?.yearFab === item.yearFab && selectedYear?.yearModel === item.yearModel) ||
-      (level === 'model' && selectedModel?.id === item.id);
+      (level === 'model' && selectedModel?.id === item.id) ||
+      (level === 'version' && selectedVersion?.id === item.id) ||
+      (level === 'year' && selectedYear?.id === item.id);
 
     return (
       <TouchableOpacity 
@@ -131,7 +138,7 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
         </PecaeGlassCard>
       </TouchableOpacity>
     );
-  }, [level, colors, typography, selectedBrand, selectedYear, selectedModel]);
+  }, [level, colors, typography, selectedBrand, selectedModel, selectedVersion, selectedYear]);
 
   return (
     <View style={styles.container}>
@@ -149,24 +156,36 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
         <Ionicons name="chevron-forward" size={12} color={colors.textMuted} style={styles.crumbSeparator} />
         
         <TouchableOpacity 
-          onPress={() => { if (selectedBrand) setLevel('year'); }} 
-          style={[styles.breadcrumbItem, level === 'year' && styles.activeBreadcrumb]}
+          onPress={() => { if (selectedBrand) setLevel('model'); }} 
+          style={[styles.breadcrumbItem, level === 'model' && styles.activeBreadcrumb]}
           disabled={!selectedBrand}
         >
-          <Text style={[styles.breadcrumbText, { color: selectedYear ? colors.brand : colors.textMuted, fontFamily: typography.body }]}>
-            {selectedYear ? `${selectedYear.yearFab}/${selectedYear.yearModel}` : 'Ano'}
+          <Text style={[styles.breadcrumbText, { color: selectedModel ? colors.brand : colors.textMuted, fontFamily: typography.body }]}>
+            {selectedModel ? selectedModel.name : 'Modelo'}
           </Text>
         </TouchableOpacity>
 
         <Ionicons name="chevron-forward" size={12} color={colors.textMuted} style={styles.crumbSeparator} />
 
         <TouchableOpacity 
-          onPress={() => { if (selectedYear) setLevel('model'); }} 
-          style={[styles.breadcrumbItem, level === 'model' && styles.activeBreadcrumb]}
-          disabled={!selectedYear}
+          onPress={() => { if (selectedModel) setLevel('version'); }} 
+          style={[styles.breadcrumbItem, level === 'version' && styles.activeBreadcrumb]}
+          disabled={!selectedModel}
         >
-          <Text style={[styles.breadcrumbText, { color: selectedModel ? colors.brand : colors.textMuted, fontFamily: typography.body }]}>
-            {selectedModel ? selectedModel.name : 'Modelo'}
+          <Text style={[styles.breadcrumbText, { color: selectedVersion ? colors.brand : colors.textMuted, fontFamily: typography.body }]}>
+            {selectedVersion ? selectedVersion.name : 'Versão'}
+          </Text>
+        </TouchableOpacity>
+        
+        <Ionicons name="chevron-forward" size={12} color={colors.textMuted} style={styles.crumbSeparator} />
+
+        <TouchableOpacity 
+          onPress={() => { if (selectedVersion) setLevel('year'); }} 
+          style={[styles.breadcrumbItem, level === 'year' && styles.activeBreadcrumb]}
+          disabled={!selectedVersion}
+        >
+          <Text style={[styles.breadcrumbText, { color: selectedYear ? colors.brand : colors.textMuted, fontFamily: typography.body }]}>
+            {selectedYear ? `${selectedYear.yearFab}/${selectedYear.yearModel}` : 'Ano'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -180,7 +199,8 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
         )}
         <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]}>
           {level === 'brand' ? 'Selecione a Marca' : 
-           level === 'year' ? 'Selecione o Ano' : 'Selecione o Modelo'}
+           level === 'model' ? 'Selecione o Modelo' : 
+           level === 'version' ? 'Selecione a Versão' : 'Selecione o Ano'}
         </Text>
       </View>
 

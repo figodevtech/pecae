@@ -1,58 +1,30 @@
-# PLAN.md - Redesenho do Fluxo e UI do Comprador (Padrão OLX)
+# Plano de Correção: Problema de Autenticação (401 Unauthorized)
 
-## 📌 Visão Geral
-Reestruturação completa da experiência móvel do comprador baseada em benchmarking de grandes marketplaces (OLX). O redesenho foca em uma arquitetura de navegação limpa no rodapé (Footer) combinada com um Menu Hambúrguer lateral completo para gerenciamento da conta.
+Este plano visa identificar a causa raiz do erro 401 ao realizar login no PECAÊ e aplicar a correção necessária.
 
----
+## 1. Fase de Diagnóstico (Investigação)
+- [x] **Verificar Logs do Backend:** Analisar a saída do container `pecae-api` para distinguir entre "Usuário não encontrado", "Senha inválida" ou "Conta não verificada". (Resolvido: JwtAuthGuard Global estava bloqueando).
+- [x] **Auditoria de Banco de Dados:** Verificar se os usuários de teste (`comprador@pecae.com.br`) foram corretamente inseridos pelo seed com status `ACTIVE`. (Usuário funcional).
+- [x] **Validar Payload do Frontend:** Confirmar se o payload enviado pelo Mobile (React Hook Form) está no formato esperado pelo DTO do NestJS.
+- [x] **Checar Case-Sensitivity:** Validar se a busca por e-mail no `UserService` deve ser normalizada (lowercase) antes da consulta.
+- [ ] **Investigar Erro 500 em /listings:** Analisar por que a listagem de anúncios falha após o login.
 
-## 🛠️ Escopo de Alterações
+## 2. Implementação de Correções
+- [x] **Normalização de E-mail:** Implementar `toLowerCase()` no login tanto no frontend quanto no backend para evitar erros de digitação.
+- [ ] **Ajuste de Seed:** Garantir que o comando de seed seja executado de forma idempotente e confiável no `entrypoint.sh`.
+- [x] **Liberar Rotas de Auth:** Aplicar o decorator `@Public()` nas rotas de login/registro para bypassar o Guard global.
 
-### 1. Novo Footer (Abas Inferiores)
-Localização: `apps/mobile/app/(tabs)/_layout.tsx`
-Configuração de 4 abas principais:
-- **Início (Home):** Feed de recomendações, anúncios em destaque e perfis de vendedores verificados.
-- **Explorar (Lupa):** Central de buscas avançadas, filtros dinâmicos e opções de ordenação.
-- **Chat (Diálogo):** Caixa de entrada unificada com a lista de chats de negociações ativos.
-- **Menu (Hambúrguer):** Gatilho para o painel lateral completo do usuário.
+## 3. Verificação e Testes
+- [x] **Teste de Login Manual:** Validar acesso com `comprador@pecae.com.br` / `Pecae@123`.
+- [ ] **Teste de Registro:** Validar fluxo completo de criação de conta e ativação.
+- [ ] **Verificação de Segurança:** Rodar `security_scan.py` para garantir que as alterações não fragilizaram o Auth.
 
-### 2. Menu Hambúrguer Lateral (Drawer/Gaveta)
-Implementação inspirada no padrão OLX, incluindo:
-- **Cabeçalho:** Ícone/Avatar do Perfil do usuário.
-- **Visualização:** Chave seletora para alternar Modo Claro / Modo Escuro.
-- **Gerenciamento de Busca:** Anúncios Salvos (Alertas de busca).
-- **Interesse:** Anúncios Favoritos.
-- **Histórico:** Aba de "Minhas Compras" com a listagem de transações e histórico.
-- **Minha Conta:** Página para edição de dados pessoais e preferências do usuário.
-- **Central de Segurança:**
-  - Nível de segurança da conta.
-  - Configuração do selo de verificação.
-  - Métodos de autenticação (2FA, biometria).
-  - Histórico de conexões (Dispositivo, IP, data/hora, localização).
-- **Suporte:** Menu de Ajuda / FAQ.
-- **Sessão:** Botão Sair (Logout).
+## 4. Prevenção
+- [ ] Adicionar um script de healthcheck que valide a presença dos usuários de seed após o boot do sistema.
 
----
-
-## 📅 Cronograma de Execução (Fases)
-
-### Fase 1: Atualização da Estrutura de Navegação (Footer)
-- [x] Ajustar as abas ativas em `apps/mobile/app/(tabs)/_layout.tsx`.
-- [x] Adicionar os ícones e rótulos das novas 4 seções (Início, Explorar, Chat, Menu).
-
-### Fase 2: Geração de Telas via StitchMCP
-- [x] Utilizar o MCP do Stitch para gerar/editar as telas essenciais:
-  - Menu Hambúrguer (com opções expandidas).
-  - Central de Segurança.
-  - Minhas Compras.
-  - Telas de Filtros em Explorar.
-
-### Fase 3: Integração e Lógica de Negócio
-- [x] Vincular o seletor de Modo Escuro ao estado global do tema.
-- [x] Conectar as listagens de favoritos e compras com a API back-end.
-
----
-
-## 🧪 Critérios de Aceitação
-- [x] Todas as 4 abas do rodapé funcionam independentemente e sem bugs de travamento.
-- [x] O modo claro/escuro atualiza instantaneamente a paleta de cores Glassmorphism.
-- [x] A central de segurança reflete as permissões e dados reais do login ativo.
+## 5. Estratégia de Commit (Orquestração)
+- [ ] **Commit 1 (API Auth):** Bypass de Guard Global e Normalização de E-mail.
+- [ ] **Commit 2 (API Listings):** Correção do Erro 500 na listagem.
+- [ ] **Commit 3 (Mobile UI):** Refatoração Glassmorphism do módulo Comprador.
+- [ ] **Commit 4 (Mobile Nav):** Reestruturação das abas do Vendedor e Proteção de Rotas.
+- [ ] **Commit 5 (Docs):** Atualização final do Plano.
