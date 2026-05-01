@@ -71,20 +71,16 @@ export class VehiclesService {
 
       // 3. Create individual listings for each part (Desmembramento)
       // We only do this if there are available parts and it's a new vehicle (not duplicate)
-      if (availableParts && Array.isArray(availableParts) && !isDuplicate) {
-        await Promise.all(
-          (availableParts as string[]).map((partName) =>
-            tx.listing.create({
-              data: {
-                sellerProfileId: sellerId,
-                vehicleId: vehicle.id,
-                title: `${partName} - ${title}`,
-                description: `Peça retirada de: ${title}. ${description || ''}`,
-                status: ListingStatus.PENDING,
-              },
-            })
-          )
-        );
+      if (availableParts && Array.isArray(availableParts) && availableParts.length > 0 && !isDuplicate) {
+        await tx.listing.createMany({
+          data: (availableParts as string[]).map((partName) => ({
+            sellerProfileId: sellerId,
+            vehicleId: vehicle.id,
+            title: `${partName} - ${title}`,
+            description: `Peça retirada de: ${title}. ${description || ''}`,
+            status: ListingStatus.PENDING,
+          })),
+        });
       }
 
       return { vehicle, listing: mainListing, warnings: isDuplicate ? ['Anúncio similar já existente.'] : [] };
