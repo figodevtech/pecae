@@ -15,7 +15,7 @@ import { CreateMessageDto } from './dto/create-message.dto';
 
 @WebSocketGateway({
   cors: {
-    origin: '*', // Em produção, restringir ao domínio do frontend
+    origin: process.env.CORS_ORIGIN || '*',
   },
   namespace: 'chat',
 })
