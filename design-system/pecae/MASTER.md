@@ -7,8 +7,8 @@
 ---
 
 **Project:** PECAE
-**Generated:** 2026-05-01 17:37:31
-**Category:** Automotive/Car Dealership
+**Generated:** 2026-05-01 18:56:21
+**Category:** Marketplace (P2P)
 
 ---
 
@@ -30,13 +30,7 @@
 
 - **Heading Font:** Inter
 - **Body Font:** Inter
-- **Mood:** spatial, legible, glass, system, clean, neutral
-- **Google Fonts:** [Inter + Inter](https://fonts.google.com/share?selection.family=Inter:wght@300;400;500;600)
-
-**CSS Import:**
-```css
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
-```
+- **Mood:** Modern + Engaging typography
 
 ### Spacing Variables
 
@@ -153,13 +147,13 @@
 
 ## Style Guidelines
 
-**Style:** Motion-Driven
+**Style:** Vibrant & Block-based
 
-**Keywords:** Animation-heavy, microinteractions, smooth transitions, scroll effects, parallax, entrance anim, page transitions
+**Keywords:** Bold, energetic, playful, block layout, geometric shapes, high color contrast, duotone, modern, energetic
 
-**Best For:** Portfolio sites, storytelling platforms, interactive experiences, entertainment apps, creative, SaaS
+**Best For:** Startups, creative agencies, gaming, social media, youth-focused, entertainment, consumer
 
-**Key Effects:** Scroll anim (Intersection Observer), hover (300-400ms), entrance, parallax (3-5 layers), page transitions
+**Key Effects:** Large sections (48px+ gaps), animated patterns, bold hover (color shift), scroll-snap, large type (32px+), 200-300ms
 
 ### Page Pattern
 
@@ -173,8 +167,8 @@
 
 ## Anti-Patterns (Do NOT Use)
 
-- ❌ Static product pages
-- ❌ Poor UX
+- ❌ Low trust signals
+- ❌ Confusing layout
 
 ### Additional Forbidden Patterns
 
