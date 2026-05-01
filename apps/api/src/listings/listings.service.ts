@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -62,22 +62,31 @@ export class ListingsService {
     });
   }
 
+  private readonly logger = new Logger(ListingsService.name);
+
   async findAll(query: any) {
-    // Basic implementation for discovery, filtered by soft delete
-    return this.prisma.listing.findMany({
-      where: {
-        deletedAt: null,
-        status: 'PUBLISHED',
-      },
-      include: {
-        vehicle: {
-          include: {
-            photos: { where: { order: 0 }, take: 1 },
-            version: { include: { model: { include: { brand: true } } } },
+    try {
+      this.logger.log('Fetching all published listings...');
+      const listings = await this.prisma.listing.findMany({
+        where: {
+          deletedAt: null,
+          status: 'PUBLISHED',
+        },
+        include: {
+          vehicle: {
+            include: {
+              photos: { where: { order: 0 }, take: 1 },
+              version: { include: { model: { include: { brand: true } } } },
+            },
           },
         },
-      },
-    });
+      });
+      this.logger.log(`Found ${listings.length} listings.`);
+      return listings;
+    } catch (error) {
+      this.logger.error('Error fetching listings:', error.message, error.stack);
+      throw error;
+    }
   }
 
   async findOne(id: string, ip: string): Promise<ListingDetailResponseDto> {
