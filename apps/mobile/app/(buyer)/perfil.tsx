@@ -87,28 +87,30 @@ export default function PerfilCompradorMenu() {
           </View>
 
           {/* Quick Settings Card */}
-          <PecaeGlassCard style={styles.glassCard} intensity={isDark ? 10 : 30}>
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleLabelGroup}>
-                <View style={[styles.iconBox, { backgroundColor: colors.brand + '15' }]}>
-                  <Ionicons 
-                    name={themeMode === 'dark' ? 'moon' : 'sunny'} 
-                    size={20} 
-                    color={colors.brand} 
-                  />
+          <View style={styles.section}>
+            <PecaeGlassCard style={styles.glassCard} intensity={isDark ? 10 : 40}>
+              <View style={styles.toggleRow}>
+                <View style={styles.toggleLabelGroup}>
+                  <View style={[styles.iconBox, { backgroundColor: colors.brand + '15' }]}>
+                    <Ionicons 
+                      name={themeMode === 'dark' ? 'moon' : 'sunny'} 
+                      size={20} 
+                      color={colors.brand} 
+                    />
+                  </View>
+                  <Text style={[styles.cardLabel, { color: colors.textPrimary, fontFamily: typography.medium }]}>
+                    Modo Escuro
+                  </Text>
                 </View>
-                <Text style={[styles.cardLabel, { color: colors.textPrimary, fontFamily: typography.medium }]}>
-                  Modo Escuro
-                </Text>
+                <Switch
+                  value={themeMode === 'dark'}
+                  onValueChange={toggleTheme}
+                  trackColor={{ false: '#CBD5E1', true: colors.brand }}
+                  thumbColor={isDark ? colors.brand : '#fff'}
+                />
               </View>
-              <Switch
-                value={themeMode === 'dark'}
-                onValueChange={toggleTheme}
-                trackColor={{ false: '#CBD5E1', true: colors.brand }}
-                thumbColor={isDark ? colors.brand : '#fff'}
-              />
-            </View>
-          </PecaeGlassCard>
+            </PecaeGlassCard>
+          </View>
 
           {/* Navigation Groups */}
           <View style={styles.section}>
@@ -116,7 +118,7 @@ export default function PerfilCompradorMenu() {
               MINHA ATIVIDADE
             </Text>
             
-            <PecaeGlassCard style={styles.menuGroup} intensity={isDark ? 10 : 25}>
+            <PecaeGlassCard style={styles.menuGroup} intensity={isDark ? 15 : 35}>
               <TouchableOpacity 
                 style={styles.menuItem}
                 onPress={() => router.push('/(buyer)/favoritos')}
@@ -168,7 +170,7 @@ export default function PerfilCompradorMenu() {
               SEGURANÇA E AJUDA
             </Text>
             
-            <PecaeGlassCard style={styles.menuGroup} intensity={isDark ? 10 : 25}>
+            <PecaeGlassCard style={styles.menuGroup} intensity={isDark ? 15 : 35}>
               <TouchableOpacity 
                 style={styles.menuItem}
                 onPress={() => router.push('/(buyer)/perfil-editar')}
@@ -220,7 +222,7 @@ export default function PerfilCompradorMenu() {
               style={styles.moderatorLink}
               onPress={() => router.push('/(moderator)')}
             >
-              <PecaeGlassCard style={styles.moderatorCard} intensity={40}>
+              <PecaeGlassCard style={styles.moderatorCard} intensity={isDark ? 30 : 50}>
                 <Ionicons name="shield-half" size={24} color={colors.brand} />
                 <View style={styles.moderatorTextContainer}>
                   <Text style={[styles.moderatorTitle, { color: colors.brand, fontFamily: typography.display }]}>
@@ -238,7 +240,13 @@ export default function PerfilCompradorMenu() {
           {/* Logout Section */}
           <View style={[styles.section, { marginTop: 40 }]}>
             <TouchableOpacity 
-              style={[styles.logoutButton, { borderColor: colors.error + '40', backgroundColor: colors.error + '08' }]}
+              style={[
+                styles.logoutButton, 
+                { 
+                  borderColor: colors.error + (isDark ? '40' : '60'), 
+                  backgroundColor: colors.error + (isDark ? '08' : '15') 
+                }
+              ]}
               onPress={handleLogout}
             >
               <Ionicons name="power" size={20} color={colors.error} />
@@ -350,8 +358,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   glassCard: {
-    marginHorizontal: 16,
-    padding: 0, // Padding handled by internal View for Switch alignment
+    padding: 0,
   },
   menuGroup: {
     padding: 0,
@@ -412,7 +419,6 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   moderatorLink: {
-    marginHorizontal: 16,
     marginTop: 32,
   },
   moderatorCard: {
@@ -441,7 +447,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     gap: 12,
-    marginHorizontal: 16,
   },
   logoutText: {
     fontSize: 13,

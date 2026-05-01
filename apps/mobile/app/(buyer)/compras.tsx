@@ -1,13 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, SafeAreaView } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { usePecaeTheme } from '../../src/theme';
 import { PecaeBackground } from '../../src/components/PecaeUI/PecaeBackground';
+import { PecaeGlassCard } from '../../src/components/PecaeUI/PecaeGlassCard';
 
 export default function MinhasCompras() {
-  const { colors, typography, spacing } = usePecaeTheme();
+  const { colors, typography, isDark } = usePecaeTheme();
   const router = useRouter();
 
   // Mocks de Compras Realizadas
@@ -34,45 +34,92 @@ export default function MinhasCompras() {
 
   return (
     <PecaeBackground>
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
-        {comprasMock.map((compra) => (
-          <View 
-            key={compra.id} 
-            style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            <Image source={{ uri: compra.img }} style={styles.cardImg} />
-            <View style={styles.cardBody}>
-              <Text style={[styles.veiculoTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
-                {compra.veiculo}
-              </Text>
-              <Text style={[styles.infoText, { color: colors.textMuted, fontFamily: typography.body }]}>
-                Vendedor: {compra.vendedor}
-              </Text>
-              <Text style={[styles.infoText, { color: colors.textMuted, fontFamily: typography.body }]}>
-                Data: {compra.data}
-              </Text>
-              <View style={styles.cardFooter}>
-                <Text style={[styles.price, { color: colors.brand, fontFamily: typography.mono }]}>
-                  {compra.valor}
-                </Text>
-                <View style={[styles.statusBadge, { backgroundColor: 'rgba(34, 197, 94, 0.1)', borderColor: '#22c55e' }]}>
-                  <Text style={[styles.statusText, { color: '#22c55e', fontFamily: typography.mono }]}>
-                    {compra.status.toUpperCase()}
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen 
+          options={{
+            headerShown: true,
+            title: 'Minhas Compras',
+            headerTransparent: true,
+            headerTintColor: colors.textPrimary,
+            headerTitleStyle: { fontFamily: typography.display, fontSize: 18 },
+          }}
+        />
+
+        <View style={styles.headerSpacer} />
+
+        <ScrollView 
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {comprasMock.map((compra) => (
+            <PecaeGlassCard 
+              key={compra.id} 
+              style={styles.card}
+              intensity={isDark ? 10 : 35}
+            >
+              <View style={styles.cardInner}>
+                <Image source={{ uri: compra.img }} style={styles.cardImg} />
+                <View style={styles.cardBody}>
+                  <Text 
+                    style={[styles.veiculoTitle, { color: colors.textPrimary, fontFamily: typography.display }]}
+                    numberOfLines={2}
+                  >
+                    {compra.veiculo}
                   </Text>
+                  
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.infoLabel, { color: colors.textMuted, fontFamily: typography.mono }]}>VENDEDOR</Text>
+                    <Text style={[styles.infoValue, { color: colors.textPrimary, fontFamily: typography.body }]}>{compra.vendedor}</Text>
+                  </View>
+
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.infoLabel, { color: colors.textMuted, fontFamily: typography.mono }]}>DATA</Text>
+                    <Text style={[styles.infoValue, { color: colors.textPrimary, fontFamily: typography.body }]}>{compra.data}</Text>
+                  </View>
+
+                  <View style={[styles.cardFooter, { borderTopColor: colors.border + '30' }]}>
+                    <Text style={[styles.price, { color: colors.brand, fontFamily: typography.display }]}>
+                      {compra.valor}
+                    </Text>
+                    <View style={[styles.statusBadge, { backgroundColor: '#22c55e15', borderColor: '#22c55e40' }]}>
+                      <Text style={[styles.statusText, { color: '#22c55e', fontFamily: typography.mono }]}>
+                        {compra.status.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               </View>
+              
+              <TouchableOpacity style={[styles.detailsBtn, { borderTopColor: colors.border + '30' }]}>
+                <Text style={[styles.detailsBtnText, { color: colors.brand, fontFamily: typography.medium }]}>
+                  Ver Detalhes do Pedido
+                </Text>
+                <Ionicons name="arrow-forward" size={16} color={colors.brand} />
+              </TouchableOpacity>
+            </PecaeGlassCard>
+          ))}
+          
+          {comprasMock.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <View style={[styles.emptyIconBox, { backgroundColor: colors.brand + '10' }]}>
+                <Ionicons name="cart-outline" size={48} color={colors.brand} />
+              </View>
+              <Text style={[styles.emptyText, { color: colors.textPrimary, fontFamily: typography.display }]}>
+                Nenhuma compra ainda
+              </Text>
+              <Text style={[styles.emptySubtext, { color: colors.textMuted, fontFamily: typography.body }]}>
+                Seus pedidos concluídos aparecerão aqui.
+              </Text>
+              <TouchableOpacity 
+                style={[styles.browseButton, { backgroundColor: colors.brand }]}
+                onPress={() => router.push('/(tabs)')}
+              >
+                <Text style={styles.browseButtonText}>Ir para a Loja</Text>
+              </TouchableOpacity>
             </View>
-          </View>
-        ))}
-        {comprasMock.length === 0 && (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="cart-outline" size={48} color={colors.textMuted} />
-            <Text style={[styles.emptyText, { color: colors.textMuted, fontFamily: typography.body }]}>
-              Você ainda não realizou compras.
-            </Text>
-          </View>
-        )}
-      </ScrollView>
+          )}
+        </ScrollView>
+      </SafeAreaView>
     </PecaeBackground>
   );
 }
@@ -81,76 +128,116 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
+  headerSpacer: {
+    height: 80,
   },
-  backBtn: {
-    padding: 8,
-    marginRight: 12,
-  },
-  title: {
-    fontSize: 16,
-    letterSpacing: 2,
-    fontWeight: '700',
+  listContent: {
+    padding: 16,
+    paddingBottom: 40,
   },
   card: {
+    marginBottom: 20,
+    padding: 0,
+  },
+  cardInner: {
     flexDirection: 'row',
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 12,
-    marginBottom: 16,
-    gap: 12,
-    overflow: 'hidden',
+    padding: 16,
+    gap: 16,
   },
   cardImg: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
+    width: 90,
+    height: 90,
+    borderRadius: 14,
   },
   cardBody: {
     flex: 1,
-    justifyContent: 'space-between',
   },
   veiculoTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: 15,
+    marginBottom: 10,
+    lineHeight: 20,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 4,
   },
-  infoText: {
+  infoLabel: {
+    fontSize: 9,
+    letterSpacing: 0.5,
+    opacity: 0.6,
+  },
+  infoValue: {
     fontSize: 12,
-    opacity: 0.8,
   },
   cardFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
   },
   price: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
   },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 4,
+    borderRadius: 6,
     borderWidth: 1,
   },
   statusText: {
-    fontSize: 10,
-    fontWeight: 'bold',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
-  emptyContainer: {
+  detailsBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
-    gap: 12,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    gap: 8,
+  },
+  detailsBtnText: {
+    fontSize: 13,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 100,
+    paddingHorizontal: 40,
+  },
+  emptyIconBox: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
   },
   emptyText: {
-    fontSize: 14,
+    fontSize: 20,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  emptySubtext: {
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 32,
+    opacity: 0.7,
+  },
+  browseButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  browseButtonText: {
+    color: '#000',
+    fontWeight: '700',
   },
 });

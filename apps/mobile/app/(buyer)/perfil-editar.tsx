@@ -1,20 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Image, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Image, Alert, ScrollView, SafeAreaView, Platform } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import * as ImagePicker from 'expo-image-picker';
 import { usePecaeTheme } from '../../src/theme';
 import { useBuyerProfile, useUpdateBuyerProfile } from '../../src/hooks/useBuyer';
 import { PecaeBackground } from '../../src/components/PecaeUI/PecaeBackground';
+import { PecaeGlassCard } from '../../src/components/PecaeUI/PecaeGlassCard';
 
 interface FormData {
   name: string;
 }
 
 export default function PerfilEditar() {
-  const { colors, typography, spacing } = usePecaeTheme();
+  const { colors, typography, isDark } = usePecaeTheme();
   const router = useRouter();
   
   const { data: profile, isLoading: isLoadingProfile } = useBuyerProfile();
@@ -93,32 +93,46 @@ export default function PerfilEditar() {
   if (isLoadingProfile) {
     return (
       <PecaeBackground>
-        <SafeAreaView style={styles.container}>
-          <ActivityIndicator size="large" color={colors.brand} style={{ marginTop: 50 }} />
-        </SafeAreaView>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.brand} />
+        </View>
       </PecaeBackground>
     );
   }
 
   return (
     <PecaeBackground>
-      <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
-        <View style={styles.content}>
-          
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen 
+          options={{
+            headerShown: true,
+            title: 'Editar Perfil',
+            headerTransparent: true,
+            headerTintColor: colors.textPrimary,
+            headerTitleStyle: { fontFamily: typography.display, fontSize: 18 },
+          }}
+        />
+
+        <View style={styles.headerSpacer} />
+
+        <ScrollView 
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.avatarSection}>
             <View style={styles.avatarContainer}>
               {avatarUri ? (
                 <Image source={{ uri: avatarUri }} style={[styles.avatar, { borderColor: colors.brand }]} />
               ) : (
-                <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Ionicons name="person" size={40} color={colors.textMuted} />
+                <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface + '80', borderColor: colors.border }]}>
+                  <Ionicons name="person" size={50} color={colors.textMuted} />
                 </View>
               )}
               <TouchableOpacity 
-                style={[styles.changeAvatarBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                style={[styles.changeAvatarBtn, { backgroundColor: colors.brand }]}
                 onPress={handlePickImage}
               >
-                <Ionicons name="camera" size={20} color={colors.brand} />
+                <Ionicons name="camera" size={20} color="#000" />
               </TouchableOpacity>
             </View>
             <Text style={[styles.avatarHint, { color: colors.textMuted, fontFamily: typography.body }]}>
@@ -126,8 +140,8 @@ export default function PerfilEditar() {
             </Text>
           </View>
 
-          <View style={styles.form}>
-            <Text style={[styles.label, { color: colors.textMuted, fontFamily: typography.display }]}>NOME COMPLETO</Text>
+          <PecaeGlassCard style={styles.formCard} intensity={isDark ? 10 : 30}>
+            <Text style={[styles.label, { color: colors.brand, fontFamily: typography.display }]}>NOME COMPLETO</Text>
             <Controller
               control={control}
               rules={{
@@ -135,27 +149,34 @@ export default function PerfilEditar() {
                 minLength: { value: 2, message: 'O nome deve ter no mínimo 2 caracteres' }
               }}
               render={({ field: { onChange, onBlur, value } }) => (
-                <TextInput
-                  style={[
-                    styles.input, 
-                    { 
-                      backgroundColor: colors.surface,
-                      color: colors.textPrimary, 
-                      borderColor: errors.name ? colors.error : colors.border, 
-                      fontFamily: typography.body 
-                    }
-                  ]}
-                  onBlur={onBlur}
-                  onChangeText={onChange}
-                  value={value}
-                  placeholder="Seu nome"
-                  placeholderTextColor={colors.textMuted}
-                />
+                <View style={[styles.inputContainer, { backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)', borderColor: errors.name ? colors.error : colors.border + '50' }]}>
+                  <Ionicons name="person-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+                  <TextInput
+                    style={[styles.input, { color: colors.textPrimary, fontFamily: typography.body }]}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                    placeholder="Ex: João da Silva"
+                    placeholderTextColor={colors.textMuted + '80'}
+                  />
+                </View>
               )}
               name="name"
             />
             {errors.name && <Text style={[styles.errorText, { color: colors.error, fontFamily: typography.body }]}>{errors.name.message}</Text>}
-          </View>
+            
+            <View style={styles.spacer} />
+
+            <Text style={[styles.label, { color: colors.textMuted, fontFamily: typography.display }]}>E-MAIL (APENAS VISUALIZAÇÃO)</Text>
+            <View style={[styles.inputContainer, { backgroundColor: isDark ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.05)', borderColor: colors.border + '30', opacity: 0.6 }]}>
+              <Ionicons name="mail-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, { color: colors.textMuted, fontFamily: typography.body }]}
+                value={profile?.email || ''}
+                editable={false}
+              />
+            </View>
+          </PecaeGlassCard>
 
           <TouchableOpacity
             style={[
@@ -169,10 +190,19 @@ export default function PerfilEditar() {
             {updateProfileMutation.isPending || isUploading ? (
               <ActivityIndicator color="#000" />
             ) : (
-              <Text style={[styles.saveButtonText, { fontFamily: typography.medium }]}>SALVAR ALTERAÇÕES</Text>
+              <Text style={[styles.saveButtonText, { fontFamily: typography.display }]}>SALVAR ALTERAÇÕES</Text>
             )}
           </TouchableOpacity>
-        </View>
+
+          <TouchableOpacity 
+            style={styles.cancelBtn}
+            onPress={() => router.back()}
+          >
+            <Text style={[styles.cancelBtnText, { color: colors.textMuted, fontFamily: typography.body }]}>
+              Cancelar
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
       </SafeAreaView>
     </PecaeBackground>
   );
@@ -182,75 +212,116 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  content: {
-    padding: 20,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerSpacer: {
+    height: 80,
+  },
+  listContent: {
+    padding: 16,
+    paddingBottom: 40,
   },
   avatarSection: {
     alignItems: 'center',
-    marginBottom: 40,
-    marginTop: 20,
+    marginBottom: 32,
   },
   avatarContainer: {
     position: 'relative',
   },
   avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 2,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    borderWidth: 3,
   },
   avatarPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 2,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
   changeAvatarBtn: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    bottom: 4,
+    right: 4,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   avatarHint: {
-    marginTop: 12,
+    marginTop: 16,
     fontSize: 12,
+    opacity: 0.6,
   },
-  form: {
-    marginBottom: 40,
+  formCard: {
+    padding: 20,
+    marginBottom: 32,
   },
   label: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-    marginBottom: 8,
+    fontSize: 10,
+    letterSpacing: 2,
+    marginBottom: 10,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    height: 56,
+  },
+  inputIcon: {
+    marginRight: 12,
   },
   input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
+    flex: 1,
     fontSize: 16,
+    height: '100%',
+  },
+  spacer: {
+    height: 24,
   },
   errorText: {
     fontSize: 12,
-    marginTop: 4,
+    marginTop: 6,
+    marginLeft: 4,
   },
   saveButton: {
-    padding: 16,
-    borderRadius: 12,
+    height: 56,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   saveButtonText: {
     color: '#000',
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
     letterSpacing: 1,
+  },
+  cancelBtn: {
+    marginTop: 20,
+    alignItems: 'center',
+    padding: 10,
+  },
+  cancelBtnText: {
+    fontSize: 14,
+    textDecorationLine: 'underline',
   },
 });

@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, SafeAreaView } from 'react-native';
 import { Stack, router } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/store/auth-store';
 import { api } from '../../src/services/api';
+import { usePecaeTheme } from '../../src/theme';
+import { PecaeBackground } from '../../src/components/PecaeUI/PecaeBackground';
+import { PecaeGlassCard } from '../../src/components/PecaeUI/PecaeGlassCard';
 
 export default function ExcluirContaScreen() {
+  const { colors, typography, isDark } = usePecaeTheme();
   const [password, setPassword] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const { clearAuth: signOut } = useAuthStore();
@@ -60,160 +64,177 @@ export default function ExcluirContaScreen() {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <Stack.Screen 
-        options={{ 
-          title: 'Excluir Conta',
-          headerShadowVisible: false,
-        }} 
-      />
+    <PecaeBackground>
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen 
+          options={{ 
+            headerShown: true,
+            title: 'Excluir Conta',
+            headerTransparent: true,
+            headerTintColor: colors.textPrimary,
+            headerTitleStyle: { fontFamily: typography.display, fontSize: 18 },
+          }} 
+        />
 
-      <View style={styles.content}>
-        <View style={styles.warningContainer}>
-          <Feather name="alert-triangle" size={32} color="#DC2626" />
-          <Text style={styles.warningTitle}>Zona de Perigo</Text>
-          <Text style={styles.warningText}>
-            A exclusão da conta resultará na revogação imediata do acesso. 
-            Todas as suas configurações, buscas salvas e favoritos serão apagados.
-          </Text>
-        </View>
+        <KeyboardAvoidingView 
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.headerSpacer} />
+          
+          <View style={styles.content}>
+            <PecaeGlassCard style={styles.warningCard} intensity={isDark ? 15 : 40}>
+              <View style={[styles.iconBox, { backgroundColor: colors.error + '15' }]}>
+                <Ionicons name="alert-circle" size={32} color={colors.error || '#ef4444'} />
+              </View>
+              <Text style={[styles.warningTitle, { color: colors.error || '#ef4444', fontFamily: typography.display }]}>
+                ZONA DE PERIGO
+              </Text>
+              <Text style={[styles.warningText, { color: colors.textPrimary, fontFamily: typography.body }]}>
+                A exclusão da conta resultará na revogação imediata do acesso. 
+                Todas as suas configurações, buscas salvas e favoritos serão apagados permanentemente.
+              </Text>
+            </PecaeGlassCard>
 
-        <View style={styles.form}>
-          <Text style={styles.label}>Senha Atual</Text>
-          <View style={styles.inputContainer}>
-            <Feather name="lock" size={20} color="#6B7280" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Digite sua senha atual"
-              placeholderTextColor="#9CA3AF"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!isDeleting}
-            />
+            <PecaeGlassCard style={styles.formCard} intensity={isDark ? 5 : 20}>
+              <Text style={[styles.label, { color: colors.textMuted, fontFamily: typography.display }]}>CONFIRME SUA SENHA</Text>
+              <View style={[styles.inputContainer, { backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.5)', borderColor: colors.border + '50' }]}>
+                <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.input, { color: colors.textPrimary, fontFamily: typography.body }]}
+                  placeholder="Senha atual"
+                  placeholderTextColor={colors.textMuted + '80'}
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!isDeleting}
+                />
+              </View>
+            </PecaeGlassCard>
           </View>
-        </View>
-      </View>
 
-      <View style={styles.footer}>
-        <TouchableOpacity 
-          style={[styles.deleteButton, isDeleting && styles.deleteButtonDisabled]}
-          onPress={handleDelete}
-          disabled={isDeleting}
-        >
-          {isDeleting ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.deleteButtonText}>Excluir Minha Conta</Text>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.cancelButton}
-          onPress={() => router.back()}
-          disabled={isDeleting}
-        >
-          <Text style={styles.cancelButtonText}>Voltar em Segurança</Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+          <View style={styles.footer}>
+            <TouchableOpacity 
+              style={[styles.deleteButton, { backgroundColor: colors.error || '#ef4444' }, isDeleting && { opacity: 0.7 }]}
+              onPress={handleDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={[styles.deleteButtonText, { fontFamily: typography.display }]}>EXCLUIR MINHA CONTA</Text>
+              )}
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.cancelButton}
+              onPress={() => router.back()}
+              disabled={isDeleting}
+            >
+              <Text style={[styles.cancelButtonText, { color: colors.textMuted, fontFamily: typography.body }]}>
+                Voltar em Segurança
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </PecaeBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+  },
+  flex: {
+    flex: 1,
+  },
+  headerSpacer: {
+    height: 80,
   },
   content: {
     flex: 1,
-    padding: 24,
-  },
-  warningContainer: {
-    backgroundColor: '#FEF2F2',
     padding: 20,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FECACA',
+  },
+  warningCard: {
+    padding: 24,
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
+  },
+  iconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   warningTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#DC2626',
-    marginTop: 12,
-    marginBottom: 8,
+    fontSize: 16,
+    letterSpacing: 2,
+    marginBottom: 12,
   },
   warningText: {
     fontSize: 14,
-    color: '#991B1B',
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
+    opacity: 0.8,
   },
-  form: {
-    marginTop: 8,
+  formCard: {
+    padding: 20,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
+    fontSize: 10,
+    letterSpacing: 2,
+    marginBottom: 12,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
+    borderRadius: 14,
     paddingHorizontal: 12,
+    height: 56,
   },
   inputIcon: {
-    marginRight: 8,
+    marginRight: 12,
   },
   input: {
     flex: 1,
-    height: 48,
     fontSize: 16,
-    color: '#111827',
+    height: '100%',
   },
   footer: {
     padding: 24,
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    paddingBottom: Platform.OS === 'ios' ? 0 : 24,
   },
   deleteButton: {
-    backgroundColor: '#DC2626',
-    height: 48,
-    borderRadius: 8,
+    height: 56,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
-  },
-  deleteButtonDisabled: {
-    backgroundColor: '#F87171',
+    marginBottom: 16,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   deleteButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   cancelButton: {
-    height: 48,
-    borderRadius: 8,
+    height: 56,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F3F4F6',
   },
   cancelButtonText: {
-    color: '#4B5563',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 14,
+    textDecorationLine: 'underline',
   },
 });

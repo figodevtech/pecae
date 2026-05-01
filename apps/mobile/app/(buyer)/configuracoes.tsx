@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Switch, ActivityIndicator, Alert, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, Switch, ActivityIndicator, Alert, ScrollView, SafeAreaView, Platform } from 'react-native';
+import { Stack } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { usePecaeTheme } from '../../src/theme';
 import { useBuyerProfile, useUpdateNotificationPreferences } from '../../src/hooks/useBuyer';
 import { PecaeBackground } from '../../src/components/PecaeUI/PecaeBackground';
+import { PecaeGlassCard } from '../../src/components/PecaeUI/PecaeGlassCard';
 
 export default function Configuracoes() {
-  const { colors, typography } = usePecaeTheme();
+  const { colors, typography, isDark } = usePecaeTheme();
   
   const { data: profile, isLoading } = useBuyerProfile();
   const updatePrefsMutation = useUpdateNotificationPreferences();
@@ -73,75 +74,96 @@ export default function Configuracoes() {
   if (isLoading) {
     return (
       <PecaeBackground>
-        <SafeAreaView style={styles.container}>
-          <ActivityIndicator size="large" color={colors.brand} style={{ marginTop: 50 }} />
-        </SafeAreaView>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.brand} />
+        </View>
       </PecaeBackground>
     );
   }
 
   return (
     <PecaeBackground>
-      <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
-        <View style={styles.content}>
-          
-          <Text style={[styles.sectionTitle, { color: colors.textMuted, fontFamily: typography.display }]}>
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen 
+          options={{
+            headerShown: true,
+            title: 'Configurações',
+            headerTransparent: true,
+            headerTintColor: colors.textPrimary,
+            headerTitleStyle: { fontFamily: typography.display, fontSize: 18 },
+          }}
+        />
+
+        <View style={styles.headerSpacer} />
+
+        <ScrollView contentContainerStyle={styles.listContent}>
+          <Text style={[styles.sectionTitle, { color: colors.brand, fontFamily: typography.display }]}>
             NOTIFICAÇÕES
           </Text>
           
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            
-            <View style={[styles.row, { borderBottomColor: colors.border, borderBottomWidth: 1 }]}>
+          <PecaeGlassCard style={styles.card} intensity={isDark ? 10 : 30}>
+            <View style={styles.row}>
               <View style={styles.textContainer}>
-                <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.heading }]}>Notificações Push</Text>
+                <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]}>Notificações Push</Text>
                 <Text style={[styles.subtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
                   Receba alertas no seu celular mesmo com o app fechado
                 </Text>
               </View>
               <Switch
                 trackColor={{ false: colors.border, true: colors.brand }}
-                thumbColor={'#fff'}
+                thumbColor={Platform.OS === 'ios' ? undefined : '#fff'}
+                ios_backgroundColor={colors.border}
                 onValueChange={handleTogglePush}
                 value={pushEnabled}
                 disabled={updatePrefsMutation.isPending}
               />
             </View>
 
-            <View style={[styles.row, { borderBottomColor: colors.border, borderBottomWidth: 1 }]}>
+            <View style={[styles.separator, { backgroundColor: colors.border + '30' }]} />
+
+            <View style={styles.row}>
               <View style={styles.textContainer}>
-                <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.heading }]}>E-mail</Text>
+                <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]}>E-mail</Text>
                 <Text style={[styles.subtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
                   Receba resumos e ofertas importantes por e-mail
                 </Text>
               </View>
               <Switch
                 trackColor={{ false: colors.border, true: colors.brand }}
-                thumbColor={'#fff'}
+                thumbColor={Platform.OS === 'ios' ? undefined : '#fff'}
+                ios_backgroundColor={colors.border}
                 onValueChange={handleToggleEmail}
                 value={emailEnabled}
                 disabled={updatePrefsMutation.isPending}
               />
             </View>
 
+            <View style={[styles.separator, { backgroundColor: colors.border + '30' }]} />
+
             <View style={styles.row}>
               <View style={styles.textContainer}>
-                <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.heading }]}>In-App</Text>
+                <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]}>In-App</Text>
                 <Text style={[styles.subtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
                   Receba alertas dentro do app (mensagens, atualizações)
                 </Text>
               </View>
               <Switch
                 trackColor={{ false: colors.border, true: colors.brand }}
-                thumbColor={'#fff'}
+                thumbColor={Platform.OS === 'ios' ? undefined : '#fff'}
+                ios_backgroundColor={colors.border}
                 onValueChange={handleToggleInApp}
                 value={inAppEnabled}
                 disabled={updatePrefsMutation.isPending}
               />
             </View>
+          </PecaeGlassCard>
 
+          <View style={styles.footerInfo}>
+            <Text style={[styles.versionText, { color: colors.textMuted, fontFamily: typography.mono }]}>
+              Versão 1.2.4 (Build 20240428)
+            </Text>
           </View>
-
-        </View>
+        </ScrollView>
       </SafeAreaView>
     </PecaeBackground>
   );
@@ -151,19 +173,27 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  content: {
-    padding: 20,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerSpacer: {
+    height: 80,
+  },
+  listContent: {
+    padding: 16,
+    paddingBottom: 40,
   },
   sectionTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    letterSpacing: 1,
+    fontSize: 11,
+    letterSpacing: 2,
     marginBottom: 16,
+    paddingLeft: 4,
+    opacity: 0.6,
   },
   card: {
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
+    padding: 8,
   },
   row: {
     flexDirection: 'row',
@@ -176,12 +206,25 @@ const styles = StyleSheet.create({
     paddingRight: 16,
   },
   title: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 15,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 12,
-    lineHeight: 16,
+    lineHeight: 18,
+    opacity: 0.7,
+  },
+  separator: {
+    height: 1,
+    marginHorizontal: 16,
+  },
+  footerInfo: {
+    marginTop: 40,
+    alignItems: 'center',
+  },
+  versionText: {
+    fontSize: 10,
+    letterSpacing: 1,
+    opacity: 0.5,
   },
 });
