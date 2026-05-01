@@ -21,6 +21,54 @@ export class ChatService {
     return this.getOrCreateStream(roomId).asObservable();
   }
 
+  private getRoomMetadata(room: any) {
+    let title = 'Conversa';
+    let thumbnail = null;
+
+    if (room.vehicle) {
+      title = `${room.vehicle.version.model.brand.name} ${room.vehicle.version.model.name}`;
+      thumbnail = room.vehicle.photos[0]?.url || null;
+    } else if (room.listing) {
+      title = room.listing.title;
+      thumbnail = room.listing.vehicle?.photos[0]?.url || null;
+    }
+
+    return { title, thumbnail };
+  }
+
+  private async mapRoomToResponse(room: any, userId: string) {
+    const { title, thumbnail } = this.getRoomMetadata(room);
+
+    const lastRead = room.reads?.[0]?.lastReadAt || new Date(0);
+    const unreadCount = await this.prisma.chatMessage.count({
+      where: {
+        roomId: room.id,
+        createdAt: { gt: lastRead },
+        senderId: { not: userId },
+      },
+    });
+
+    const lastMessage = room.messages?.[0] || null;
+
+    return {
+      id: room.id,
+      listingId: room.listingId,
+      vehicleId: room.vehicleId,
+      listingTitle: title,
+      listingThumbnail: thumbnail,
+      interlocutor: userId === room.buyerId ? room.seller : room.buyer,
+      lastMessage: lastMessage
+        ? {
+            content: lastMessage.content,
+            senderId: lastMessage.senderId,
+            createdAt: lastMessage.createdAt,
+          }
+        : null,
+      unreadCount,
+      updatedAt: room.updatedAt,
+    };
+  }
+
   async getOrCreateRoom(buyerId: string, data: { listingId?: string, vehicleId?: string }) {
     const { listingId, vehicleId } = data;
 
@@ -164,53 +212,17 @@ export class ChatService {
       orderBy: { updatedAt: 'desc' },
     });
 
-    return Promise.all(
-      rooms.map(async (room) => {
-        const lastRead = room.reads[0]?.lastReadAt || new Date(0);
-        const unreadCount = await this.prisma.chatMessage.count({
-          where: {
-            roomId: room.id,
-            createdAt: { gt: lastRead },
-            senderId: { not: userId },
-          },
-        });
-
-        const lastMessage = room.messages[0] || null;
-        
-        let title = 'Conversa';
-        let thumbnail = null;
-
-        if (room.vehicle) {
-          title = `${room.vehicle.version.model.brand.name} ${room.vehicle.version.model.name}`;
-          thumbnail = room.vehicle.photos[0]?.url || null;
-        } else if (room.listing) {
-          title = room.listing.title;
-          thumbnail = room.listing.vehicle?.photos[0]?.url || null;
-        }
-
-        return {
-          id: room.id,
-          listingId: room.listingId,
-          vehicleId: room.vehicleId,
-          listingTitle: title,
-          listingThumbnail: thumbnail,
-          interlocutor: userId === room.buyerId ? room.seller : room.buyer,
-          lastMessage: lastMessage ? {
-            content: lastMessage.content,
-            senderId: lastMessage.senderId,
-            createdAt: lastMessage.createdAt,
-          } : null,
-          unreadCount,
-          updatedAt: room.updatedAt,
-        };
-      })
-    );
+    return Promise.all(rooms.map((room) => this.mapRoomToResponse(room, userId)));
   }
 
   async findRoomById(roomId: string, userId: string) {
     const room = await this.prisma.chatRoom.findUnique({
       where: { id: roomId },
       include: {
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
         listing: {
           select: {
             id: true,
@@ -232,6 +244,7 @@ export class ChatService {
         },
         buyer: { select: { id: true, name: true, avatar: true } },
         seller: { select: { id: true, name: true, avatar: true } },
+        reads: { where: { userId } },
       },
     });
 
@@ -243,25 +256,7 @@ export class ChatService {
       throw new ForbiddenException('Você não tem permissão para acessar esta conversa.');
     }
 
-    let title = 'Conversa';
-    let thumbnail = null;
-
-    if (room.vehicle) {
-      title = `${room.vehicle.version.model.brand.name} ${room.vehicle.version.model.name}`;
-      thumbnail = room.vehicle.photos[0]?.url || null;
-    } else if (room.listing) {
-      title = room.listing.title;
-      thumbnail = room.listing.vehicle?.photos[0]?.url || null;
-    }
-
-    return {
-      id: room.id,
-      listingId: room.listingId,
-      vehicleId: room.vehicleId,
-      listingTitle: title,
-      listingThumbnail: thumbnail,
-      interlocutor: userId === room.buyerId ? room.seller : room.buyer,
-    };
+    return this.mapRoomToResponse(room, userId);
   }
 
   async findMessages(roomId: string, userId: string, cursor?: string) {
