@@ -13,15 +13,41 @@ export class ReviewsService {
   ) {}
 
   async create(buyerId: string, dto: CreateReviewDto) {
-    // TODO: Integrar com o módulo M08 (Chat) quando disponível.
-    // Atualmente estamos mockando a validação de interação no chat.
-    const hasInteraction = await this.mockValidateChatInteraction(dto.chatRoomId);
-    if (!hasInteraction) {
-      throw new ForbiddenException('Não é possível avaliar um chat sem interação.');
+    const chatRoom = await this.prisma.chatRoom.findUnique({
+      where: { id: dto.chatRoomId },
+      select: {
+        buyerId: true,
+        sellerId: true,
+        _count: {
+          select: { messages: true },
+        },
+      },
+    });
+
+    if (!chatRoom) {
+      throw new NotFoundException('Chat não encontrado.');
     }
 
-    // TODO: Validar se o buyerId realmente pertence ao chatRoomId e se ele é o comprador.
-    // Como o módulo M08 não existe, assumimos que o usuário autenticado é o comprador válido.
+    if (chatRoom.buyerId !== buyerId) {
+      throw new ForbiddenException('Você não é o comprador desta negociação.');
+    }
+
+    const sellerProfile = await this.prisma.sellerProfile.findUnique({
+      where: { id: dto.sellerProfileId },
+      select: { userId: true },
+    });
+
+    if (!sellerProfile) {
+      throw new NotFoundException('Perfil de vendedor não encontrado.');
+    }
+
+    if (sellerProfile.userId !== chatRoom.sellerId) {
+      throw new ForbiddenException('Este chat não pertence ao vendedor que você está tentando avaliar.');
+    }
+
+    if (chatRoom._count.messages === 0) {
+      throw new ForbiddenException('Não é possível avaliar um chat sem interação.');
+    }
 
     try {
       const review = await this.prisma.review.create({
@@ -88,15 +114,6 @@ export class ReviewsService {
         nextCursor,
       },
     };
-  }
-
-  private async mockValidateChatInteraction(chatRoomId: string): Promise<boolean> {
-    // Simulação: se o chatRoomId for 'empty-chat', retorna falso.
-    // Caso contrário, assume que houve interação para permitir testes.
-    if (chatRoomId === 'empty-chat') {
-      return false;
-    }
-    return true;
   }
 
   private anonymizeName(fullName: string): string {
