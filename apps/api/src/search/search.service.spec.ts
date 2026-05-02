@@ -128,8 +128,18 @@ describe('SearchService', () => {
   });
 
   describe('getSuggestions', () => {
-    it('should return empty array if query is empty', async () => {
+    it('should return empty array if query is empty string', async () => {
       const result = await service.getSuggestions('');
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array if query is undefined', async () => {
+      const result = await service.getSuggestions(undefined as any);
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array if query is null', async () => {
+      const result = await service.getSuggestions(null as any);
       expect(result).toEqual([]);
     });
 
