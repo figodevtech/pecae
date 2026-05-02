@@ -304,15 +304,12 @@ export class ModerationService {
           documentPaths = [];
         }
 
-        const signedUrls = await Promise.all(
-          documentPaths.map(async (path) => {
-            try {
-              return await this.storageService.getSignedUrl('verifications', path);
-            } catch (err) {
-              return null;
-            }
-          }),
-        );
+        let signedUrls: string[] = [];
+        try {
+          signedUrls = await this.storageService.getSignedUrls('verifications', documentPaths);
+        } catch (err) {
+          signedUrls = [];
+        }
 
         return {
           ...v,
