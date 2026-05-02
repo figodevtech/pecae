@@ -11,6 +11,7 @@ describe('CatalogService', () => {
   const mockPrisma = {
     vehicleBrand: {
       findMany: jest.fn(),
+      findFirst: jest.fn(),
     },
     vehicleModel: {
       findMany: jest.fn(),
@@ -113,4 +114,34 @@ describe('CatalogService', () => {
       expect(result).toEqual(mockModels);
     });
   });
+
+  describe('getBrandByName', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should return a brand when found by name', async () => {
+      const mockBrand = { id: '1', name: 'Fiat' };
+      mockPrisma.vehicleBrand.findFirst.mockResolvedValue(mockBrand);
+
+      const result = await service.getBrandByName('Fiat');
+
+      expect(mockPrisma.vehicleBrand.findFirst).toHaveBeenCalledWith({
+        where: { name: 'Fiat' },
+      });
+      expect(result).toEqual(mockBrand);
+    });
+
+    it('should return null if no brand is found', async () => {
+      mockPrisma.vehicleBrand.findFirst.mockResolvedValue(null);
+
+      const result = await service.getBrandByName('NonExistentBrand');
+
+      expect(mockPrisma.vehicleBrand.findFirst).toHaveBeenCalledWith({
+        where: { name: 'NonExistentBrand' },
+      });
+      expect(result).toBeNull();
+    });
+  });
+
 });
