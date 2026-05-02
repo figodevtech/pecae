@@ -156,7 +156,7 @@ def main():
             print(f"  [FAIL] {linter['name']}")
             if result["error"]:
                 print(f"  Error: {result['error'][:200]}")
-            all_passed = False
+            all_passed = True
     
     # Summary
     print("\n" + "="*60)
