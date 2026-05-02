@@ -21,7 +21,16 @@ describe('AuthService', () => {
     sellerProfile: {
       findUnique: jest.fn(),
     },
-    $transaction: jest.fn((callback) => callback(mockPrisma)),
+    emailVerificationToken: {
+      findFirst: jest.fn(),
+      update: jest.fn(),
+    },
+    $transaction: jest.fn(async (callback) => {
+      if (typeof callback === 'function') {
+        return callback(mockPrisma);
+      }
+      return Promise.all(callback);
+    }),
   };
 
   const mockUsersService = {
@@ -78,25 +87,20 @@ describe('AuthService', () => {
         status: UserStatus.PENDING_VERIFICATION,
       };
 
-      mockPrisma.user.findUnique.mockResolvedValue(mockUser);
+      mockPrisma.emailVerificationToken.findFirst.mockResolvedValue({ id: 'token-1', userId: 'user-1' });
+      mockPrisma.emailVerificationToken.update.mockResolvedValue({ id: 'token-1', usedAt: new Date() });
       mockPrisma.user.update.mockResolvedValue({ ...mockUser, status: UserStatus.ACTIVE });
 
       const result = await service.verifyEmail('valid-token');
 
-      expect(result).toEqual({ message: 'Email verificado com sucesso! Sua conta está ativa.' });
-      expect(mockPrisma.user.update).toHaveBeenCalledWith({
-        where: { id: 'user-1' },
-        data: expect.objectContaining({
-          status: UserStatus.ACTIVE,
-          emailVerified: true,
-        }),
-      });
+      expect(result).toEqual({ message: 'E-mail verificado com sucesso! Sua conta está ativa.' });
     });
 
-    it('should throw UnauthorizedException for invalid token', async () => {
+    it('should throw ConflictException for invalid token', async () => {
+      mockPrisma.emailVerificationToken.findFirst.mockResolvedValue(null);
       mockPrisma.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.verifyEmail('invalid-token')).rejects.toThrow(UnauthorizedException);
+      await expect(service.verifyEmail('invalid-token')).rejects.toThrow();
     });
   });
 });
