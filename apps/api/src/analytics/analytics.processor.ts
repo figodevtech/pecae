@@ -88,8 +88,25 @@ export class AnalyticsProcessor extends WorkerHost {
         const mapViews90d = new Map(views90dGroups.map(g => [g.listingId, g._count.listingId]));
         const mapChats30d = new Map(chatsInitiated30dGroups.map(g => [g.listingId, g._count.listingId]));
 
+        const allChatsAllTimeGroups = await this.prisma.chatRoom.groupBy({
+          by: ['listingId'],
+          where: { listingId: { not: null } },
+          _count: { listingId: true },
+        });
+        const mapChatsAllTimeByListing = new Map(allChatsAllTimeGroups.map(g => [g.listingId, g._count.listingId]));
+
         // Fetch all listings to ensure we upsert stats for everyone
-        const listings = await this.prisma.listing.findMany({ select: { id: true } });
+        const listings = await this.prisma.listing.findMany({ select: { id: true, sellerProfileId: true } });
+
+        // Aggregate total chats initiated per seller in-memory to avoid N+1 queries later
+        const mapTotalChatsBySeller = new Map<string, number>();
+        for (const listing of listings) {
+          const count = mapChatsAllTimeByListing.get(listing.id) || 0;
+          if (count > 0) {
+            const current = mapTotalChatsBySeller.get(listing.sellerProfileId) || 0;
+            mapTotalChatsBySeller.set(listing.sellerProfileId, current + count);
+          }
+        }
 
         const listingUpsertOps = listings.map(listing => {
           const views7d = mapViews7d.get(listing.id) || 0;
@@ -136,19 +153,7 @@ export class AnalyticsProcessor extends WorkerHost {
           const sellerUpsertOps = [];
 
           for (const seller of sellersChunk) {
-            // Total de chats iniciados para todos os anúncios do vendedor
-            const sellerListings = await this.prisma.listing.findMany({
-              where: { sellerProfileId: seller.id },
-              select: { id: true },
-            });
-
-            const listingIds = sellerListings.map(l => l.id);
-
-            const totalChatsInitiated = await this.prisma.chatRoom.count({
-              where: {
-                listingId: { in: listingIds },
-              },
-            });
+            const totalChatsInitiated = mapTotalChatsBySeller.get(seller.id) || 0;
 
             sellerUpsertOps.push(this.prisma.sellerStats.upsert({
               where: { sellerProfileId: seller.id },
