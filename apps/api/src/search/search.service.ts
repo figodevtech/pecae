@@ -172,21 +172,21 @@ export class SearchService {
 
     const trimmedQ = q.trim();
 
-    // Query brands containing q
-    const brands = await this.prisma.vehicleBrand.findMany({
-      where: {
-        name: { contains: trimmedQ, mode: 'insensitive' },
-      },
-      take: 5,
-    });
-
-    // Query models containing q
-    const models = await this.prisma.vehicleModel.findMany({
-      where: {
-        name: { contains: trimmedQ, mode: 'insensitive' },
-      },
-      take: 5,
-    });
+    // Query brands and models containing q concurrently
+    const [brands, models] = await Promise.all([
+      this.prisma.vehicleBrand.findMany({
+        where: {
+          name: { contains: trimmedQ, mode: 'insensitive' },
+        },
+        take: 5,
+      }),
+      this.prisma.vehicleModel.findMany({
+        where: {
+          name: { contains: trimmedQ, mode: 'insensitive' },
+        },
+        take: 5,
+      }),
+    ]);
 
     const suggestions = [
       ...brands.map((b) => ({ text: b.name, type: 'BRAND', id: b.id })),
