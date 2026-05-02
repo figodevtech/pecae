@@ -1,8 +1,8 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
-import { PrismaService } from '../prisma/prisma.service';
+import { Processor, WorkerHost } from "@nestjs/bullmq";
+import { Job } from "bullmq";
+import { PrismaService } from "../prisma/prisma.service";
 
-@Processor('analytics-queue')
+@Processor("analytics-queue")
 export class AnalyticsProcessor extends WorkerHost {
   constructor(private readonly prisma: PrismaService) {
     super();
@@ -10,12 +10,12 @@ export class AnalyticsProcessor extends WorkerHost {
 
   async process(job: Job<any, any, string>): Promise<any> {
     switch (job.name) {
-      case 'register-view': {
+      case "register-view": {
         const { listingId, ipHash } = job.data;
 
         // Dedup: Verificar se já houve acesso desse IP no anúncio nas últimas 24h
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        
+
         const existingView = await this.prisma.listingView.findFirst({
           where: {
             listingId,
@@ -26,7 +26,7 @@ export class AnalyticsProcessor extends WorkerHost {
 
         if (existingView) {
           // Ignorado por dedup
-          return { status: 'SKIPPED_DEDUP' };
+          return { status: "SKIPPED_DEDUP" };
         }
 
         // Criar registro da visualização
@@ -45,59 +45,74 @@ export class AnalyticsProcessor extends WorkerHost {
           },
         });
 
-        return { status: 'RECORDED' };
+        return { status: "RECORDED" };
       }
 
-      case 'recalc-metrics': {
+      case "recalc-metrics": {
         const now = new Date();
         const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        const thirtyDaysAgo = new Date(
+          now.getTime() - 30 * 24 * 60 * 60 * 1000,
+        );
+        const ninetyDaysAgo = new Date(
+          now.getTime() - 90 * 24 * 60 * 60 * 1000,
+        );
 
         // 1. Bulk aggregate views by period
         const views7dGroups = await this.prisma.listingView.groupBy({
-          by: ['listingId'],
+          by: ["listingId"],
           where: { viewedAt: { gte: sevenDaysAgo } },
           _count: { listingId: true },
         });
 
         const views30dGroups = await this.prisma.listingView.groupBy({
-          by: ['listingId'],
+          by: ["listingId"],
           where: { viewedAt: { gte: thirtyDaysAgo } },
           _count: { listingId: true },
         });
 
         const views90dGroups = await this.prisma.listingView.groupBy({
-          by: ['listingId'],
+          by: ["listingId"],
           where: { viewedAt: { gte: ninetyDaysAgo } },
           _count: { listingId: true },
         });
 
         // Chats initiated (ChatRoom)
         const chatsInitiated30dGroups = await this.prisma.chatRoom.groupBy({
-          by: ['listingId'],
+          by: ["listingId"],
           where: {
             createdAt: { gte: thirtyDaysAgo },
-            listingId: { not: null }
+            listingId: { not: null },
           },
           _count: { listingId: true },
         });
 
-        const mapViews7d = new Map(views7dGroups.map(g => [g.listingId, g._count.listingId]));
-        const mapViews30d = new Map(views30dGroups.map(g => [g.listingId, g._count.listingId]));
-        const mapViews90d = new Map(views90dGroups.map(g => [g.listingId, g._count.listingId]));
-        const mapChats30d = new Map(chatsInitiated30dGroups.map(g => [g.listingId, g._count.listingId]));
+        const mapViews7d = new Map(
+          views7dGroups.map((g) => [g.listingId, g._count.listingId]),
+        );
+        const mapViews30d = new Map(
+          views30dGroups.map((g) => [g.listingId, g._count.listingId]),
+        );
+        const mapViews90d = new Map(
+          views90dGroups.map((g) => [g.listingId, g._count.listingId]),
+        );
+        const mapChats30d = new Map(
+          chatsInitiated30dGroups.map((g) => [g.listingId, g._count.listingId]),
+        );
 
         // Fetch all listings to ensure we upsert stats for everyone
-        const listings = await this.prisma.listing.findMany({ select: { id: true } });
+        const listings = await this.prisma.listing.findMany({
+          select: { id: true },
+        });
 
-        const listingUpsertOps = listings.map(listing => {
+        const listingUpsertOps = listings.map((listing) => {
           const views7d = mapViews7d.get(listing.id) || 0;
           const views30d = mapViews30d.get(listing.id) || 0;
           const views90d = mapViews90d.get(listing.id) || 0;
           const chatsInitiated30d = mapChats30d.get(listing.id) || 0;
 
-          const conversionRate = views30d > 0 ? (chatsInitiated30d / views30d) * 100 : 0;
+          const conversionRate =
+            views30d > 0 ? (chatsInitiated30d / views30d) * 100 : 0;
 
           return this.prisma.listingStats.upsert({
             where: { listingId: listing.id },
@@ -124,11 +139,42 @@ export class AnalyticsProcessor extends WorkerHost {
         // Batch upserts to avoid overloading memory/db in a single transaction
         const chunkSize = 500;
         for (let i = 0; i < listingUpsertOps.length; i += chunkSize) {
-          await this.prisma.$transaction(listingUpsertOps.slice(i, i + chunkSize));
+          await this.prisma.$transaction(
+            listingUpsertOps.slice(i, i + chunkSize),
+          );
         }
 
         // 2. Consolidate SellerStats
         const sellers = await this.prisma.sellerProfile.findMany();
+
+        // Prepare a mapping of listing ID to seller ID to quickly group chats
+        const allListings = await this.prisma.listing.findMany({
+          select: { id: true, sellerProfileId: true },
+        });
+
+        const listingToSellerMap = new Map<string, string>();
+        for (const listing of allListings) {
+          listingToSellerMap.set(listing.id, listing.sellerProfileId);
+        }
+
+        // Aggregate chats initiated globally by listing
+        const globalChatsGroups = await this.prisma.chatRoom.groupBy({
+          by: ["listingId"],
+          where: { listingId: { not: null } },
+          _count: { listingId: true },
+        });
+
+        const sellerChatsMap = new Map<string, number>();
+
+        for (const group of globalChatsGroups) {
+          if (!group.listingId) continue;
+
+          const sellerId = listingToSellerMap.get(group.listingId);
+          if (sellerId) {
+            const currentCount = sellerChatsMap.get(sellerId) || 0;
+            sellerChatsMap.set(sellerId, currentCount + group._count.listingId);
+          }
+        }
 
         // Prepare operations chunk by chunk to avoid memory issues
         for (let i = 0; i < sellers.length; i += chunkSize) {
@@ -136,30 +182,20 @@ export class AnalyticsProcessor extends WorkerHost {
           const sellerUpsertOps = [];
 
           for (const seller of sellersChunk) {
-            // Total de chats iniciados para todos os anúncios do vendedor
-            const sellerListings = await this.prisma.listing.findMany({
-              where: { sellerProfileId: seller.id },
-              select: { id: true },
-            });
+            const totalChatsInitiated = sellerChatsMap.get(seller.id) || 0;
 
-            const listingIds = sellerListings.map(l => l.id);
-
-            const totalChatsInitiated = await this.prisma.chatRoom.count({
-              where: {
-                listingId: { in: listingIds },
-              },
-            });
-
-            sellerUpsertOps.push(this.prisma.sellerStats.upsert({
-              where: { sellerProfileId: seller.id },
-              create: {
-                sellerProfileId: seller.id,
-                totalChatsInitiated,
-              },
-              update: {
-                totalChatsInitiated,
-              },
-            }));
+            sellerUpsertOps.push(
+              this.prisma.sellerStats.upsert({
+                where: { sellerProfileId: seller.id },
+                create: {
+                  sellerProfileId: seller.id,
+                  totalChatsInitiated,
+                },
+                update: {
+                  totalChatsInitiated,
+                },
+              }),
+            );
           }
 
           if (sellerUpsertOps.length > 0) {
@@ -167,7 +203,7 @@ export class AnalyticsProcessor extends WorkerHost {
           }
         }
 
-        return { status: 'RECALCULATED' };
+        return { status: "RECALCULATED" };
       }
 
       default:
