@@ -116,6 +116,19 @@ describe('AuthService', () => {
     expect(service).toBeDefined();
   });
 
+  describe('loginWithGoogle', () => {
+    it('should throw UnauthorizedException if token verification fails', async () => {
+      // Mocking googleClient.verifyIdToken to throw an error
+      (service as any).googleClient = {
+        verifyIdToken: jest.fn().mockRejectedValue(new Error('Invalid token')),
+      };
+
+      await expect(
+        service.loginWithGoogle('invalid-token', '127.0.0.1', 'user-agent')
+      ).rejects.toThrow(new UnauthorizedException('Token Google inválido ou expirado.'));
+    });
+  });
+
   describe('verifyEmail', () => {
     it('should verify email successfully', async () => {
       const mockToken = {

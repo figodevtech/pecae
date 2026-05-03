@@ -3,19 +3,19 @@ import {
   ConflictException,
   InternalServerErrorException,
   UnauthorizedException,
-} from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import { UserType, UserStatus } from '@prisma/client';
-import { UserService } from '../users/users.service';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
-import * as bcrypt from 'bcrypt';
-import * as crypto from 'crypto';
-import { PrismaService } from '../prisma/prisma.service';
-import { MailService } from '../mail/mail.service';
-import { OAuth2Client } from 'google-auth-library';
-import { SmsService } from '../common/sms/sms.service';
+} from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import { ConfigService } from "@nestjs/config";
+import { UserType, UserStatus } from "@prisma/client";
+import { UserService } from "../users/users.service";
+import { RegisterDto } from "./dto/register.dto";
+import { LoginDto } from "./dto/login.dto";
+import * as bcrypt from "bcrypt";
+import * as crypto from "crypto";
+import { PrismaService } from "../prisma/prisma.service";
+import { MailService } from "../mail/mail.service";
+import { OAuth2Client } from "google-auth-library";
+import { SmsService } from "../common/sms/sms.service";
 
 @Injectable()
 export class AuthService {
@@ -30,7 +30,7 @@ export class AuthService {
     private readonly smsService: SmsService,
   ) {
     this.googleClient = new OAuth2Client(
-      this.configService.get<string>('GOOGLE_CLIENT_ID'),
+      this.configService.get<string>("GOOGLE_CLIENT_ID"),
     );
   }
 
@@ -38,7 +38,11 @@ export class AuthService {
   // PRIVATE: Token Generation (shared by all auth methods)
   // ============================================================
 
-  private async generateTokens(user: { id: string; email: string; name: string; type: UserType }, ip: string, userAgent: string) {
+  private async generateTokens(
+    user: { id: string; email: string; name: string; type: UserType },
+    ip: string,
+    userAgent: string,
+  ) {
     let hasProfile = false;
     if (user.type === UserType.SELLER || user.type === UserType.BOTH) {
       const profile = await this.prisma.sellerProfile.findUnique({
@@ -47,15 +51,20 @@ export class AuthService {
       hasProfile = !!profile;
     }
 
-    const payload = { sub: user.id, email: user.email, type: user.type, hasProfile };
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      type: user.type,
+      hasProfile,
+    };
 
     const accessToken = this.jwtService.sign(payload);
 
-    const rawRefreshToken = crypto.randomBytes(64).toString('hex');
+    const rawRefreshToken = crypto.randomBytes(64).toString("hex");
     const refreshTokenHash = crypto
-      .createHash('sha256')
+      .createHash("sha256")
       .update(rawRefreshToken)
-      .digest('hex');
+      .digest("hex");
 
     await this.prisma.refreshToken.create({
       data: {
@@ -148,11 +157,11 @@ export class AuthService {
   // ============================================================
 
   async loginWithGoogle(idToken: string, ip: string, userAgent: string) {
-    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    const clientId = this.configService.get<string>("GOOGLE_CLIENT_ID");
 
     if (!clientId) {
       throw new InternalServerErrorException(
-        'Google OAuth não está configurado. Adicione GOOGLE_CLIENT_ID ao .env.',
+        "Google OAuth não está configurado. Adicione GOOGLE_CLIENT_ID ao .env.",
       );
     }
 
@@ -164,20 +173,20 @@ export class AuthService {
       });
       payload = ticket.getPayload();
     } catch {
-      throw new UnauthorizedException('Token Google inválido ou expirado.');
+      throw new UnauthorizedException("Token Google inválido ou expirado.");
     }
 
     const { sub: googleId, email, name } = payload;
 
     if (!email) {
       throw new UnauthorizedException(
-        'Não foi possível obter o e-mail da conta Google.',
+        "Não foi possível obter o e-mail da conta Google.",
       );
     }
 
     const user = await this.findOrCreateOAuthUser({
       email,
-      name: name ?? email.split('@')[0],
+      name: name ?? email.split("@")[0],
       googleId,
     });
 
@@ -191,7 +200,7 @@ export class AuthService {
   async sendOtp(phone: string) {
     // 1. Gerar código de 6 dígitos
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+    const codeHash = crypto.createHash("sha256").update(code).digest("hex");
 
     // 2. Definir expiração (5 minutos)
     const expiresAt = new Date();
@@ -214,12 +223,12 @@ export class AuthService {
 
     return {
       message:
-        'Se este telefone estiver cadastrado, você receberá um código em instantes.',
+        "Se este telefone estiver cadastrado, você receberá um código em instantes.",
     };
   }
 
   async verifyOtp(phone: string, code: string, ip: string, userAgent: string) {
-    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+    const codeHash = crypto.createHash("sha256").update(code).digest("hex");
 
     // 1. Buscar OTP válido
     const otpRecord = await this.prisma.otpCode.findFirst({
@@ -229,11 +238,11 @@ export class AuthService {
         usedAt: null,
         expiresAt: { gt: new Date() },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
 
     if (!otpRecord) {
-      throw new UnauthorizedException('Código inválido ou expirado.');
+      throw new UnauthorizedException("Código inválido ou expirado.");
     }
 
     // 2. Marcar como usado
@@ -247,7 +256,7 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException(
-        'Telefone não vinculado a nenhuma conta ativa.',
+        "Telefone não vinculado a nenhuma conta ativa.",
       );
     }
 
@@ -273,13 +282,13 @@ export class AuthService {
     if (!user) {
       return {
         message:
-          'Se o e-mail informado estiver em nossa base, você receberá instruções para redefinir sua senha.',
+          "Se o e-mail informado estiver em nossa base, você receberá instruções para redefinir sua senha.",
       };
     }
 
     // 1. Gerar token de recuperação
-    const token = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const token = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 1);
@@ -296,15 +305,15 @@ export class AuthService {
     // 3. Enviar e-mail
     await this.mailService
       .sendPasswordResetEmail(user.email, user.name, token)
-      .catch((err) => console.error('Error sending reset email:', err));
+      .catch((err) => console.error("Error sending reset email:", err));
 
     return {
-      message: 'Instruções de recuperação enviadas para o e-mail informado.',
+      message: "Instruções de recuperação enviadas para o e-mail informado.",
     };
   }
 
   async resetPassword(token: string, newPassword: string) {
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
     // 1. Validar token
     const resetRecord = await this.prisma.passwordResetToken.findFirst({
@@ -317,7 +326,9 @@ export class AuthService {
     });
 
     if (!resetRecord) {
-      throw new UnauthorizedException('Token de recuperação inválido ou expirado.');
+      throw new UnauthorizedException(
+        "Token de recuperação inválido ou expirado.",
+      );
     }
 
     // 2. Atualizar senha
@@ -334,7 +345,7 @@ export class AuthService {
       }),
     ]);
 
-    return { message: 'Senha redefinida com sucesso. Faça login novamente.' };
+    return { message: "Senha redefinida com sucesso. Faça login novamente." };
   }
 
   // ============================================================
@@ -345,29 +356,75 @@ export class AuthService {
     const { email, password } = loginDto;
     const normalizedEmail = email.toLowerCase();
     const user = await this.usersService.findByEmail(normalizedEmail);
-    
+
     if (!user) {
-      console.warn(`[AuthService] Login failed: User not found for email ${normalizedEmail}`);
-      throw new UnauthorizedException('Credenciais inválidas.');
+      console.warn(
+        `[AuthService] Login failed: User not found for email ${normalizedEmail}`,
+      );
+      throw new UnauthorizedException("Credenciais inválidas.");
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.passwordHash || '');
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      user.passwordHash || "",
+    );
     if (!isPasswordValid) {
-      console.warn(`[AuthService] Login failed: Invalid password for user ${normalizedEmail}`);
-      throw new UnauthorizedException('Credenciais inválidas.');
+      console.warn(
+        `[AuthService] Login failed: Invalid password for user ${normalizedEmail}`,
+      );
+      throw new UnauthorizedException("Credenciais inválidas.");
     }
 
     if (user.status === UserStatus.PENDING_VERIFICATION) {
       throw new UnauthorizedException(
-        'Sua conta ainda não foi ativada. Verifique seu e-mail.',
+        "Sua conta ainda não foi ativada. Verifique seu e-mail.",
       );
     }
 
     if (user.status === UserStatus.BANNED) {
-      throw new UnauthorizedException('Esta conta foi suspensa.');
+      throw new UnauthorizedException("Esta conta foi suspensa.");
     }
 
     return this.generateTokens(user, ip, userAgent);
+  }
+
+  private async createBuyerProfileIfNotExists(
+    tx: any,
+    userId: string,
+    userName: string,
+    type: UserType,
+  ) {
+    if (type === UserType.BUYER || type === UserType.BOTH) {
+      await tx.buyerProfile.create({
+        data: {
+          userId,
+          name: userName,
+        },
+      });
+      await tx.notificationPreferences.create({
+        data: {
+          userId,
+        },
+      });
+    }
+  }
+
+  private async createEmailVerificationToken(tx: any, userId: string) {
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
+
+    await tx.emailVerificationToken.create({
+      data: {
+        userId,
+        tokenHash,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      },
+    });
+
+    return rawToken;
   }
 
   async register(registerDto: RegisterDto, ip: string, userAgent: string) {
@@ -375,7 +432,7 @@ export class AuthService {
 
     const existingUser = await this.usersService.findByEmail(email);
     if (existingUser) {
-      throw new ConflictException('O e-mail informado já está em uso.');
+      throw new ConflictException("O e-mail informado já está em uso.");
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -396,39 +453,22 @@ export class AuthService {
           await tx.termsAcceptance.create({
             data: {
               userId: newUser.id,
-              version: '1.0.0',
+              version: "1.0.0",
               ip,
               userAgent,
             },
           });
 
-          if (type === UserType.BUYER || type === UserType.BOTH) {
-            await tx.buyerProfile.create({
-              data: {
-                userId: newUser.id,
-                name: newUser.name,
-              },
-            });
-            await tx.notificationPreferences.create({
-              data: {
-                userId: newUser.id,
-              },
-            });
-          }
-
-          const rawToken = crypto.randomBytes(32).toString('hex');
-          const tokenHash = crypto
-            .createHash('sha256')
-            .update(rawToken)
-            .digest('hex');
-
-          await tx.emailVerificationToken.create({
-            data: {
-              userId: newUser.id,
-              tokenHash,
-              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-            },
-          });
+          await this.createBuyerProfileIfNotExists(
+            tx,
+            newUser.id,
+            newUser.name,
+            type,
+          );
+          const rawToken = await this.createEmailVerificationToken(
+            tx,
+            newUser.id,
+          );
 
           return { user: newUser, verificationToken: rawToken };
         },
@@ -436,37 +476,36 @@ export class AuthService {
 
       this.mailService
         .sendVerificationEmail(user.email, user.name, verificationToken)
-        .catch((err) => console.error('Delayed Error sending email:', err));
+        .catch((err) => console.error("Delayed Error sending email:", err));
 
       return {
         message:
-          'Cadastro realizado com sucesso. Verifique seu e-mail para ativar sua conta.',
+          "Cadastro realizado com sucesso. Verifique seu e-mail para ativar sua conta.",
       };
     } catch (error) {
-      console.error('Registration Error:', error);
+      console.error("Registration Error:", error);
       throw new InternalServerErrorException(
-        'Erro ao processar o cadastro. Tente novamente mais tarde.',
+        "Erro ao processar o cadastro. Tente novamente mais tarde.",
       );
     }
   }
 
   async verifyEmail(token: string) {
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
-    const verificationToken = await this.prisma.emailVerificationToken.findFirst(
-      {
+    const verificationToken =
+      await this.prisma.emailVerificationToken.findFirst({
         where: {
           tokenHash,
           usedAt: null,
           expiresAt: { gt: new Date() },
         },
         include: { user: true },
-      },
-    );
+      });
 
     if (!verificationToken) {
       throw new ConflictException(
-        'Token de verificação inválido, já utilizado ou expirado.',
+        "Token de verificação inválido, já utilizado ou expirado.",
       );
     }
 
@@ -478,7 +517,7 @@ export class AuthService {
         }),
         this.prisma.user.update({
           where: { id: verificationToken.userId },
-          data: { 
+          data: {
             status: UserStatus.ACTIVE,
             emailVerified: true,
             emailVerifiedAt: new Date(),
@@ -486,19 +525,21 @@ export class AuthService {
         }),
       ]);
 
-      return { message: 'E-mail verificado com sucesso! Sua conta está ativa.' };
+      return {
+        message: "E-mail verificado com sucesso! Sua conta está ativa.",
+      };
     } catch {
       throw new InternalServerErrorException(
-        'Erro ao verificar e-mail. Tente novamente mais tarde.',
+        "Erro ao verificar e-mail. Tente novamente mais tarde.",
       );
     }
   }
 
   async refreshTokens(refreshToken: string, ip: string, userAgent: string) {
     const tokenHash = crypto
-      .createHash('sha256')
+      .createHash("sha256")
       .update(refreshToken)
-      .digest('hex');
+      .digest("hex");
 
     const savedToken = await this.prisma.refreshToken.findFirst({
       where: {
@@ -510,7 +551,7 @@ export class AuthService {
     });
 
     if (!savedToken) {
-      throw new UnauthorizedException('Sessão inválida ou expirada.');
+      throw new UnauthorizedException("Sessão inválida ou expirada.");
     }
 
     await this.prisma.refreshToken.update({
@@ -523,15 +564,15 @@ export class AuthService {
 
   async logout(refreshToken: string) {
     const tokenHash = crypto
-      .createHash('sha256')
+      .createHash("sha256")
       .update(refreshToken)
-      .digest('hex');
+      .digest("hex");
 
     await this.prisma.refreshToken.updateMany({
       where: { tokenHash, revokedAt: null },
       data: { revokedAt: new Date() },
     });
 
-    return { message: 'Sessão encerrada com sucesso.' };
+    return { message: "Sessão encerrada com sucesso." };
   }
 }

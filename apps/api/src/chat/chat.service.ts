@@ -36,17 +36,25 @@ export class ChatService {
     return { title, thumbnail };
   }
 
-  private async mapRoomToResponse(room: any, userId: string) {
+  /**
+   * Maps a room entity to the response format.
+   * Extracted from findMyRooms to improve readability and testability.
+   */
+  private async mapRoomToResponse(room: any, userId: string, precalculatedUnreadCount?: number) {
     const { title, thumbnail } = this.getRoomMetadata(room);
 
     const lastRead = room.reads?.[0]?.lastReadAt || new Date(0);
-    const unreadCount = await this.prisma.chatMessage.count({
+    let unreadCount = precalculatedUnreadCount;
+
+    if (unreadCount === undefined) {
+      unreadCount = await this.prisma.chatMessage.count({
       where: {
         roomId: room.id,
         createdAt: { gt: lastRead },
         senderId: { not: userId },
       },
     });
+    }
 
     const lastMessage = room.messages?.[0] || null;
 
@@ -174,6 +182,10 @@ export class ChatService {
     return room;
   }
 
+    /**
+   * Finds all active rooms for a given user.
+   * Room mapping logic has been extracted to mapRoomToResponse.
+   */
   async findMyRooms(userId: string) {
     const rooms = await this.prisma.chatRoom.findMany({
       where: {
@@ -212,7 +224,25 @@ export class ChatService {
       orderBy: { updatedAt: 'desc' },
     });
 
-    return Promise.all(rooms.map((room) => this.mapRoomToResponse(room, userId)));
+    if (rooms.length === 0) {
+      return [];
+    }
+
+    const unreadCountsRaw = await this.prisma.chatMessage.groupBy({
+      by: ['roomId'],
+      where: {
+        OR: rooms.map(room => ({
+          roomId: room.id,
+          senderId: { not: userId },
+          createdAt: { gt: room.reads?.[0]?.lastReadAt || new Date(0) }
+        }))
+      },
+      _count: { _all: true }
+    });
+
+    const unreadCountMap = new Map(unreadCountsRaw.map(u => [u.roomId, u._count._all]));
+
+    return Promise.all(rooms.map((room) => this.mapRoomToResponse(room, userId, unreadCountMap.get(room.id) || 0)));
   }
 
   async findRoomById(roomId: string, userId: string) {

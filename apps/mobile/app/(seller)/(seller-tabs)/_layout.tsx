@@ -75,9 +75,5 @@ const styles = StyleSheet.create({
     elevation: 8,
     backgroundColor: Platform.OS === 'ios' ? 'transparent' : 'rgba(27, 32, 40, 0.95)',
     overflow: 'hidden',
-    // shadowColor: '#3fff8b',
-    // shadowOffset: { width: 0, height: 4 },
-    // shadowOpacity: 0.1,
-    // shadowRadius: 12,
   },
 });

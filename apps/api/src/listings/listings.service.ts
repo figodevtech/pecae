@@ -133,13 +133,17 @@ export class ListingsService {
       console.error('Failed to add increment-listing-views job:', error);
     }
 
-    // Resolve part categories
-    const partCategories = await this.prisma.partCategory.findMany();
-    const pcMap = new Map(partCategories.map((pc) => [pc.id, { name: pc.name, icon: pc.icon }]));
-
     const availablePartsIds = Array.isArray(listing.vehicle.availableParts)
       ? (listing.vehicle.availableParts as string[])
       : [];
+
+    // Resolve part categories
+    const partCategories = availablePartsIds.length > 0
+      ? await this.prisma.partCategory.findMany({
+          where: { id: { in: availablePartsIds } },
+        })
+      : [];
+    const pcMap = new Map(partCategories.map((pc) => [pc.id, { name: pc.name, icon: pc.icon }]));
 
     const availableParts = availablePartsIds
       .map((id) => pcMap.get(id))

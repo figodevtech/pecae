@@ -1,36 +1,49 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { ModerationFiltersDto } from './dto/moderation-filters.dto';
-import { ApproveListingDto } from './dto/approve-listing.dto';
-import { RejectListingDto } from './dto/reject-listing.dto';
-import { RejectVerificationDto } from './dto/reject-verification.dto';
-import { Action } from '../auth/casl/action.enum';
-import { subject } from '@casl/ability';
-import { CaslAbilityFactory } from '../auth/casl/casl-ability.factory';
-import { StorageService } from '../common/storage/storage.service';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  InternalServerErrorException,
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { InjectQueue } from "@nestjs/bullmq";
+import { Queue } from "bullmq";
+import { ModerationFiltersDto } from "./dto/moderation-filters.dto";
+import { ApproveListingDto } from "./dto/approve-listing.dto";
+import { RejectListingDto } from "./dto/reject-listing.dto";
+import { RejectVerificationDto } from "./dto/reject-verification.dto";
+import { Action } from "../auth/casl/action.enum";
+import { subject } from "@casl/ability";
+import { CaslAbilityFactory } from "../auth/casl/casl-ability.factory";
+import { StorageService } from "../common/storage/storage.service";
 
 @Injectable()
 export class ModerationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly caslAbilityFactory: CaslAbilityFactory,
-    @InjectQueue('alerts') private readonly alertsQueue: Queue,
+    @InjectQueue("alerts") private readonly alertsQueue: Queue,
     private readonly storageService: StorageService,
   ) {}
 
   private maskLicensePlate(plate?: string): string {
-    if (!plate) return '';
+    if (!plate) return "";
     const visible = plate.substring(0, 3);
     return `${visible}-****`;
   }
 
   async findAllPendingListings(filters: ModerationFiltersDto) {
-    const { sellerId, status, startDate, endDate, cursor, limit = 10 } = filters;
+    const {
+      sellerId,
+      status,
+      startDate,
+      endDate,
+      cursor,
+      limit = 10,
+    } = filters;
 
     const where: any = {
-      status: status || 'PENDING',
+      status: status || "PENDING",
     };
 
     if (sellerId) {
@@ -48,7 +61,7 @@ export class ModerationService {
       include: {
         vehicle: {
           include: {
-            photos: { orderBy: { order: 'asc' } },
+            photos: { orderBy: { order: "asc" } },
             version: {
               include: {
                 model: {
@@ -72,13 +85,13 @@ export class ModerationService {
             },
             _count: {
               select: {
-                listings: { where: { status: 'PUBLISHED' } },
+                listings: { where: { status: "PUBLISHED" } },
               },
             },
           },
         },
       },
-      orderBy: { createdAt: 'asc' }, // FIFO
+      orderBy: { createdAt: "asc" }, // FIFO
       take: limit + 1,
       ...(cursor && { skip: 1, cursor: { id: cursor } }),
     });
@@ -92,7 +105,9 @@ export class ModerationService {
     const mappedItems = items.map((listing) => {
       const maskedListing = { ...listing };
       if (maskedListing.vehicle) {
-        maskedListing.vehicle.plate = this.maskLicensePlate(maskedListing.vehicle.plate || undefined);
+        maskedListing.vehicle.plate = this.maskLicensePlate(
+          maskedListing.vehicle.plate || undefined,
+        );
       }
       return maskedListing;
     });
@@ -110,7 +125,7 @@ export class ModerationService {
       include: {
         vehicle: {
           include: {
-            photos: { orderBy: { order: 'asc' } },
+            photos: { orderBy: { order: "asc" } },
             version: {
               include: {
                 model: {
@@ -143,7 +158,9 @@ export class ModerationService {
 
     // Mask license plate
     if (listing.vehicle) {
-      listing.vehicle.plate = this.maskLicensePlate(listing.vehicle.plate || undefined);
+      listing.vehicle.plate = this.maskLicensePlate(
+        listing.vehicle.plate || undefined,
+      );
     }
 
     return listing;
@@ -168,8 +185,10 @@ export class ModerationService {
       type: user.type,
     });
 
-    if (ability.cannot(Action.Approve, subject('Listing', listing as any))) {
-      throw new ForbiddenException('Você não tem permissão para aprovar este anúncio (Conflito de Interesse).');
+    if (ability.cannot(Action.Approve, subject("Listing", listing as any))) {
+      throw new ForbiddenException(
+        "Você não tem permissão para aprovar este anúncio (Conflito de Interesse).",
+      );
     }
 
     // Option A: Execute side effects in transaction to guarantee rollback on failure
@@ -179,7 +198,7 @@ export class ModerationService {
         await tx.listing.update({
           where: { id },
           data: {
-            status: 'PUBLISHED',
+            status: "PUBLISHED",
             publishedAt: new Date(),
           },
         });
@@ -187,34 +206,42 @@ export class ModerationService {
         // 2. Create AuditLog
         await tx.auditLog.create({
           data: {
-            action: 'APPROVE',
-            entity: 'Listing',
+            action: "APPROVE",
+            entity: "Listing",
             entityId: id,
             actorId: user.id || user.sub,
-            details: { note: dto.moderatorNote || 'Aprovado via painel de moderação' },
+            details: {
+              note: dto.moderatorNote || "Aprovado via painel de moderação",
+            },
           },
         });
 
         // 3. Side effect: Add to match-alerts BullMQ queue
         try {
           await this.alertsQueue.add(
-            'match-alerts',
+            "match-alerts",
             { listingId: id },
             { removeOnComplete: true },
           );
         } catch (error) {
-          console.error('Falha ao adicionar job match-alerts:', error);
-          throw new Error(`Falha no enfileiramento de alertas: ${error.message}`);
+          console.error("Falha ao adicionar job match-alerts:", error);
+          throw new Error(
+            `Falha no enfileiramento de alertas: ${error.message}`,
+          );
         }
 
         // 4. Side effect: Notification (M11 placeholder)
-        console.log(`[M11] Notificação enviada para o vendedor ${listing.sellerProfile.userId}: Seu anúncio foi publicado.`);
+        console.log(
+          `[M11] Notificação enviada para o vendedor ${listing.sellerProfile.userId}: Seu anúncio foi publicado.`,
+        );
       });
     } catch (error) {
-      throw new BadRequestException(`Falha ao aprovar anúncio: ${error.message}`);
+      throw new BadRequestException(
+        `Falha ao aprovar anúncio: ${error.message}`,
+      );
     }
 
-    return { message: 'Anúncio aprovado com sucesso!' };
+    return { message: "Anúncio aprovado com sucesso!" };
   }
 
   async rejectListing(id: string, dto: RejectListingDto, user: any) {
@@ -236,8 +263,10 @@ export class ModerationService {
       type: user.type,
     });
 
-    if (ability.cannot(Action.Reject, subject('Listing', listing as any))) {
-      throw new ForbiddenException('Você não tem permissão para rejeitar este anúncio (Conflito de Interesse).');
+    if (ability.cannot(Action.Reject, subject("Listing", listing as any))) {
+      throw new ForbiddenException(
+        "Você não tem permissão para rejeitar este anúncio (Conflito de Interesse).",
+      );
     }
 
     // Option A: Execute side effects in transaction to guarantee rollback on failure
@@ -247,15 +276,15 @@ export class ModerationService {
         await tx.listing.update({
           where: { id },
           data: {
-            status: 'REJECTED',
+            status: "REJECTED",
           },
         });
 
         // 2. Create AuditLog
         await tx.auditLog.create({
           data: {
-            action: 'REJECT',
-            entity: 'Listing',
+            action: "REJECT",
+            entity: "Listing",
             entityId: id,
             actorId: user.id || user.sub,
             details: { reason: dto.rejectionReason },
@@ -263,18 +292,22 @@ export class ModerationService {
         });
 
         // 3. Side effect: Notification (M11 placeholder)
-        console.log(`[M11] Notificação enviada para o vendedor ${listing.sellerProfile.userId}: Seu anúncio foi rejeitado. Motivo: ${dto.rejectionReason}`);
+        console.log(
+          `[M11] Notificação enviada para o vendedor ${listing.sellerProfile.userId}: Seu anúncio foi rejeitado. Motivo: ${dto.rejectionReason}`,
+        );
       });
     } catch (error) {
-      throw new BadRequestException(`Falha ao rejeitar anúncio: ${error.message}`);
+      throw new BadRequestException(
+        `Falha ao rejeitar anúncio: ${error.message}`,
+      );
     }
 
-    return { message: 'Anúncio rejeitado com sucesso.' };
+    return { message: "Anúncio rejeitado com sucesso." };
   }
 
   async findAllPendingVerifications() {
     const verifications = await this.prisma.sellerVerification.findMany({
-      where: { status: 'PENDING' },
+      where: { status: "PENDING" },
       include: {
         sellerProfile: {
           include: {
@@ -288,38 +321,55 @@ export class ModerationService {
           },
         },
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: "asc" },
     });
 
-    return Promise.all(
-      verifications.map(async (v) => {
-        let documentPaths: string[] = [];
-        try {
-          if (typeof v.documentUrls === 'string') {
-            documentPaths = JSON.parse(v.documentUrls);
-          } else if (Array.isArray(v.documentUrls)) {
-            documentPaths = v.documentUrls as string[];
-          }
-        } catch (e) {
-          documentPaths = [];
+    const allPaths: string[] = [];
+    const verificationIndices: { startIndex: number; count: number }[] = [];
+
+    // Parse all paths into a single flat array
+    verifications.forEach((v) => {
+      let paths: string[] = [];
+      try {
+        if (typeof v.documentUrls === "string") {
+          paths = JSON.parse(v.documentUrls);
+        } else if (Array.isArray(v.documentUrls)) {
+          paths = v.documentUrls as string[];
         }
+      } catch (e) {
+        paths = [];
+      }
+      verificationIndices.push({
+        startIndex: allPaths.length,
+        count: paths.length,
+      });
+      allPaths.push(...paths);
+    });
 
-        const signedUrls = await Promise.all(
-          documentPaths.map(async (path) => {
-            try {
-              return await this.storageService.getSignedUrl('verifications', path);
-            } catch (err) {
-              return null;
-            }
-          }),
+    // Make a single batched call to get all signed URLs
+    let allSignedUrls: string[] = [];
+    if (allPaths.length > 0) {
+      try {
+        allSignedUrls = await this.storageService.getSignedUrls(
+          "verifications",
+          allPaths,
         );
+      } catch (err) {
+        allSignedUrls = new Array(allPaths.length).fill("");
+      }
+    }
 
-        return {
-          ...v,
-          signedUrls: signedUrls.filter(Boolean),
-        };
-      }),
-    );
+    // Re-map signed URLs back to their respective verifications
+    return verifications.map((v, idx) => {
+      const { startIndex, count } = verificationIndices[idx];
+      const signedUrls = allSignedUrls
+        .slice(startIndex, startIndex + count)
+        .filter(Boolean);
+      return {
+        ...v,
+        signedUrls,
+      };
+    });
   }
 
   async approveVerification(id: string, user: any) {
@@ -329,15 +379,17 @@ export class ModerationService {
     });
 
     if (!verification) {
-      throw new NotFoundException('Solicitação de verificação não encontrada.');
+      throw new NotFoundException("Solicitação de verificação não encontrada.");
     }
 
-    if (verification.status !== 'PENDING') {
-      throw new BadRequestException('Esta solicitação já foi processada.');
+    if (verification.status !== "PENDING") {
+      throw new BadRequestException("Esta solicitação já foi processada.");
     }
 
     if (verification.sellerProfile.userId === (user.id || user.sub)) {
-      throw new ForbiddenException('Você não pode moderar sua própria solicitação de verificação.');
+      throw new ForbiddenException(
+        "Você não pode moderar sua própria solicitação de verificação.",
+      );
     }
 
     try {
@@ -345,7 +397,7 @@ export class ModerationService {
         const updated = await tx.sellerVerification.update({
           where: { id },
           data: {
-            status: 'APPROVED',
+            status: "APPROVED",
             moderatorId: user.id || user.sub,
             resolvedAt: new Date(),
           },
@@ -357,20 +409,23 @@ export class ModerationService {
         });
 
         try {
-          await this.alertsQueue.add('send-notification', {
+          await this.alertsQueue.add("send-notification", {
             userId: verification.sellerProfile.userId,
-            type: 'SELLER_VERIFIED',
-            title: 'Perfil Verificado!',
-            message: 'Parabéns! Seus documentos foram aprovados e você recebeu o Selo Verificado.',
+            type: "SELLER_VERIFIED",
+            title: "Perfil Verificado!",
+            message:
+              "Parabéns! Seus documentos foram aprovados e você recebeu o Selo Verificado.",
           });
         } catch (error) {
-          throw new Error('Falha no enfileiramento de notificações.');
+          throw new Error("Falha no enfileiramento de notificações.");
         }
 
         return updated;
       });
     } catch (error) {
-      throw new BadRequestException(`Falha ao aprovar verificação: ${error.message}`);
+      throw new BadRequestException(
+        `Falha ao aprovar verificação: ${error.message}`,
+      );
     }
   }
 
@@ -381,15 +436,17 @@ export class ModerationService {
     });
 
     if (!verification) {
-      throw new NotFoundException('Solicitação de verificação não encontrada.');
+      throw new NotFoundException("Solicitação de verificação não encontrada.");
     }
 
-    if (verification.status !== 'PENDING') {
-      throw new BadRequestException('Esta solicitação já foi processada.');
+    if (verification.status !== "PENDING") {
+      throw new BadRequestException("Esta solicitação já foi processada.");
     }
 
     if (verification.sellerProfile.userId === (user.id || user.sub)) {
-      throw new ForbiddenException('Você não pode moderar sua própria solicitação de verificação.');
+      throw new ForbiddenException(
+        "Você não pode moderar sua própria solicitação de verificação.",
+      );
     }
 
     try {
@@ -397,7 +454,7 @@ export class ModerationService {
         const updated = await tx.sellerVerification.update({
           where: { id },
           data: {
-            status: 'REJECTED',
+            status: "REJECTED",
             notes: dto.reason,
             moderatorId: user.id || user.sub,
             resolvedAt: new Date(),
@@ -405,20 +462,22 @@ export class ModerationService {
         });
 
         try {
-          await this.alertsQueue.add('send-notification', {
+          await this.alertsQueue.add("send-notification", {
             userId: verification.sellerProfile.userId,
-            type: 'SELLER_VERIFICATION_REJECTED',
-            title: 'Documentos Rejeitados',
+            type: "SELLER_VERIFICATION_REJECTED",
+            title: "Documentos Rejeitados",
             message: `Sua verificação de perfil foi rejeitada pelo seguinte motivo: ${dto.reason}`,
           });
         } catch (error) {
-          throw new Error('Falha no enfileiramento de notificações.');
+          throw new Error("Falha no enfileiramento de notificações.");
         }
 
         return updated;
       });
     } catch (error) {
-      throw new BadRequestException(`Falha ao rejeitar verificação: ${error.message}`);
+      throw new BadRequestException(
+        `Falha ao rejeitar verificação: ${error.message}`,
+      );
     }
   }
 }

@@ -11,6 +11,7 @@ describe('CatalogService', () => {
   const mockPrisma = {
     vehicleBrand: {
       findMany: jest.fn(),
+      findFirst: jest.fn(),
     },
     vehicleModel: {
       findMany: jest.fn(),
@@ -65,4 +66,82 @@ describe('CatalogService', () => {
       expect(result).toEqual(mockBrands);
     });
   });
+
+  describe('getModelsByBrandAndYear', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should return cached models if available', async () => {
+      const mockModels = [{ id: '1', name: 'Uno' }];
+      mockRedis.get.mockResolvedValue(mockModels);
+
+      const result = await service.getModelsByBrandAndYear('brand-id', 2020, 2021);
+
+      expect(mockRedis.get).toHaveBeenCalledWith('catalog:brand:brand-id:yearFab:2020:yearModel:2021:models');
+      expect(result).toEqual(mockModels);
+      expect(mockPrisma.vehicleModel.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should fetch from prisma and cache if not in redis', async () => {
+      const mockModels = [{ id: '1', name: 'Uno' }];
+      mockRedis.get.mockResolvedValue(null);
+      mockPrisma.vehicleModel.findMany.mockResolvedValue(mockModels);
+
+      const result = await service.getModelsByBrandAndYear('brand-id', 2020, 2021);
+
+      expect(mockPrisma.vehicleModel.findMany).toHaveBeenCalledWith({
+        where: {
+          brandId: 'brand-id',
+          versions: {
+            some: {
+              years: {
+                some: {
+                  yearFab: 2020,
+                  yearModel: 2021,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { name: 'asc' },
+      });
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        'catalog:brand:brand-id:yearFab:2020:yearModel:2021:models',
+        mockModels,
+        expect.any(Number)
+      );
+      expect(result).toEqual(mockModels);
+    });
+  });
+
+  describe('getBrandByName', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('should return a brand when found by name', async () => {
+      const mockBrand = { id: '1', name: 'Fiat' };
+      mockPrisma.vehicleBrand.findFirst.mockResolvedValue(mockBrand);
+
+      const result = await service.getBrandByName('Fiat');
+
+      expect(mockPrisma.vehicleBrand.findFirst).toHaveBeenCalledWith({
+        where: { name: 'Fiat' },
+      });
+      expect(result).toEqual(mockBrand);
+    });
+
+    it('should return null if no brand is found', async () => {
+      mockPrisma.vehicleBrand.findFirst.mockResolvedValue(null);
+
+      const result = await service.getBrandByName('NonExistentBrand');
+
+      expect(mockPrisma.vehicleBrand.findFirst).toHaveBeenCalledWith({
+        where: { name: 'NonExistentBrand' },
+      });
+      expect(result).toBeNull();
+    });
+  });
+
 });

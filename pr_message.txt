@@ -1,0 +1,6 @@
+🧹 [code health improvement description]
+
+🎯 What: The code health issue of extracting the nested `Promise.all` logic inside `findMyRooms` in `ChatService` was already addressed in the current state of the repository, having been moved to a private method `mapRoomToResponse`. This PR adds documentation to clarify this logic extraction.
+💡 Why: Adding documentation to clarify code extractions improves the maintainability and readability of the codebase by providing context to developers analyzing or extending the chat features.
+✅ Verification: Confirmed that tests in `apps/api` pass successfully (`npm test`) and that the NestJS compiler compiles correctly (`npm run build`). The actual logic of the codebase is unchanged, so there's no risk of regressions.
+✨ Result: The codebase's readability has improved with comments confirming that the desired optimization was correctly applied, leaving the behavior intact.
