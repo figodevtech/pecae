@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -13,6 +13,10 @@ export class ReviewsService {
   ) {}
 
   async create(buyerId: string, dto: CreateReviewDto) {
+    if (dto.rating < 1 || dto.rating > 5) {
+      throw new BadRequestException('Avaliação deve ser entre 1 e 5.');
+    }
+
     const chatRoom = await this.prisma.chatRoom.findUnique({
       where: { id: dto.chatRoomId },
       select: {

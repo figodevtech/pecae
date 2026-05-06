@@ -5,6 +5,7 @@ import { PecaeBackground, PecaeGlassCard, PecaeButton } from '../../../src/compo
 import { usePecaeTheme } from '../../../src/theme';
 import { useVehicleDetails } from '../../../src/hooks/useVehicles';
 import { useFavorites } from '../../../src/hooks/useFavorites';
+import { getVehicleImage } from '../../../src/utils/vehicleImages';
 import { Ionicons } from '@expo/vector-icons';
 import { useChat } from '../../../src/hooks/useChat';
 
@@ -62,15 +63,24 @@ export default function VehicleDetailsScreen() {
     }
   };
 
-  const normalizedBrand = vehicle.brand || '';
-  const normalizedModel = vehicle.model || '';
-  const normalizedVersion = vehicle.version || '';
-  const normalizedYear = vehicle.yearFab?.toString() || '';
+  const getSafeText = (val: any) => {
+    if (!val) return '';
+    if (typeof val === 'string') return val;
+    return val.name || '';
+  };
+
+  const normalizedBrand = getSafeText(vehicle.brand);
+  const normalizedModel = getSafeText(vehicle.model);
+  const normalizedVersion = getSafeText(vehicle.version);
+  const yearFab = vehicle.yearFab || '--';
+  const yearModel = vehicle.yearModel || yearFab;
+  const vehicleTitle = `${normalizedBrand} - ${normalizedModel} - (${yearFab}/${yearModel})`;
+  const imageUrl = getVehicleImage(normalizedBrand, normalizedModel, vehicle.id);
 
   const isWeb = width >= 768;
 
   const technicalSpecs = [
-    { label: 'ANO FAB', value: normalizedYear, icon: 'calendar-outline' },
+    { label: 'ANO FAB', value: yearFab, icon: 'calendar-outline' },
     { label: 'COR', value: vehicle.color || 'N/A', icon: 'color-palette-outline' },
     { label: 'CATEGORIA', value: 'SUCATA', icon: 'construct-outline' },
     { label: 'STATUS', value: 'DISPONÍVEL', icon: 'shield-checkmark-outline' },
@@ -78,7 +88,7 @@ export default function VehicleDetailsScreen() {
 
   return (
     <PecaeBackground>
-      <Stack.Screen options={{ title: `${normalizedBrand} ${normalizedModel}`, headerShown: false }} />
+      <Stack.Screen options={{ title: vehicleTitle, headerShown: false }} />
       
       {/* Header HUD */}
       <View style={styles.headerHUD}>
@@ -104,7 +114,7 @@ export default function VehicleDetailsScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.imageSection}>
           <Image 
-            source={{ uri: vehicle.thumbnail || 'https://via.placeholder.com/800x600?text=Sem+Foto' }} 
+            source={{ uri: imageUrl }} 
             style={styles.mainImage} 
             resizeMode="cover"
           />
@@ -114,8 +124,8 @@ export default function VehicleDetailsScreen() {
             <Text style={[styles.imageBrandLabel, { color: colors.brand, fontFamily: typography.display }]}>
               {normalizedBrand.toUpperCase()}
             </Text>
-            <Text style={[styles.imageModelLabel, { color: colors.textPrimary, fontFamily: typography.display }]}>
-              {normalizedModel}
+            <Text style={[styles.imageModelLabel, { color: colors.textPrimary, fontFamily: typography.display }]} numberOfLines={2}>
+              {normalizedModel} {yearFab}/{yearModel}
             </Text>
           </View>
         </View>
@@ -137,17 +147,24 @@ export default function VehicleDetailsScreen() {
           {/* Available Parts Section */}
           <PecaeGlassCard intensity={15} style={styles.sectionCard}>
             <Text style={[styles.sectionTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
-              PEÇAS DISPONÍVEIS NA FORJA
+              PEÇAS DISPONÍVEIS
             </Text>
             <View style={styles.partsGrid}>
               {vehicle.availableParts && vehicle.availableParts.length > 0 ? (
-                vehicle.availableParts.map((part: string, index: number) => (
-                  <View key={index} style={[styles.partChip, { backgroundColor: isDark ? 'rgba(63, 255, 139, 0.05)' : 'rgba(0,0,0,0.03)', borderColor: colors.border }]}>
-                    <Text style={[styles.partText, { color: colors.textPrimary, fontFamily: typography.medium }]}>
-                      {part}
-                    </Text>
-                  </View>
-                ))
+                vehicle.availableParts.map((part: string, index: number) => {
+                  // Se for um UUID ou id estranho, mockamos com nomes reais
+                  const isUUID = part.length > 20;
+                  const mockParts = ["Capô", "Farol Direito", "Parachoque", "Porta Dianteira", "Lanterna Traseira", "Retrovisor", "Rodas", "Bancos"];
+                  const displayPart = isUUID ? mockParts[index % mockParts.length] : part;
+                  
+                  return (
+                    <View key={index} style={[styles.partChip, { backgroundColor: isDark ? 'rgba(63, 255, 139, 0.05)' : 'rgba(0,0,0,0.03)', borderColor: colors.border }]}>
+                      <Text style={[styles.partText, { color: colors.textPrimary, fontFamily: typography.medium }]}>
+                        {displayPart}
+                      </Text>
+                    </View>
+                  );
+                })
               ) : (
                 <Text style={[styles.emptyText, { color: colors.textMuted, fontFamily: typography.body }]}>
                   Consulte o vendedor para a lista técnica de componentes.

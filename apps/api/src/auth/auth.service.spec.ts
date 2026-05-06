@@ -84,6 +84,7 @@ describe('AuthService', () => {
   const mockConfigService = {
     get: jest.fn((key: string) => {
       if (key === 'JWT_ACCESS_SECRET' || key === 'JWT_REFRESH_SECRET') return 'secret';
+      if (key === 'GOOGLE_CLIENT_ID') return 'mock-client-id';
       return null;
     }),
   };

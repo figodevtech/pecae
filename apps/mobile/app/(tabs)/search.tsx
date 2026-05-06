@@ -18,7 +18,6 @@ import {
 } from '../../src/components/PecaeUI';
 import { usePecaeTheme } from '../../src/theme';
 import { useSearchVehicles } from '../../src/hooks/useVehicles';
-import { getVehicleImage } from '../../src/utils/vehicleImages';
 import { useRouter } from 'expo-router';
 
 const QUICK_FILTERS = [
@@ -183,18 +182,18 @@ export default function SearchScreen() {
           <View style={styles.loaderContainer}>
             <ActivityIndicator size="large" color={colors.brand} />
             <Text style={[styles.loaderText, { color: colors.textMuted, fontFamily: typography.body }]}>
-              Vasculhando o estoque...
+              VASCULHANDO O ESTOQUE...
             </Text>
           </View>
         ) : results.length === 0 ? (
           renderEmptyState()
         ) : (
           <View style={styles.resultsGrid}>
-            {results.map((vehicle: any) => {
+            {results.map((vehicle: any, index: number) => {
               const brand = vehicle.version?.model?.brand?.name || '';
               const model = vehicle.version?.model?.name || '';
               const imageUrl = vehicle.thumbnail || (vehicle.photos && vehicle.photos.length > 0 ? vehicle.photos[0] : null);
-              const title = vehicle.title || `${brand} ${model}`.trim();
+              const isMatch = index === 0 && searchText.length > 2; // Simulação de match destacado
 
               return (
                 <TouchableOpacity 
@@ -203,25 +202,27 @@ export default function SearchScreen() {
                   onPress={() => router.push(`/(tabs)/vehicle/${vehicle.id}`)}
                 >
                   <View style={styles.imageOverlapContainer}>
-                    <PecaeGlassCard padding={0} intensity={15} style={styles.productCard}>
+                    <PecaeGlassCard padding={0} intensity={15} pulse={isMatch} style={styles.productCard}>
                       <View style={styles.imagePlaceholder} />
                       <View style={styles.productInfo}>
                         <Text style={[styles.brandLabel, { color: colors.brand, fontFamily: typography.display }]}>
                           {brand.toUpperCase()}
                         </Text>
                         <Text style={[styles.productTitle, { color: colors.textPrimary, fontFamily: typography.display }]} numberOfLines={1}>
-                          {model}
+                          {model.toUpperCase()}
                         </Text>
                         
                         <View style={styles.productFooter}>
                           <Ionicons name="location-outline" size={10} color={colors.textMuted} />
                           <Text style={[styles.productLocation, { color: colors.textMuted, fontFamily: typography.medium }]} numberOfLines={1}>
-                            {vehicle.city}/{vehicle.state}
+                            {vehicle.city?.toUpperCase()}/{vehicle.state?.toUpperCase()}
                           </Text>
                         </View>
 
-                        <View style={[styles.viewDetailsBtn, { backgroundColor: 'rgba(63, 255, 139, 0.05)', borderColor: colors.brand }]}>
-                          <Text style={{ color: colors.brand, fontSize: 10, fontFamily: typography.display }}>ACESSAR FORJA</Text>
+                        <View style={[styles.viewDetailsBtn, { backgroundColor: isMatch ? `${colors.brand}15` : 'rgba(255, 255, 255, 0.05)', borderColor: colors.brand }]}>
+                          <Text style={{ color: colors.brand, fontSize: 10, fontFamily: typography.display }}>
+                            {isMatch ? 'VER MATCH' : 'ACESSAR FORJA'}
+                          </Text>
                         </View>
                       </View>
                     </PecaeGlassCard>
@@ -237,8 +238,8 @@ export default function SearchScreen() {
                       )}
                     </View>
                     
-                    <View style={[styles.badge, { backgroundColor: colors.brand }]}>
-                      <Text style={styles.badgeText}>DOADOR</Text>
+                    <View style={[styles.badge, { backgroundColor: isMatch ? colors.vibrant : colors.brand }]}>
+                      <Text style={styles.badgeText}>{isMatch ? 'MATCH' : 'DOADOR'}</Text>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -247,9 +248,6 @@ export default function SearchScreen() {
           </View>
         )}
       </ScrollView>
-    </PecaeBackground>
-  );
-}
     </PecaeBackground>
   );
 }
@@ -338,8 +336,8 @@ const styles = StyleSheet.create({
   },
   loaderText: {
     marginTop: 15,
-    fontSize: 14,
-    letterSpacing: 1,
+    fontSize: 10,
+    letterSpacing: 2,
   },
   emptyContainer: {
     flex: 1,
@@ -381,7 +379,7 @@ const styles = StyleSheet.create({
   },
   imageOverlapContainer: {
     position: 'relative',
-    paddingTop: 40, // Space for the floating image
+    paddingTop: 40,
   },
   productCard: {
     padding: 0,
@@ -391,7 +389,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.05)',
   },
   imagePlaceholder: {
-    height: 100, // Reduced as the image floats above
+    height: 100,
   },
   floatingImageContainer: {
     position: 'absolute',
@@ -436,7 +434,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   productTitle: {
-    fontSize: 18,
+    fontSize: 16,
     lineHeight: 22,
     marginBottom: 8,
   },
@@ -457,4 +455,3 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
-

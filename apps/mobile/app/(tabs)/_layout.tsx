@@ -5,11 +5,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePecaeTheme } from '../../src/theme';
 import { useUnreadCount } from '../../src/hooks/useNotifications';
 import { ProtectedRoute } from '../../src/components/auth/ProtectedRoute';
+import { useAuthStore } from '../../src/store/auth-store';
 
 export default function TabLayout() {
   const { colors, typography, effects } = usePecaeTheme();
   const { data: unreadData } = useUnreadCount();
   const unreadCount = unreadData?.count || 0;
+  const { user } = useAuthStore();
+  
+  const isOnlyBuyer = user?.type === 'BUYER';
 
   return (
     <ProtectedRoute allowedRoles={['BUYER', 'BOTH']}>
@@ -61,6 +65,7 @@ export default function TabLayout() {
           name="sell-bridge"
           options={{
             title: 'Vender',
+            href: isOnlyBuyer ? null : undefined,
             tabBarIcon: ({ focused }) => (
               <View style={[
                 styles.sellIconContainer, 
@@ -96,6 +101,10 @@ export default function TabLayout() {
         {/* Hidden Screens */}
         <Tabs.Screen
           name="catalog"
+          options={{ href: null }}
+        />
+        <Tabs.Screen
+          name="vehicle/[id]"
           options={{ href: null }}
         />
         <Tabs.Screen

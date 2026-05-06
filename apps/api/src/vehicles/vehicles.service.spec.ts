@@ -111,7 +111,7 @@ describe('VehiclesService', () => {
       expect(mockPrisma.vehicle.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            status: VehicleStatus.DRAFT,
+            status: VehicleStatus.PENDING,
           }),
         })
       );

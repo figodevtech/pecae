@@ -1,152 +1,148 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, FlatList, Text, ActivityIndicator, TouchableOpacity, Image } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { VehicleSelector } from '../../src/components/Catalog';
-import { PecaeScreenContainer } from '../../src/components/PecaeUI/PecaeScreenContainer';
-import { PecaeBackground } from '../../src/components/PecaeUI/PecaeBackground';
-import { PecaeGlassCard } from '../../src/components/PecaeUI/PecaeGlassCard';
-import { usePecaeTheme } from '../../theme';
-import { useSearchVehicles, VehicleDonor } from '../../src/hooks/useVehicles';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, FlatList, TouchableOpacity, Image, ActivityIndicator, Dimensions } from 'react-native';
+import { useRouter } from 'expo-router';
+import { PecaeBackground, PecaeGlassCard, PecaeMatchToast } from '../../src/components/PecaeUI';
+import { usePecaeTheme } from '../../src/theme';
+import { api } from '../../src/services/api';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+
+const { width } = Dimensions.get('window');
 
 export default function CatalogScreen() {
-  const { colors, typography } = usePecaeTheme();
+  const { colors, typography, effects } = usePecaeTheme();
   const router = useRouter();
-  const [filters, setFilters] = useState<any>(null);
-  const [isSelecting, setIsSelecting] = useState(true);
+  
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showMatchToast, setShowMatchToast] = useState(false);
 
-  const { data, isLoading } = useSearchVehicles(filters);
-
-  const handleSelect = (selection: any) => {
-    if (!selection) {
-      setFilters(null);
-      return;
+  const fetchVehicles = async () => {
+    try {
+      const response = await api.get('/catalog');
+      setVehicles(response.data.items || []);
+    } catch (error) {
+      console.error('Erro ao buscar catálogo:', error);
+    } finally {
+      setIsLoading(false);
     }
-    
-    setFilters({
-      brandId: selection.brand?.id,
-      modelId: selection.model?.id,
-      versionId: selection.version?.id,
-      yearMin: selection.year?.yearFab,
-      yearMax: selection.year?.yearFab,
-    });
-    setIsSelecting(false);
   };
 
-  const renderVehicle = ({ item }: { item: VehicleDonor }) => (
+  useEffect(() => {
+    fetchVehicles();
+
+    // Simulação de Match para demonstração de micro-animação (Fase 3)
+    const timer = setTimeout(() => {
+      setShowMatchToast(true);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const renderVehicle = ({ item }: { item: any }) => (
     <TouchableOpacity 
-      activeOpacity={0.9} 
-      onPress={() => router.push(`/(tabs)/vehicle/${item.id}`)}
-      style={styles.cardWrapper}
+      activeOpacity={0.9}
+      onPress={() => router.push(`/vehicle/${item.listingId}`)}
+      style={styles.cardContainer}
     >
-      <View style={styles.imageOverlapContainer}>
-        <PecaeGlassCard padding={0} intensity={20} style={styles.vehicleCard}>
-          <View style={styles.imagePlaceholder} />
-          
-          <View style={styles.cardContent}>
-            <View style={styles.cardHeader}>
-              <Text style={[styles.brandLabel, { color: colors.brand, fontFamily: typography.display }]}>
-                {item.brand.toUpperCase()}
-              </Text>
-              <View style={[styles.badge, { backgroundColor: 'rgba(63, 255, 139, 0.1)' }]}>
-                <Text style={[styles.badgeText, { color: colors.brand }]}>DOADOR</Text>
-              </View>
-            </View>
-            
-            <Text style={[styles.modelText, { color: colors.textPrimary, fontFamily: typography.display }]}>
-              {item.model}
-            </Text>
-            
-            <View style={styles.specsRow}>
-              <View style={styles.specItem}>
-                <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
-                <Text style={[styles.specText, { color: colors.textMuted, fontFamily: typography.medium }]}>{item.yearFab}</Text>
-              </View>
-              <View style={styles.specItem}>
-                <Ionicons name="location-outline" size={12} color={colors.textMuted} />
-                <Text style={[styles.specText, { color: colors.textMuted, fontFamily: typography.medium }]}>{item.city}/{item.state}</Text>
-              </View>
-            </View>
-
-            <View style={[styles.inventoryTag, { borderTopColor: colors.border }]}>
-              <Ionicons name="layers-outline" size={14} color={colors.brand} />
-              <Text style={[styles.inventoryText, { color: colors.textPrimary, fontFamily: typography.display }]}>
-                {item.availablePartsCount} PEÇAS NA FORJA
-              </Text>
-            </View>
-          </View>
-        </PecaeGlassCard>
-
-        {/* Floating Image Overlap Effect */}
-        <View style={styles.floatingImageContainer}>
+      <PecaeGlassCard padding={0} intensity={25} style={styles.card}>
+        <View style={styles.imageWrapper}>
           <Image 
-            source={{ uri: item.thumbnail || 'https://via.placeholder.com/400x300?text=Sem+Foto' }} 
-            style={styles.floatingImage}
-            resizeMode="contain"
+            source={{ uri: item.thumbnail || 'https://via.placeholder.com/400x300' }} 
+            style={styles.image}
+            resizeMode="cover"
           />
+          <BlurView intensity={20} style={styles.versionBadge}>
+            <Text style={[styles.versionText, { color: colors.textPrimary, fontFamily: typography.display }]}>
+              {item.version?.toUpperCase() || 'STANDARD'}
+            </Text>
+          </BlurView>
+          
+          <View style={styles.floatingInfo}>
+             <View style={[styles.glowBadge, { backgroundColor: `${colors.brand}22`, borderColor: colors.brand }]}>
+                <Text style={[styles.glowText, { color: colors.brand, fontFamily: typography.display }]}>
+                  DISPONÍVEL
+                </Text>
+             </View>
+          </View>
         </View>
-      </View>
+
+        <View style={styles.details}>
+          <View style={styles.titleRow}>
+            <Text style={[styles.brand, { color: colors.brand, fontFamily: typography.display }]}>
+              {item.brand?.toUpperCase() || 'PECAÊ'}
+            </Text>
+            <Text style={[styles.year, { color: colors.textMuted, fontFamily: typography.display }]}>
+              {item.year || '2024'}
+            </Text>
+          </View>
+          
+          <Text style={[styles.model, { color: colors.textPrimary, fontFamily: typography.display }]} numberOfLines={1}>
+            {item.model?.toUpperCase() || 'VEÍCULOS DOADOR'}
+          </Text>
+
+          <View style={styles.locationRow}>
+            <Ionicons name="location-sharp" size={12} color={colors.brand} />
+            <Text style={[styles.location, { color: colors.textMuted, fontFamily: typography.body }]}>
+              {item.city?.toUpperCase() || 'SÃO PAULO'}, {item.state?.toUpperCase() || 'SP'}
+            </Text>
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: colors.brand }]}
+            onPress={() => router.push(`/vehicle/${item.listingId}`)}
+          >
+            <Text style={[styles.actionButtonText, { fontFamily: typography.display }]}>
+              ABRIR FORJA
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color="#000" />
+          </TouchableOpacity>
+        </View>
+      </PecaeGlassCard>
     </TouchableOpacity>
   );
 
   return (
     <PecaeBackground>
-      <PecaeScreenContainer>
-        <Stack.Screen 
-          options={{ 
-            title: 'Catálogo',
-            headerShown: false 
-          }} 
+      <View style={styles.container}>
+        <PecaeMatchToast 
+          visible={showMatchToast}
+          onClose={() => setShowMatchToast(false)}
+          onPress={() => {
+            setShowMatchToast(false);
+            if (vehicles.length > 0) {
+              router.push(`/vehicle/${vehicles[0].listingId}`);
+            }
+          }}
+          vehicleName="Civic Type R"
+          brand="Honda"
+          imageUrl="https://images.unsplash.com/photo-1605559424843-9e4c228bf1c2?q=80&w=500&auto=format&fit=crop"
         />
-        
-        <View style={styles.container}>
-          {isSelecting ? (
-            <VehicleSelector onSelect={handleSelect} />
-          ) : (
-            <View style={styles.resultsContainer}>
-              <View style={styles.resultsHeader}>
-                <TouchableOpacity 
-                  onPress={() => setIsSelecting(true)}
-                  style={styles.backButton}
-                >
-                  <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-                </TouchableOpacity>
-                <Text style={[styles.resultsTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
-                  SUCATAS DISPONÍVEIS
-                </Text>
-              </View>
 
-              {isLoading ? (
-                <View style={styles.center}>
-                  <ActivityIndicator size="large" color={colors.brand} />
-                </View>
-              ) : (
-                <FlatList
-                  data={data?.data || []}
-                  renderItem={renderVehicle}
-                  keyExtractor={(item) => item.id}
-                  contentContainerStyle={styles.listContent}
-                  showsVerticalScrollIndicator={false}
-                  ListEmptyComponent={
-                    <View style={styles.center}>
-                      <Ionicons name="car-sport-outline" size={64} color={colors.textMuted} />
-                      <Text style={[styles.emptyText, { color: colors.textMuted, fontFamily: typography.body }]}>
-                        Nenhum veículo doador encontrado para este modelo.
-                      </Text>
-                      <TouchableOpacity 
-                        onPress={() => setIsSelecting(true)}
-                        style={[styles.retryButton, { borderColor: colors.brand }]}
-                      >
-                        <Text style={{ color: colors.brand, fontFamily: typography.display }}>TENTAR OUTRO MODELO</Text>
-                      </TouchableOpacity>
-                    </View>
-                  }
-                />
-              )}
-            </View>
-          )}
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: colors.textPrimary, fontFamily: typography.display }]}>
+            CATÁLOGO <Text style={{ color: colors.brand }}>TÉCNICO</Text>
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
+            VEÍCULOS DOADORES EM ANÁLISE
+          </Text>
         </View>
-      </PecaeScreenContainer>
+
+        {isLoading ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={colors.brand} />
+          </View>
+        ) : (
+          <FlatList
+            data={vehicles}
+            renderItem={renderVehicle}
+            keyExtractor={(item, index) => item.id || index.toString()}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+            numColumns={1}
+          />
+        )}
+      </View>
     </PecaeBackground>
   );
 }
@@ -154,132 +150,121 @@ export default function CatalogScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 10,
-  },
-  resultsContainer: {
-    flex: 1,
-  },
-  resultsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 20,
-    marginTop: 10,
-  },
-  backButton: {
-    marginRight: 10,
-  },
-  resultsTitle: {
-    fontSize: 20,
-    letterSpacing: 2,
-  },
-  listContent: {
-    paddingHorizontal: 15,
-    paddingBottom: 100,
-  },
-  cardWrapper: {
-    marginBottom: 24,
-  },
-  imageOverlapContainer: {
-    position: 'relative',
     paddingTop: 60,
   },
-  vehicleCard: {
-    padding: 0,
-    borderRadius: 24,
+  header: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 28,
+    letterSpacing: 2,
+  },
+  subtitle: {
+    fontSize: 10,
+    letterSpacing: 1,
+    marginTop: 4,
+    opacity: 0.7,
+  },
+  list: {
+    paddingHorizontal: 20,
+    paddingBottom: 100,
+  },
+  cardContainer: {
+    marginBottom: 25,
+  },
+  card: {
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
-  imagePlaceholder: {
-    height: 120,
+  imageWrapper: {
+    width: '100%',
+    height: 200,
+    position: 'relative',
   },
-  floatingImageContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 20,
-    right: 20,
-    height: 180,
-    zIndex: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  floatingImage: {
+  image: {
     width: '100%',
     height: '100%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
   },
-  cardContent: {
+  versionBadge: {
+    position: 'absolute',
+    top: 15,
+    right: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  versionText: {
+    fontSize: 10,
+    letterSpacing: 1,
+  },
+  floatingInfo: {
+    position: 'absolute',
+    bottom: 15,
+    left: 15,
+  },
+  glowBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  glowText: {
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  details: {
     padding: 20,
-    paddingTop: 0,
   },
-  cardHeader: {
+  titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
   },
-  brandLabel: {
-    fontSize: 10,
+  brand: {
+    fontSize: 12,
     letterSpacing: 2,
-    opacity: 0.7,
   },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+  year: {
+    fontSize: 12,
+    opacity: 0.8,
   },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  modelText: {
+  model: {
     fontSize: 22,
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  specsRow: {
+  locationRow: {
     flexDirection: 'row',
-    gap: 15,
+    alignItems: 'center',
     marginBottom: 20,
   },
-  specItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  specText: {
+  location: {
     fontSize: 12,
+    marginLeft: 4,
+    opacity: 0.6,
   },
-  inventoryTag: {
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
     gap: 8,
-    borderTopWidth: 1,
-    paddingTop: 16,
   },
-  inventoryText: {
-    fontSize: 12,
+  actionButtonText: {
+    fontSize: 14,
+    color: '#000',
     letterSpacing: 1,
+    fontWeight: 'bold',
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
-  },
-  emptyText: {
-    textAlign: 'center',
-    marginTop: 20,
-    fontSize: 14,
-    lineHeight: 22,
-    opacity: 0.7,
-  },
-  retryButton: {
-    marginTop: 30,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
   },
 });

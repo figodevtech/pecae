@@ -46,6 +46,19 @@ export default function PerfilCompradorMenu() {
           contentContainerStyle={{ paddingBottom: spacing.xxl }}
           showsVerticalScrollIndicator={false}
         >
+          {/* Custom Header with Back Button */}
+          <View style={styles.header}>
+            <TouchableOpacity 
+              onPress={() => router.back()}
+              style={[styles.backButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
+              MEU PERFIL
+            </Text>
+            <View style={{ width: 44 }} />
+          </View>
           
           {/* Hero Profile Section */}
           <View style={styles.heroSection}>
@@ -287,6 +300,25 @@ export default function PerfilCompradorMenu() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  headerTitle: {
+    fontSize: 16,
+    letterSpacing: 1,
   },
   center: {
     flex: 1,

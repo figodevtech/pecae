@@ -88,7 +88,8 @@ export class MatchProcessor extends WorkerHost {
         const title = '🚀 Novo Match na Forja!';
         const body = `Um ${model.name} ${version.name} acaba de ser aprovado e coincide com sua busca salva.`;
         
-        await this.notificationService.createNotification(search.userId, {
+        await this.notificationService.send({
+          userId: search.userId,
           type: 'SAVED_SEARCH_ALERT',
           title,
           body,

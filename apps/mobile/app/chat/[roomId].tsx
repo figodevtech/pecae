@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image, ActivityIndicator, SafeAreaView } from 'react-native';
+import { StyleSheet, View, Text, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image, ActivityIndicator, SafeAreaView, Animated } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { PecaeBackground, PecaeGlassCard } from '../../src/components/PecaeUI';
 import { usePecaeTheme } from '../../src/theme';
@@ -29,18 +29,88 @@ interface RoomDetails {
   };
 }
 
+// Componente de mensagem com animação
+const AnimatedMessage = ({ item, isMe, colors, typography }: { item: Message; isMe: boolean; colors: any; typography: any }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(10)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  const formattedTime = new Date(item.createdAt).toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return (
+    <Animated.View 
+      style={[
+        styles.messageRow, 
+        isMe ? styles.myMessageRow : styles.otherMessageRow,
+        { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
+      ]}
+    >
+      <PecaeGlassCard 
+        intensity={isMe ? 30 : 15} 
+        style={[
+          styles.messageCard, 
+          { 
+            borderRadius: 20,
+            borderBottomRightRadius: isMe ? 4 : 20,
+            borderBottomLeftRadius: isMe ? 20 : 4,
+            backgroundColor: isMe ? 'rgba(63, 255, 139, 0.1)' : 'rgba(255,255,255,0.05)',
+            borderColor: isMe ? colors.brand + '44' : 'rgba(255,255,255,0.05)',
+          }
+        ]}
+      >
+        <Text style={[styles.messageText, { color: colors.textPrimary, fontFamily: typography.body }]}>
+          {item.content}
+        </Text>
+        <View style={styles.messageFooter}>
+          <Text style={[styles.messageTime, { color: colors.textMuted, fontFamily: typography.body }]}>
+            {formattedTime}
+          </Text>
+          {isMe && <Ionicons name="checkmark-done" size={14} color={colors.brand} style={{ marginLeft: 4 }} />}
+        </View>
+      </PecaeGlassCard>
+    </Animated.View>
+  );
+};
+
 export default function ChatRoomScreen() {
   const { roomId } = useLocalSearchParams<{ roomId: string }>();
   const { colors, typography, effects, isDark } = usePecaeTheme();
   const { user } = useAuthStore();
   const router = useRouter();
   const flatListRef = useRef<FlatList>(null);
+  const hudAnim = useRef(new Animated.Value(0)).current;
 
   const [room, setRoom] = useState<RoomDetails | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+
+  useEffect(() => {
+    Animated.spring(hudAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 20,
+      friction: 7
+    }).start();
+  }, [room]);
 
   const fetchRoomDetails = async () => {
     try {
@@ -55,7 +125,10 @@ export default function ChatRoomScreen() {
     try {
       const response = await api.get(`/chat/rooms/${roomId}/messages`);
       const items = response.data.items || [];
-      setMessages(items.reverse());
+      // Só atualiza se houver mensagens novas para evitar flickers de animação
+      if (items.length !== messages.length) {
+        setMessages(items.reverse());
+      }
     } catch (error) {
       console.error('Erro ao buscar mensagens:', error);
     } finally {
@@ -103,38 +176,7 @@ export default function ChatRoomScreen() {
 
   const renderItem = ({ item }: { item: Message }) => {
     const isMe = item.senderId === user?.id;
-    const formattedTime = new Date(item.createdAt).toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    return (
-      <View style={[styles.messageRow, isMe ? styles.myMessageRow : styles.otherMessageRow]}>
-        <PecaeGlassCard 
-          intensity={isMe ? 30 : 15} 
-          style={[
-            styles.messageCard, 
-            { 
-              borderRadius: 20,
-              borderBottomRightRadius: isMe ? 4 : 20,
-              borderBottomLeftRadius: isMe ? 20 : 4,
-              backgroundColor: isMe ? 'rgba(63, 255, 139, 0.1)' : 'rgba(255,255,255,0.05)',
-              borderColor: isMe ? 'rgba(63, 255, 139, 0.2)' : 'rgba(255,255,255,0.05)',
-            }
-          ]}
-        >
-          <Text style={[styles.messageText, { color: colors.textPrimary, fontFamily: typography.body }]}>
-            {item.content}
-          </Text>
-          <View style={styles.messageFooter}>
-            <Text style={[styles.messageTime, { color: colors.textMuted, fontFamily: typography.body }]}>
-              {formattedTime}
-            </Text>
-            {isMe && <Ionicons name="checkmark-done" size={14} color={colors.brand} style={{ marginLeft: 4 }} />}
-          </View>
-        </PecaeGlassCard>
-      </View>
-    );
+    return <AnimatedMessage item={item} isMe={isMe} colors={colors} typography={typography} />;
   };
 
   if (isLoading && !room) {
@@ -158,56 +200,66 @@ export default function ChatRoomScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
-          {/* Header HUD */}
-          <BlurView intensity={30} tint={isDark ? 'dark' : 'light'} style={[styles.headerHUD, { borderBottomColor: colors.border }]}>
-            <View style={styles.headerTop}>
-              <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-                <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-              </TouchableOpacity>
-              
-              <View style={styles.interlocutorInfo}>
-                <View style={styles.nameRow}>
-                  <Text style={[styles.interlocutorName, { color: colors.textPrimary, fontFamily: typography.display }]}>
-                    {room?.interlocutor.name?.toUpperCase() || 'USUÁRIO PECAÊ'}
-                  </Text>
-                  {room?.interlocutor.isVerified && (
-                    <MaterialCommunityIcons name="check-decagram" size={16} color={colors.brand} style={{ marginLeft: 4 }} />
-                  )}
+          {/* Header HUD - Refinado para Digital Forge */}
+          <Animated.View style={{ transform: [{ translateY: hudAnim.interpolate({ inputRange: [0, 1], outputRange: [-100, 0] }) }] }}>
+            <BlurView intensity={40} tint={isDark ? 'dark' : 'light'} style={[styles.headerHUD, { borderBottomColor: colors.brand + '33' }]}>
+              <View style={styles.headerTop}>
+                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                  <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+                </TouchableOpacity>
+                
+                <View style={styles.interlocutorInfo}>
+                  <View style={styles.nameRow}>
+                    <Text style={[styles.interlocutorName, { color: colors.textPrimary, fontFamily: typography.display }]}>
+                      {room?.interlocutor.name?.toUpperCase() || 'USUÁRIO PECAÊ'}
+                    </Text>
+                    {room?.interlocutor.isVerified && (
+                      <MaterialCommunityIcons name="check-decagram" size={16} color={colors.brand} style={{ marginLeft: 4 }} />
+                    )}
+                  </View>
+                  <View style={styles.statusRow}>
+                    <View style={[styles.statusDot, { backgroundColor: colors.brand }]} />
+                    <Text style={[styles.statusText, { color: colors.brand, fontFamily: typography.mono, fontSize: 7, opacity: 0.8 }]}>
+                      SECURE_COMM_v1.04 // {new Date().toLocaleTimeString()}
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.statusRow}>
-                  <View style={[styles.statusDot, { backgroundColor: colors.brand }]} />
-                  <Text style={[styles.statusText, { color: colors.textMuted, fontFamily: typography.display }]}>
-                    CONNECTION ENCRYPTED
-                  </Text>
-                </View>
+
+                <TouchableOpacity style={styles.optionsButton}>
+                  <Ionicons name="ellipsis-vertical" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={styles.optionsButton}>
-                <Ionicons name="ellipsis-vertical" size={20} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Vehicle context HUD */}
-            {room && (
-              <PecaeGlassCard intensity={10} padding={8} style={styles.itemStrip}>
-                <Image source={{ uri: room.listingThumbnail || '' }} style={styles.itemThumb} />
-                <View style={styles.itemTextContainer}>
-                  <Text style={[styles.itemTitle, { color: colors.textPrimary, fontFamily: typography.display }]} numberOfLines={1}>
-                    {room.listingTitle?.toUpperCase() || 'NEGOCIAÇÃO EM CURSO'}
-                  </Text>
-                  <Text style={[styles.itemPrice, { color: colors.brand, fontFamily: typography.display }]}>
-                    NEGOCIAÇÃO ABERTA
-                  </Text>
-                </View>
-                <TouchableOpacity 
-                  onPress={() => router.push(`/vehicle/${room.listingId}`)}
-                  style={[styles.viewButton, { borderColor: colors.brand }]}
-                >
-                  <Text style={[styles.viewButtonText, { color: colors.brand, fontFamily: typography.display }]}>INFO</Text>
-                </TouchableOpacity>
-              </PecaeGlassCard>
-            )}
-          </BlurView>
+              {/* Vehicle context HUD - Estilo Digital Forge */}
+              {room && (
+                <PecaeGlassCard intensity={20} padding={8} style={[styles.itemStrip, { borderColor: colors.brand + '22' }]}>
+                  <View style={styles.itemThumbContainer}>
+                    <Image source={{ uri: room.listingThumbnail || '' }} style={styles.itemThumb} />
+                    <View style={styles.photoOverlap} />
+                  </View>
+                  <View style={styles.itemTextContainer}>
+                    <Text style={[styles.itemTitle, { color: colors.textPrimary, fontFamily: typography.display }]} numberOfLines={1}>
+                      {room.listingTitle?.toUpperCase() || 'VEÍCULO DOADOR'}
+                    </Text>
+                    <View style={styles.tagRow}>
+                      <View style={[styles.tag, { backgroundColor: colors.brand + '15', borderColor: colors.brand + '33' }]}>
+                        <Text style={[styles.tagText, { color: colors.brand, fontFamily: typography.display }]}>OPEN_DEAL</Text>
+                      </View>
+                      <Text style={[styles.technicalCode, { color: colors.textMuted, fontFamily: typography.mono }]}>
+                        REF_{room.listingId.substring(0, 8).toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity 
+                    onPress={() => router.push(`/vehicle/${room.listingId}`)}
+                    style={[styles.viewButton, { backgroundColor: colors.brand + '10', borderColor: colors.brand + '44' }]}
+                  >
+                    <Text style={[styles.viewButtonText, { color: colors.brand, fontFamily: typography.display }]}>VIEW_UNIT</Text>
+                  </TouchableOpacity>
+                </PecaeGlassCard>
+              )}
+            </BlurView>
+          </Animated.View>
 
           {/* Messages Area */}
           <FlatList
@@ -222,7 +274,7 @@ export default function ChatRoomScreen() {
 
           {/* Input Bar */}
           <View style={styles.inputWrapper}>
-            <PecaeGlassCard intensity={25} padding={4} style={[styles.inputContainer, { borderRadius: 30 }]}>
+            <PecaeGlassCard intensity={25} padding={4} style={[styles.inputContainer, { borderRadius: 30, borderColor: colors.brand + '22' }]}>
               <TouchableOpacity style={styles.attachButton}>
                 <Ionicons name="add-circle-outline" size={28} color={colors.textMuted} />
               </TouchableOpacity>
@@ -319,7 +371,6 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 8,
     letterSpacing: 1,
-    opacity: 0.6,
   },
   optionsButton: {
     padding: 8,
@@ -329,35 +380,66 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 4,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  itemThumbContainer: {
+    width: 48,
+    height: 48,
+    position: 'relative',
   },
   itemThumb: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.05)',
+    zIndex: 2,
+  },
+  photoOverlap: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: 'rgba(63, 255, 139, 0.1)',
+    zIndex: 1,
   },
   itemTextContainer: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 16,
   },
   itemTitle: {
-    fontSize: 9,
+    fontSize: 11,
+    letterSpacing: 1.5,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 8,
+  },
+  tag: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 0.5,
+  },
+  tagText: {
+    fontSize: 7,
     letterSpacing: 1,
   },
-  itemPrice: {
-    fontSize: 12,
-    marginTop: 2,
+  technicalCode: {
+    fontSize: 7,
+    opacity: 0.5,
   },
   viewButton: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingVertical: 8,
+    borderRadius: 10,
     borderWidth: 1,
   },
   viewButtonText: {
-    fontSize: 9,
-    letterSpacing: 1,
+    fontSize: 8,
+    letterSpacing: 1.2,
   },
   messagesList: {
     padding: 16,
@@ -403,7 +485,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 4,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
   },
   attachButton: {
     padding: 8,

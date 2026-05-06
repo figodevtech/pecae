@@ -18,12 +18,19 @@ const CATEGORIES = [
 
 export default function BuyerHomeScreen() {
   const { colors, typography, effects } = usePecaeTheme();
-  const { data: searchResponse, isLoading } = useSearchVehicles();
+  const [searchText, setSearchText] = useState('');
+  const [activeQuery, setActiveQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string | undefined>(undefined);
+  const { data: searchResponse, isLoading } = useSearchVehicles({ 
+    q: activeQuery || activeCategory,
+  });
   const listings = searchResponse?.data || [];
   const { width } = useWindowDimensions();
   const router = useRouter();
 
-  const [searchText, setSearchText] = useState('');
+  const handleSearch = () => {
+    setActiveQuery(searchText);
+  };
 
   const handleProfilePress = () => {
     Alert.alert(
@@ -63,13 +70,17 @@ export default function BuyerHomeScreen() {
 
           {/* Barra de Busca Arredondada */}
           <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="search" size={18} color={colors.textMuted} />
+            <TouchableOpacity onPress={handleSearch}>
+              <Ionicons name="search" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
             <TextInput
               style={[styles.searchInput, { color: colors.textPrimary, fontFamily: typography.body }]}
-              placeholder="Buscar veículos ou suca..."
+              placeholder="Busca rápida de veículos..."
               placeholderTextColor={colors.textMuted}
               value={searchText}
               onChangeText={setSearchText}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
             />
           </View>
 
@@ -97,14 +108,39 @@ export default function BuyerHomeScreen() {
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesScroll}
+            contentContainerStyle={[
+              styles.categoriesScroll,
+              { flexGrow: 1, justifyContent: 'center' }
+            ]}
           >
             {CATEGORIES.map((cat) => (
-              <TouchableOpacity key={cat.id} style={styles.categoryItem}>
-                <View style={[styles.categoryCircle, { backgroundColor: colors.surface, shadowColor: '#000' }]}>
-                  <Ionicons name={cat.icon as any} size={28} color={colors.brand} />
+              <TouchableOpacity 
+                key={cat.id} 
+                style={[
+                  styles.categoryItem,
+                  activeCategory === cat.name && { opacity: 0.7 }
+                ]}
+                onPress={() => {
+                  if (activeCategory === cat.name) {
+                    setActiveCategory(undefined);
+                  } else {
+                    setActiveCategory(cat.name);
+                    setActiveQuery('');
+                    setSearchText('');
+                  }
+                }}
+              >
+                <View style={[
+                  styles.categoryCircle, 
+                  { backgroundColor: colors.surface, shadowColor: '#000' },
+                  activeCategory === cat.name && { borderColor: colors.brand, borderWidth: 2 }
+                ]}>
+                  <Ionicons name={cat.icon as any} size={28} color={activeCategory === cat.name ? colors.brand : colors.textMuted} />
                 </View>
-                <Text style={[styles.categoryLabel, { color: colors.textPrimary, fontFamily: typography.medium }]}>
+                <Text style={[
+                  styles.categoryLabel, 
+                  { color: activeCategory === cat.name ? colors.brand : colors.textPrimary, fontFamily: typography.medium }
+                ]}>
                   {cat.name}
                 </Text>
               </TouchableOpacity>
@@ -133,7 +169,11 @@ export default function BuyerHomeScreen() {
               const brand = getSafeText(vehicle.brand);
               const model = getSafeText(vehicle.model);
               const imageUrl = getVehicleImage(brand, model, vehicle.id);
-              const title = `${brand} ${model}`.trim() || 'Veículo sem título';
+              
+              // Título composto: marca - modelo - (ano fabricação/anomodelo)
+              const yearFab = vehicle.yearFab || '--';
+              const yearModel = vehicle.yearModel || yearFab;
+              const title = `${brand} - ${model} - (${yearFab}/${yearModel})`.trim() || 'Veículo sem título';
               
               return (
                 <TouchableOpacity 
@@ -146,9 +186,6 @@ export default function BuyerHomeScreen() {
                     <View style={styles.productInfo}>
                       <Text style={[styles.productTitle, { color: colors.textPrimary, fontFamily: typography.display }]} numberOfLines={2}>
                         {title}
-                      </Text>
-                      <Text style={[styles.productPrice, { color: colors.brand, fontFamily: typography.display }]}>
-                        R$ {vehicle.listing?.price?.toLocaleString('pt-BR') || '----'}
                       </Text>
                       <View style={styles.productFooter}>
                         <Text style={[styles.productLocation, { color: colors.textMuted }]}>
@@ -241,6 +278,8 @@ const styles = StyleSheet.create({
   categoriesScroll: {
     paddingHorizontal: 20,
     gap: 20,
+    minWidth: '100%',
+    justifyContent: 'center',
   },
   categoryItem: {
     alignItems: 'center',

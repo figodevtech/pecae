@@ -177,7 +177,6 @@ export class BuyersService {
           id: room.listing.id,
           title: room.listing.title,
           status: room.listing.status,
-          price: room.listing.price,
         } : null,
         seller: seller ? {
           id: seller.id,
