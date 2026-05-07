@@ -476,7 +476,7 @@ export class AuthService {
             });
           }
 
-          const rawToken = crypto.randomBytes(32).toString("hex");
+          const rawToken = Math.floor(100000 + Math.random() * 900000).toString();
           const tokenHash = crypto
             .createHash("sha256")
             .update(rawToken)
@@ -486,7 +486,7 @@ export class AuthService {
             data: {
               userId: newUser.id,
               tokenHash,
-              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+              expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutos de validade
             },
           });
 
@@ -510,8 +510,8 @@ export class AuthService {
     }
   }
 
-  async verifyEmail(token: string) {
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  async verifyEmail(code: string) {
+    const tokenHash = crypto.createHash("sha256").update(code).digest("hex");
 
     const verificationToken =
       await this.prisma.emailVerificationToken.findFirst({

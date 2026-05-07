@@ -70,7 +70,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'E-mail verificado com sucesso' })
   @ApiResponse({ status: 409, description: 'Token inválido ou expirado' })
   async verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
-    return this.authService.verifyEmail(verifyEmailDto.token);
+    return this.authService.verifyEmail(verifyEmailDto.code);
   }
 
   // ─── Session Management ───────────────────────────────────────

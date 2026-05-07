@@ -1,6 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { VehiclesService } from './vehicles.service';
+import { SearchListingsDto } from './dto/search-listings.dto';
 
 @ApiTags('listings')
 @Controller('listings')
@@ -9,7 +10,7 @@ export class ListingsController {
 
   @Get()
   @ApiOperation({ summary: 'Lista todos os anúncios ativos (Público para Compradores)' })
-  async findAll(@Query('city') city?: string, @Query('state') state?: string) {
-    return this.vehiclesService.findAllPublished({ city, state });
+  async findAll(@Query() dto: SearchListingsDto) {
+    return this.vehiclesService.findAllPublished(dto);
   }
 }

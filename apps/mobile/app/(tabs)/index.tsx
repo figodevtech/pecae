@@ -7,6 +7,7 @@ import { useAuthStore } from '../../src/store/auth-store';
 import { getVehicleImage } from '../../src/utils/vehicleImages';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { SearchFilterModal } from '../../src/components/Search/SearchFilterModal';
 
 const CATEGORIES = [
   { id: '1', name: 'Carros Sucata', icon: 'car-outline' },
@@ -21,8 +22,12 @@ export default function BuyerHomeScreen() {
   const [searchText, setSearchText] = useState('');
   const [activeQuery, setActiveQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | undefined>(undefined);
+  const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
+  const [filters, setFilters] = useState<{ brandId?: string; modelId?: string; yearFabId?: string }>({});
+
   const { data: searchResponse, isLoading } = useSearchVehicles({ 
     q: activeQuery || activeCategory,
+    ...filters
   });
   const listings = searchResponse?.data || [];
   const { width } = useWindowDimensions();
@@ -82,6 +87,19 @@ export default function BuyerHomeScreen() {
               onSubmitEditing={handleSearch}
               returnKeyType="search"
             />
+            <TouchableOpacity 
+              onPress={() => setIsFilterModalVisible(true)}
+              style={[
+                styles.filterBtn, 
+                Object.keys(filters).length > 0 && { backgroundColor: 'rgba(63, 255, 139, 0.1)' }
+              ]}
+            >
+              <Ionicons 
+                name="options-outline" 
+                size={18} 
+                color={Object.keys(filters).length > 0 ? colors.brand : colors.textMuted} 
+              />
+            </TouchableOpacity>
           </View>
 
           {/* Ações Direitas */}
@@ -203,6 +221,13 @@ export default function BuyerHomeScreen() {
           </View>
         )}
       </ScrollView>
+
+      <SearchFilterModal
+        visible={isFilterModalVisible}
+        onClose={() => setIsFilterModalVisible(false)}
+        onApply={(newFilters) => setFilters(newFilters)}
+        initialFilters={filters}
+      />
     </PecaeBackground>
   );
 }
@@ -249,6 +274,11 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 8,
     fontSize: 12,
+  },
+  filterBtn: {
+    padding: 6,
+    borderRadius: 8,
+    marginLeft: 4,
   },
   headerActions: {
     flexDirection: 'row',

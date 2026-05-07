@@ -75,13 +75,16 @@ export class SearchService {
       };
     }
 
-    // Full-Text Search on Vehicle observations and version/model names
+    // Full-Text Search on Listings title/desc and Vehicle observations/specs
     if (q) {
       const searchQuery = q.trim().split(/\s+/).join(' & ');
       where.OR = [
         { observations: { search: searchQuery } },
+        { listings: { some: { title: { search: searchQuery } } } },
+        { listings: { some: { description: { search: searchQuery } } } },
         { version: { name: { contains: q, mode: 'insensitive' } } },
         { version: { model: { name: { contains: q, mode: 'insensitive' } } } },
+        { version: { model: { brand: { name: { contains: q, mode: 'insensitive' } } } } },
       ];
     }
 

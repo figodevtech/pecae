@@ -148,9 +148,13 @@ export default function CadastrarSucataScreen() {
     setIsSelectorVisible(true);
   };
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!data.brandId || !data.yearFabId || !data.modelId) {
       Alert.alert("Erro", "Selecione a marca, o ano e o modelo primeiro.");
+      return;
+    }
+    if (!data.title || data.title.length < 5) {
+      Alert.alert("Erro", "Insira um título válido para o anúncio (mínimo 5 caracteres).");
       return;
     }
     if (data.photos.length < 3) {
@@ -164,13 +168,65 @@ export default function CadastrarSucataScreen() {
 
     setIsPublishing(true);
     
-    // Simulating API call for now
-    setTimeout(() => {
+    try {
+      // 1. Criar o veículo
+      const { data: result } = await api.post('/vehicles', {
+        versionId: data.versionId || data.modelId, // No mobile simplificado versionId = modelId
+        yearFabId: data.yearFabId,
+        color: data.color || 'Não informada',
+        city: data.city || 'São Paulo',
+        state: data.state || 'SP',
+        plate: data.plate,
+        observations: data.observations,
+        availableParts: data.availableParts,
+        title: data.title,
+        description: data.description,
+        lat: data.lat,
+        lng: data.lng,
+      });
+
+      const vehicleId = result.vehicle.id;
+
+      // 2. Solicitar URLs para fotos
+      const { data: slots } = await api.post(`/vehicles/${vehicleId}/photos/upload-url`, {
+        count: data.photos.length
+      });
+
+      // 3. Upload das fotos (Simulado para o Storage Mock)
+      const photoResults = await Promise.all(
+        data.photos.map(async (photo, index) => {
+          const slot = slots[index];
+          
+          // No ambiente real, faríamos o PUT do blob aqui
+          // Como é MOCK, apenas simulamos o tempo de rede
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          return {
+            url: slot.publicUrl,
+            type: 'FRONT' as any, // Default type
+            order: index
+          };
+        })
+      );
+
+      // 4. Confirmar fotos no backend
+      await api.post(`/vehicles/${vehicleId}/photos/confirm`, {
+        photos: photoResults
+      });
+
+      Alert.alert("SUCESSO", "Veículo forjado com sucesso! O anúncio entrará em análise.", [
+        { text: "OK", onPress: () => {
+          resetWizard();
+          router.replace('/(seller)/(seller-tabs)/inventory');
+        }}
+      ]);
+    } catch (error: any) {
+      console.error(error);
+      const msg = error.response?.data?.message || "Falha ao publicar veículo.";
+      Alert.alert("ERRO NA FORJA", msg);
+    } finally {
       setIsPublishing(false);
-      Alert.alert("Sucesso", "Veículo enviado para análise!");
-      resetWizard();
-      router.back();
-    }, 1500);
+    }
   };
 
   return (
@@ -371,7 +427,7 @@ export default function CadastrarSucataScreen() {
             </View>
 
             <PecaeInput
-              label="Observações do Lote"
+              label="Observações do Lote (Interno)"
               placeholder="Descreva o estado geral do veículo e componentes principais."
               value={data.observations}
               onChangeText={(text) => updateData({ observations: text })}
@@ -379,6 +435,29 @@ export default function CadastrarSucataScreen() {
               numberOfLines={3}
               textAlignVertical="top"
             />
+
+            <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)', paddingTop: 24 }}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary, fontFamily: typography.display, marginBottom: 16 }]}>
+                DADOS DO ANÚNCIO (PÚBLICO)
+              </Text>
+              
+              <PecaeInput
+                label="Título do Anúncio"
+                placeholder="Ex: Sucata Uno Vivace 2015 Inteira"
+                value={data.title}
+                onChangeText={(text) => updateData({ title: text })}
+              />
+
+              <PecaeInput
+                label="Descrição do Anúncio"
+                placeholder="Descreva o estado para os compradores..."
+                value={data.description}
+                onChangeText={(text) => updateData({ description: text })}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+            </View>
           </View>
 
           {/* Section: Inventory */}

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException,
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import { UpdateAvailablePartsDto } from './dto/update-available-parts.dto';
+import { SearchListingsDto } from './dto/search-listings.dto';
 import { ListingStatus, VehicleStatus, PhotoType } from '@prisma/client';
 import { StorageService } from '../common/storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -248,9 +249,12 @@ export class VehiclesService {
   }
 
   /**
-   * Returns all active listings for buyers.
+   * Returns all active listings for buyers with advanced search and filters.
    */
-  async findAllPublished(filters: { city?: string; state?: string }) {
+  async findAllPublished(dto: SearchListingsDto) {
+    const { q, brandId, modelId, yearFabId, city, state, page = 1, limit = 20 } = dto;
+    const skip = (page - 1) * limit;
+
     const whereClause: any = {
       status: VehicleStatus.ACTIVE,
       listings: {
@@ -260,19 +264,65 @@ export class VehiclesService {
       },
     };
 
-    if (filters.city) whereClause.city = filters.city;
-    if (filters.state) whereClause.state = filters.state;
+    // Filtros de Localização (No Veículo)
+    if (city) whereClause.city = { contains: city, mode: 'insensitive' };
+    if (state) whereClause.state = state;
 
-    return this.prisma.vehicle.findMany({
-      where: whereClause,
-      include: {
-        listings: true,
-        photos: { orderBy: { order: 'asc' } },
-        version: { include: { model: { include: { brand: true } } } },
-        yearFab: true,
-      } as any,
-      orderBy: { createdAt: 'desc' },
-    });
+    // Filtros de Categoria (Relacionamento Version -> Model -> Brand)
+    if (yearFabId) whereClause.yearFabId = yearFabId;
+    
+    if (modelId || brandId) {
+      whereClause.version = {
+        model: {
+          id: modelId || undefined,
+          brandId: brandId || undefined,
+        },
+      };
+    }
+
+    // Busca Full-Text (No Listing vinculado)
+    if (q) {
+      const searchTerms = q.trim().split(/\s+/).join(' & ');
+      whereClause.listings.some = {
+        ...whereClause.listings.some,
+        OR: [
+          { title: { search: searchTerms } },
+          { description: { search: searchTerms } },
+        ],
+      };
+    }
+
+    const [total, items] = await Promise.all([
+      this.prisma.vehicle.count({ where: whereClause }),
+      this.prisma.vehicle.findMany({
+        where: whereClause,
+        include: {
+          listings: {
+            where: { status: ListingStatus.PUBLISHED },
+          },
+          photos: { orderBy: { order: 'asc' } },
+          version: { 
+            include: { 
+              model: { include: { brand: true } } 
+            } 
+          },
+          yearFab: true,
+        } as any,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   /**

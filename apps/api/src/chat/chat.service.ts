@@ -2,13 +2,18 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import { Subject, Observable } from 'rxjs';
 import { filter } from 'rxjs/operators';
+import { NotificationService } from '../notifications/notification.service';
+import { NotificationType } from '@prisma/client';
 
 @Injectable()
 export class ChatService {
   // Mapa para gerenciar streams de mensagens em tempo real por sala
   private messageStreams = new Map<string, Subject<any>>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService,
+  ) {}
 
   private getOrCreateStream(roomId: string): Subject<any> {
     if (!this.messageStreams.has(roomId)) {
@@ -353,6 +358,21 @@ export class ChatService {
     // Envia a mensagem para o stream em tempo real
     const stream = this.getOrCreateStream(roomId);
     stream.next(message);
+
+    // Enviar notificação para o destinatário
+    const recipientId = senderId === room.buyerId ? room.sellerId : room.buyerId;
+    const { title } = this.getRoomMetadata(room);
+
+    this.notificationService.send({
+      userId: recipientId,
+      type: NotificationType.CHAT_MESSAGE,
+      title: title,
+      body: content.length > 50 ? `${content.substring(0, 47)}...` : content,
+      data: {
+        roomId,
+        type: 'CHAT',
+      },
+    }).catch(err => console.error('Erro ao enviar notificação de chat:', err));
 
     return message;
   }

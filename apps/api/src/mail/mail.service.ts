@@ -13,11 +13,27 @@ export class MailService {
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>("RESEND_API_KEY");
-    this.resend = new Resend(apiKey);
+    if (apiKey && apiKey !== "re_123456789") {
+      this.resend = new Resend(apiKey);
+    } else {
+      this.logger.warn(
+        "RESEND_API_KEY não configurada ou inválida. E-mails serão apenas logados no console.",
+      );
+    }
   }
 
   private async sendEmail(payload: any, defaultErrorMessage: string) {
     try {
+      if (!this.resend) {
+        this.logger.debug("--- [DEBUG EMAIL] ---");
+        this.logger.debug(`De: ${payload.from}`);
+        this.logger.debug(`Para: ${payload.to}`);
+        this.logger.debug(`Assunto: ${payload.subject}`);
+        this.logger.debug(`Conteúdo: ${payload.html}`);
+        this.logger.debug("--- [FIM DEBUG EMAIL] ---");
+        return { id: "debug-id", mock: true };
+      }
+
       const { data, error } = await this.resend.emails.send(payload);
 
       if (error) {
@@ -40,8 +56,7 @@ export class MailService {
 
    * Por enquanto, envia um link fictício.
    */
-  async sendVerificationEmail(email: string, name: string, token: string) {
-    const verificationUrl = `${this.configService.get<string>("FRONTEND_URL")}/verify-email?token=${token}`;
+  async sendVerificationEmail(email: string, name: string, code: string) {
     const from =
       this.configService.get<string>("MAIL_FROM") ||
       "PECAÊ <onboarding@resend.dev>";
@@ -50,18 +65,20 @@ export class MailService {
       {
         from,
         to: [email],
-        subject: "Verifique sua conta no PECAÊ",
+        subject: "Seu código de acesso PECAÊ",
         html: `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #333;">Olá, ${name}!</h1>
-            <p>Obrigado por se cadastrar no <strong>PECAÊ</strong>. Para ativar sua conta, clique no botão abaixo:</p>
-            <div style="margin: 30px 0;">
-              <a href="${verificationUrl}" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Ativar minha conta</a>
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background-color: #000; color: #fff; padding: 40px; border-radius: 10px; border: 1px solid #333;">
+            <h1 style="color: #3fff8b; font-size: 24px; letter-spacing: 2px;">VERIFICAÇÃO DE IDENTIDADE</h1>
+            <p style="color: #ccc; font-size: 16px; margin-top: 20px;">Olá, ${name}.</p>
+            <p style="color: #ccc; font-size: 16px;">Para sincronizar seu acesso à plataforma <strong>PECAÊ</strong>, utilize o código abaixo:</p>
+            
+            <div style="margin: 40px 0; background-color: rgba(63, 255, 139, 0.1); padding: 30px; border-radius: 8px; text-align: center; border: 1px solid rgba(63, 255, 139, 0.3);">
+              <span style="font-size: 48px; font-weight: bold; color: #3fff8b; letter-spacing: 15px; font-family: monospace;">${code}</span>
             </div>
-            <p>Se o botão não funcionar, copie e cole este link no seu navegador:</p>
-            <p style="color: #666; font-size: 14px;">${verificationUrl}</p>
-            <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
-            <p style="color: #999; font-size: 12px;">Se você não solicitou este cadastro, ignore este e-mail.</p>
+            
+            <p style="color: #888; font-size: 14px;">Este código expira em 15 minutos.</p>
+            <hr style="border: 0; border-top: 1px solid #333; margin: 30px 0;">
+            <p style="color: #666; font-size: 12px;">SISTEMA AUTOMATIZADO PECAÊ // NÃO RESPONDA A ESTE E-MAIL</p>
           </div>
         `,
       },
