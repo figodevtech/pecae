@@ -47,4 +47,9 @@ export class SearchListingsDto {
   @Min(1)
   @Max(100)
   limit?: number = 20;
+
+  @ApiPropertyOptional({ description: 'ID da Peça no Catálogo Mestre' })
+  @IsOptional()
+  @IsUUID()
+  catalogPartId?: string;
 }

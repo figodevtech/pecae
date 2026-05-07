@@ -129,7 +129,6 @@ const VEHICLE_CATALOG = [
     ],
   },
 ];
-
 const PART_CATEGORIES = [
   { name: 'Motor', slug: 'motor', icon: 'engine' },
   { name: 'Câmbio', slug: 'cambio', icon: 'gearbox' },
@@ -146,6 +145,16 @@ const PART_CATEGORIES = [
   { name: 'Ar-Condicionado', slug: 'ar-condicionado', icon: 'ac' },
   { name: 'Escapamento', slug: 'escapamento', icon: 'exhaust' },
   { name: 'Capô e Para-choque', slug: 'capo-para-choque', icon: 'hood' },
+  { name: 'Iluminação', slug: 'iluminacao', icon: 'light' },
+];
+
+const PART_CATALOG_DATA = [
+  { categorySlug: 'motor', parts: ['Cabeçote', 'Bloco', 'Biela', 'Pistão', 'Virabrequim', 'Carter', 'Tampa de Válvulas', 'Coletor de Admissão', 'Coletor de Escape'] },
+  { categorySlug: 'cambio', parts: ['Eixo Primário', 'Eixo Secundário', 'Engrenagem 1ª Marcha', 'Sincronizador', 'Trambulador', 'Conversor de Torque', 'Capa Seca'] },
+  { categorySlug: 'suspensao-dianteira', parts: ['Amortecedor', 'Mola', 'Balança/Bandeja', 'Pivô', 'Barra Estabilizadora', 'Terminal de Direção', 'Cubo de Roda'] },
+  { categorySlug: 'lataria', parts: ['Porta Dianteira Esquerda', 'Porta Dianteira Direita', 'Porta Traseira Esquerda', 'Porta Traseira Direita', 'Tampa do Porta-Malas', 'Teto', 'Paralama Esquerdo', 'Paralama Direito'] },
+  { categorySlug: 'vidros', parts: ['Parabrisa', 'Vidro Traseiro', 'Vidro Porta Dianteira', 'Vidro Porta Traseira', 'Janela Lateral'] },
+  { categorySlug: 'iluminacao', parts: ['Farol Esquerdo', 'Farol Direito', 'Lanterna Traseira Esquerda', 'Lanterna Traseira Direita', 'Pisca-Pisca', 'Luz de Freio'] },
 ];
 
 async function seedVehicleCatalog() {
@@ -231,6 +240,31 @@ async function seedPartCategories() {
     });
   }
   console.log(`✅ ${PART_CATEGORIES.length} part categories seeded.`);
+}
+
+async function seedPartCatalog() {
+  for (const data of PART_CATALOG_DATA) {
+    const category = await prisma.partCategory.findUnique({
+      where: { slug: data.categorySlug },
+    });
+
+    if (!category) continue;
+
+    for (const partName of data.parts) {
+      const slug = `${data.categorySlug}-${partName.toLowerCase().replace(/ /g, '-')}`;
+      await prisma.partCatalog.upsert({
+        where: { slug },
+        update: {},
+        create: {
+          id: crypto.randomUUID(),
+          categoryId: category.id,
+          name: partName,
+          slug,
+        },
+      });
+    }
+  }
+  console.log('✅ Part catalog seeded with sub-parts.');
 }
 
 async function seedTestVehicles() {
@@ -388,6 +422,7 @@ async function main() {
   console.log('🌱 Starting PECAÊ database seed...');
 
   await seedPartCategories();
+  await seedPartCatalog();
   await seedAdminUser();
   await seedVehicleCatalog();
   await seedTestVehicles();

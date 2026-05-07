@@ -36,6 +36,10 @@ export class ReviewsService {
       throw new ForbiddenException('Você não é o comprador desta negociação.');
     }
 
+    if (chatRoom._count.messages === 0) {
+      throw new ForbiddenException('Não é possível avaliar uma negociação sem mensagens trocadas.');
+    }
+
     const sellerProfile = await this.prisma.sellerProfile.findUnique({
       where: { id: dto.sellerProfileId },
       select: { userId: true },

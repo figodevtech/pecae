@@ -6,13 +6,14 @@
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
-  previewFeatures = ["fullTextSearch"]
+  previewFeatures = ["fullTextSearch", "postgresqlExtensions"]
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [pg_trgm]
 }
 
 // ============================================================
@@ -239,8 +240,27 @@ model PartCategory {
 
   createdAt DateTime @default(now()) @map("created_at")
 
+  parts PartCatalog[]
+
   @@index([slug])
   @@map("part_categories")
+}
+
+/// Catalog of specific parts within a category.
+model PartCatalog {
+  id         String @id @default(uuid())
+  categoryId String @map("category_id")
+  name       String @db.VarChar(100)
+  slug       String @unique @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  category PartCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  vehicles Vehicle[]    @relation("VehicleParts")
+
+  @@index([categoryId])
+  @@index([slug])
+  @@map("part_catalog")
 }
 
 model VehicleBrand {
@@ -350,6 +370,13 @@ model SellerProfile {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
+
+  // Billing (Fase 3 Wave 2)
+  stripeCustomerId String? @unique @map("stripe_customer_id")
+  plan             PlanType @default(FREE)
+  
+  // Reputation & Badges (Fase 3 Wave 3)
+  badges           Json     @default("[]")
 
   user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   stats         SellerStats?
@@ -493,6 +520,7 @@ model Vehicle {
   photos          VehiclePhoto[]
   listings        Listing[]
   chatRooms       ChatRoom[]
+  availablePartsCatalog PartCatalog[] @relation("VehicleParts")
 
   @@index([sellerId, status])
   @@index([city, state])
@@ -782,8 +810,15 @@ model ListingStats {
 enum AdCampaignStatus {
   ACTIVE
   PAUSED
-  COMPLETED
+  EXPIRED
+  PENDING_PAYMENT
   CANCELLED
+}
+
+enum PlanType {
+  FREE
+  PRO
+  PREMIUM
 }
 
 model AdCampaign {
@@ -798,6 +833,9 @@ model AdCampaign {
   
   startDate DateTime         @map("start_date")
   endDate   DateTime?        @map("end_date")
+  
+  // Billing integration
+  externalPaymentId String?   @map("external_payment_id")
   
   createdAt DateTime         @default(now()) @map("created_at")
   updatedAt DateTime         @updatedAt @map("updated_at")

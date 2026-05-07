@@ -280,15 +280,25 @@ export class VehiclesService {
       };
     }
 
+    // Filtro por Peça do Catálogo (Compatibilidade)
+    if (dto.catalogPartId) {
+      whereClause.compatibleParts = {
+        some: {
+          partCatalogId: dto.catalogPartId,
+        },
+      };
+    }
+
     // Busca Full-Text (No Listing vinculado)
     if (q) {
-      const searchTerms = q.trim().split(/\s+/).join(' & ');
-      whereClause.listings.some = {
-        ...whereClause.listings.some,
-        OR: [
-          { title: { search: searchTerms } },
-          { description: { search: searchTerms } },
-        ],
+      whereClause.listings = {
+        some: {
+          status: ListingStatus.PUBLISHED,
+          OR: [
+            { title: { contains: q, mode: 'insensitive' } },
+            { description: { contains: q, mode: 'insensitive' } },
+          ],
+        },
       };
     }
 
