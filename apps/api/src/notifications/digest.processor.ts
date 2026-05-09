@@ -39,6 +39,7 @@ export class DigestProcessor extends WorkerHost {
                 model: true,
               },
             },
+            yearFab: true,
           },
         },
       },
@@ -74,8 +75,7 @@ export class DigestProcessor extends WorkerHost {
 
         // Simplificando o match de ano para o digest
         if (isMatch && (filters.yearMin || filters.yearMax)) {
-          const yearRecord = await this.prisma.vehicleYear.findUnique({ where: { id: v.yearFabId } });
-          const year = yearRecord?.yearFab;
+          const year = v.yearFab?.yearFab;
           if (year) {
             if (filters.yearMin && year < filters.yearMin) isMatch = false;
             if (filters.yearMax && year > filters.yearMax) isMatch = false;
@@ -94,14 +94,14 @@ export class DigestProcessor extends WorkerHost {
     }
 
     // 3. Enviar notificações consolidadas
-    for (const [userId, matches] of userMatches.entries()) {
+    const notifications = Array.from(userMatches.entries()).map(([userId, matches]) => {
       const count = matches.length;
       const title = `🔥 ${count} novos veículos para você!`;
       const body = `Encontramos ${count} anúncios que combinam com suas buscas salvas nas últimas 24h. Confira agora!`;
 
-      await this.notificationService.send({
+      return {
         userId,
-        type: 'SAVED_SEARCH_ALERT',
+        type: 'SAVED_SEARCH_ALERT' as const,
         title,
         body,
         data: {
@@ -109,9 +109,12 @@ export class DigestProcessor extends WorkerHost {
           matches: matches.slice(0, 3), // Enviar os 3 primeiros nomes como exemplo
           digestType: 'DAILY',
         },
-      });
-      
-      console.log(`[DigestProcessor] Digest enviado para o usuário ${userId} com ${count} matches.`);
+      };
+    });
+
+    if (notifications.length > 0) {
+      await this.notificationService.sendBatch(notifications);
+      console.log(`[DigestProcessor] ${notifications.length} digests enviados em lote.`);
     }
 
     console.log('[DigestProcessor] Digest Diário concluído.');

@@ -10,17 +10,22 @@ describe('NotificationService', () => {
   const mockPrisma: any = {
     notification: {
       create: jest.fn(),
+      createManyAndReturn: jest.fn(),
     },
     user: {
       findUnique: jest.fn(),
     },
     notificationPreferences: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       create: jest.fn(),
+      createMany: jest.fn(),
     },
     notificationLog: {
       create: jest.fn(),
-    }
+      createMany: jest.fn(),
+    },
+    $transaction: jest.fn((cb) => cb(mockPrisma)),
   };
 
   const mockQueue = {
@@ -32,7 +37,8 @@ describe('NotificationService', () => {
       providers: [
         NotificationService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: getQueueToken('notifications-queue'), useValue: mockQueue }
+        { provide: getQueueToken('notifications-queue'), useValue: mockQueue },
+        { provide: getQueueToken('alerts'), useValue: mockQueue }
       ],
     }).compile();
 
@@ -47,16 +53,18 @@ describe('NotificationService', () => {
 
   describe('[NOTIF-U-01] Nova mensagem de chat dispara notificação para o destinatário', () => {
     it('should call send method with userId and create notification', async () => {
-      mockPrisma.notificationPreferences.findUnique.mockResolvedValue({ userId: 'destinatario-1', inAppEnabled: true });
-      mockPrisma.notification.create.mockResolvedValue({ id: 'notif-1' });
+      mockPrisma.notificationPreferences.findMany.mockResolvedValue([{ userId: 'destinatario-1', inAppEnabled: true, pushEnabled: false, emailEnabled: false }]);
+      mockPrisma.notification.createManyAndReturn.mockResolvedValue([{ id: 'notif-1', userId: 'destinatario-1', title: 'New message' }]);
 
       await service.send({ userId: 'destinatario-1', type: 'CHAT_NEW_MESSAGE', title: 'New message', body: 'Hello' });
 
-      expect(mockPrisma.notification.create).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.objectContaining({
-          userId: 'destinatario-1',
-          type: 'CHAT_NEW_MESSAGE'
-        })
+      expect(mockPrisma.notification.createManyAndReturn).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            userId: 'destinatario-1',
+            type: 'CHAT_NEW_MESSAGE'
+          })
+        ])
       }));
     });
   });
