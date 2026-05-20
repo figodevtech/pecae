@@ -21,38 +21,46 @@ export default function FavoritosScreen() {
     const listing = item.listing;
     if (!listing) return null;
 
+    // Dados de localização e nome vêm do vehicle relacionado (Listing não tem city/state/price)
+    const vehicle = listing.vehicle;
+    const locationText = vehicle ? `${vehicle.city}, ${vehicle.state}` : null;
+    const modelName = vehicle?.version?.model
+      ? `${vehicle.version.model.brand?.name ?? ''} ${vehicle.version.model.name}`
+      : listing.title;
+
     return (
-      <PecaeGlassCard 
-        style={styles.card} 
+      <PecaeGlassCard
+        style={styles.card}
         intensity={isDark ? 10 : 35}
       >
-        <TouchableOpacity 
-          style={styles.cardInner} 
+        <TouchableOpacity
+          style={styles.cardInner}
           onPress={() => router.push(`/(tabs)/vehicle/${listing.id}`)}
         >
           <View style={styles.cardInfo}>
-            <Text 
+            <Text
               style={[styles.cardTitle, { color: colors.textPrimary, fontFamily: typography.display }]}
               numberOfLines={2}
             >
-              {listing.title || 'Anúncio sem título'}
+              {modelName || listing.title || 'Anúncio sem título'}
             </Text>
+            {/* RN04: Plataforma não exibe preços — negociação exclusivamente via chat */}
             <View style={styles.priceRow}>
               <Text style={[styles.cardPrice, { color: colors.brand, fontFamily: typography.mono }]}>
-                {listing.price ? `R$ ${listing.price.toLocaleString('pt-BR')}` : 'Preço sob consulta'}
+                Negociar via Chat
               </Text>
             </View>
-            {listing.city && (
+            {locationText && (
               <View style={styles.locationRow}>
                 <Ionicons name="location-outline" size={12} color={colors.textMuted} />
                 <Text style={[styles.locationText, { color: colors.textMuted, fontFamily: typography.body }]}>
-                  {listing.city}, {listing.state}
+                  {locationText}
                 </Text>
               </View>
             )}
           </View>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[styles.favoriteButton, { backgroundColor: colors.error + '15' }]}
             onPress={() => handleToggleFavorite(listing.id)}
           >

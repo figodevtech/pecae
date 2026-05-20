@@ -93,10 +93,12 @@ When auto-applying an agent, inform the user:
 
 ### 🌐 Política de Idioma (PT-BR)
 
-> 🔴 **MANDATORY:** Todas as respostas, explicações, comentários de código e documentações (.md, .json) geradas DEVEM estar em **Português do Brasil (PT-BR)**.
-- **Código**: Nomes de variáveis, funções e classes permanecem em **Inglês** (padrão da indústria).
+> 🔴 **MANDATORY:** Todas as respostas, explicações, comentários de código, mensagens de commit e documentações (.md, .json) geradas DEVEM estar em **Português do Brasil (PT-BR)**.
+- **Respostas e Interações**: O agente deve responder, explicar e interagir sempre em **Português do Brasil (PT-BR)**.
+- **Commits**: Mensagens de commits do Git criadas ou executadas pelo agente devem ser escritas obrigatoriamente em **Português do Brasil (PT-BR)**.
+- **Código**: Nomes de variáveis, funções, classes, pastas e arquivos de código permanecem em **Inglês** (padrão da indústria).
 - **Comentários**: Devem ser em **PT-BR**.
-- **Documentação**: Arquivos na pasta `.planning/` e outros docs do projeto devem ser estritamente em **PT-BR**.
+- **Documentação**: Arquivos na pasta `.planning/` e outros documentos do projeto devem ser estritamente em **PT-BR**.
 
 ---
 

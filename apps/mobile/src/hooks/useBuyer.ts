@@ -3,7 +3,8 @@ import { api } from '../services/api';
 
 export interface BuyerProfile {
   id: string;
-  avatarUrl?: string;
+  // Alinhado com UpdateBuyerDto da API — campo: avatar (não avatarUrl)
+  avatar?: string;
   cpfCnpj?: string;
   birthDate?: string;
   phone?: string;
@@ -21,6 +22,7 @@ export interface BuyerData {
   id: string;
   email: string;
   name?: string;
+  avatar?: string;
   role: string;
   buyerProfile: BuyerProfile | null;
   notificationPreferences: NotificationPreferences | null;
@@ -40,7 +42,8 @@ export const useUpdateBuyerProfile = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (updateData: { name?: string; avatarUrl?: string }) => {
+    // Campo renomeado de avatarUrl para avatar — alinhado com UpdateBuyerDto
+    mutationFn: async (updateData: { name?: string; avatar?: string }) => {
       const { data } = await api.put<BuyerData>('/buyers/me', updateData);
       return data;
     },

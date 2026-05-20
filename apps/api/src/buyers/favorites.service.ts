@@ -44,8 +44,27 @@ export class FavoritesService {
       include: {
         listing: {
           include: {
-            sellerProfile: true,
-          }
+            sellerProfile: {
+              select: { storeName: true, city: true, state: true },
+            },
+            vehicle: {
+              select: {
+                city: true,
+                state: true,
+                version: {
+                  select: {
+                    name: true,
+                    model: {
+                      select: {
+                        name: true,
+                        brand: { select: { name: true } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       },
       orderBy: { createdAt: 'desc' },

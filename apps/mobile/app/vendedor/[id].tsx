@@ -51,8 +51,10 @@ export default function PublicProfileScreen() {
   }
 
   const handleStartChat = () => {
-    // router.push(`/chat/${id}`);
-    alert('Funcionalidade de chat disponível em breve (M06)');
+    // Navega para a lista de anúncios do vendedor para o comprador escolher qual negociar
+    // O chat é vinculado a um listing específico (M08 — RN11)
+    router.push(`/vendedor/${id}`);
+    // Scroll para a seção de anúncios via feedback visual
   };
 
   const handleWhatsApp = () => {
@@ -226,9 +228,32 @@ export default function PublicProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {listings?.length > 0 ? (
+          {listings && listings.length > 0 ? (
             <View style={styles.listingsGrid}>
-              {/* Maps listings here */}
+              {listings.map((listing: any) => (
+                <TouchableOpacity
+                  key={listing.id}
+                  style={styles.listingCard}
+                  onPress={() => router.push(`/anuncio/${listing.id}`)}
+                >
+                  <View style={styles.listingCardInner}>
+                    <View style={styles.listingCardHeader}>
+                      <Text style={styles.listingTitle} numberOfLines={2}>
+                        {listing.title || 'Sucata'}
+                      </Text>
+                      {listing.status === 'PUBLISHED' && (
+                        <View style={styles.activeBadge}>
+                          <Text style={styles.activeBadgeText}>ATIVO</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.listingFooter}>
+                      <Ionicons name="chatbubble-outline" size={14} color="#3B82F6" />
+                      <Text style={styles.negotiateText}>Negociar via Chat</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
             </View>
           ) : (
             <PecaeGlassCard style={styles.emptyCard}>
@@ -416,6 +441,54 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+  },
+  listingCard: {
+    width: '100%',
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    overflow: 'hidden',
+  },
+  listingCardInner: {
+    padding: 16,
+  },
+  listingCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  listingTitle: {
+    flex: 1,
+    color: '#F8FAFC',
+    fontSize: 15,
+    fontWeight: '600',
+    marginRight: 8,
+  },
+  activeBadge: {
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    borderColor: 'rgba(34, 197, 94, 0.4)',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  activeBadgeText: {
+    color: '#22C55E',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  listingFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  negotiateText: {
+    color: '#3B82F6',
+    fontSize: 13,
+    fontWeight: '600',
   },
   emptyCard: {
     alignItems: 'center',

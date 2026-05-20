@@ -40,16 +40,6 @@ export class SellersController {
     return this.sellersService.getStats(req.user.id);
   }
 
-  @Get(':id')
-  async getPublicProfile(@Param('id') id: string) {
-    return this.sellersService.findPublicProfile(id);
-  }
-
-  @Get(':id/listings')
-  async getSellerListings(@Param('id') id: string) {
-    return this.sellersService.getSellerListings(id);
-  }
-
   @Post('me/logo')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserType.SELLER, UserType.BOTH)
@@ -83,5 +73,15 @@ export class SellersController {
   @Roles(UserType.SELLER, UserType.BOTH)
   async confirmVerification(@Req() req: any, @Body() dto: VerificationRequestDto) {
     return this.sellersService.confirmVerificationRequest(req.user.id, dto.documentUrls);
+  }
+
+  @Get(':id')
+  async getPublicProfile(@Param('id') id: string) {
+    return this.sellersService.findPublicProfile(id);
+  }
+
+  @Get(':id/listings')
+  async getSellerListings(@Param('id') id: string) {
+    return this.sellersService.getSellerListings(id);
   }
 }
