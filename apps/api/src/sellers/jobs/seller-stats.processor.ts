@@ -27,8 +27,17 @@ export class SellerStatsProcessor extends WorkerHost {
 
     // 2. Recalcular Tempo Médio de Resposta
     // Consideramos apenas as primeiras interações de cada chat para medir a prontidão
+    const profile = await this.prisma.sellerProfile.findUnique({
+      where: { id: sellerProfileId },
+      select: { userId: true },
+    });
+
+    if (!profile) {
+      throw new Error(`Seller profile not found for id: ${sellerProfileId}`);
+    }
+
     const chatRooms = await this.prisma.chatRoom.findMany({
-      where: { sellerId: (await this.prisma.sellerProfile.findUnique({ where: { id: sellerProfileId }, select: { userId: true } })).userId },
+      where: { sellerId: profile.userId },
       include: {
         messages: {
           orderBy: { createdAt: 'asc' },

@@ -11,7 +11,7 @@ import {
 import { SavedSearchesService } from './saved-searches.service';
 import { CreateSavedSearchDto, UpdateSavedSearchDto } from './dto/saved-search.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { GetUser } from '../auth/decorators/get-user.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @Controller('buyers/saved-searches')
 @UseGuards(JwtAuthGuard)
@@ -19,23 +19,23 @@ export class SavedSearchesController {
   constructor(private readonly savedSearchesService: SavedSearchesService) {}
 
   @Post()
-  create(@GetUser('id') userId: string, @Body() createSavedSearchDto: CreateSavedSearchDto) {
+  create(@CurrentUser('id') userId: string, @Body() createSavedSearchDto: CreateSavedSearchDto) {
     return this.savedSearchesService.create(userId, createSavedSearchDto);
   }
 
   @Get()
-  findAll(@GetUser('id') userId: string) {
+  findAll(@CurrentUser('id') userId: string) {
     return this.savedSearchesService.findAll(userId);
   }
 
   @Get(':id')
-  findOne(@GetUser('id') userId: string, @Param('id') id: string) {
+  findOne(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.savedSearchesService.findOne(id, userId);
   }
 
   @Patch(':id')
   update(
-    @GetUser('id') userId: string,
+    @CurrentUser('id') userId: string,
     @Param('id') id: string,
     @Body() updateSavedSearchDto: UpdateSavedSearchDto,
   ) {
@@ -44,7 +44,7 @@ export class SavedSearchesController {
 
   @Patch(':id/alert')
   toggleAlert(
-    @GetUser('id') userId: string,
+    @CurrentUser('id') userId: string,
     @Param('id') id: string,
     @Body('alertActive') alertActive: boolean,
   ) {
@@ -52,7 +52,7 @@ export class SavedSearchesController {
   }
 
   @Delete(':id')
-  remove(@GetUser('id') userId: string, @Param('id') id: string) {
+  remove(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.savedSearchesService.remove(id, userId);
   }
 }

@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import { UpdateAvailablePartsDto } from './dto/update-available-parts.dto';
@@ -9,9 +11,12 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class VehiclesService {
+  private readonly logger = new Logger(VehiclesService.name);
+
   constructor(
     private prisma: PrismaService,
-    private storageService: StorageService
+    private storageService: StorageService,
+    @InjectQueue('vehicle-photos') private vehiclePhotosQueue: Queue,
   ) {}
 
   /**
@@ -374,32 +379,46 @@ export class VehiclesService {
     if (!vehicle) throw new NotFoundException('Veículo não encontrado');
     if (vehicle.sellerId !== sellerId) throw new ForbiddenException('Ação não permitida');
 
+    // 1. Cancelar/remover jobs anteriores associados a este veículo na fila (Option A)
+    try {
+      const jobs = await this.vehiclePhotosQueue.getJobs(['waiting', 'active', 'delayed', 'paused']);
+      for (const job of jobs) {
+        if (job.data?.vehicleId === id) {
+          this.logger.log(`Cancelando job anterior ${job.id} na fila para o veículo ${id}`);
+          await job.remove();
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Falha não fatal ao remover jobs anteriores da fila: ${err.message}`);
+    }
+
     return this.prisma.$transaction(async (tx) => {
-      // 1. Create photo records
-      await tx.vehiclePhoto.createMany({
-        data: photos.map((p) => ({
-          vehicleId: id,
-          url: p.url,
-          type: p.type,
-          order: p.order,
-        })),
+      // 2. Limpar os registros antigos de fotos do banco para evitar sujeira
+      await tx.vehiclePhoto.deleteMany({
+        where: { vehicleId: id },
       });
 
-      // 2. Reset status to PENDING
+      // 3. Manter/Reverter status para DRAFT (rascunho) temporariamente enquanto processa em background
       await tx.vehicle.update({
         where: { id },
-        data: { status: VehicleStatus.PENDING },
+        data: { status: VehicleStatus.DRAFT },
       });
 
       await tx.listing.updateMany({
         where: { vehicleId: id },
         data: { 
-          status: ListingStatus.PENDING,
+          status: ListingStatus.DRAFT,
           publishedAt: null
         },
       });
 
-      return { message: 'Fotos confirmadas. O anúncio passará por nova moderação.' };
+      // 4. Enfileirar o novo lote de fotos para processamento assíncrono
+      await this.vehiclePhotosQueue.add('process-vehicle-photo', {
+        vehicleId: id,
+        photos,
+      });
+
+      return { message: 'Fotos recebidas com sucesso. O processamento assíncrono e otimização das imagens foram iniciados em background.' };
     });
   }
 }

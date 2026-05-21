@@ -101,8 +101,8 @@ export const useVehicleWizardStore = create<WizardState>((set, get) => ({
       case 2:
         return !!(data.color && data.city && data.state);
       case 3:
-        // RN: Mínimo 3 fotos, Máximo 12.
-        return data.photos.length >= 3 && data.photos.length <= 12;
+        // RN: Mínimo 4 fotos, Máximo 10.
+        return data.photos.length >= 4 && data.photos.length <= 10;
       case 4:
         return !!(data.title && data.title.length >= 5 && data.availableParts.length > 0);
       default:

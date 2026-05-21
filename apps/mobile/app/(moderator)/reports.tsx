@@ -13,8 +13,6 @@ import { PecaeBackground, PecaeGlassCard, PecaeScreenContainer } from '../../src
 import { usePecaeTheme } from '../../src/theme';
 import { api } from '../../src/services/api';
 import { Ionicons } from '@expo/vector-icons';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 interface Report {
   id: string;
@@ -33,6 +31,21 @@ interface Report {
   listingId?: string;
   chatRoomId?: string;
 }
+
+const formatDate = (dateString: string) => {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    const day = String(date.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const month = months[date.getMonth()];
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${day} ${month}, ${hours}:${minutes}`;
+  } catch (e) {
+    return dateString;
+  }
+};
 
 export default function ModerationReportsScreen() {
   const { colors, typography, effects } = usePecaeTheme();
@@ -88,7 +101,7 @@ export default function ModerationReportsScreen() {
           </Text>
         </View>
         <Text style={[styles.dateText, { color: colors.textMuted, fontFamily: typography.body }]}>
-          {format(new Date(item.createdAt), "dd MMM, HH:mm", { locale: ptBR })}
+          {formatDate(item.createdAt)}
         </Text>
       </View>
 

@@ -31,4 +31,9 @@ export class MockStorageProvider implements StorageProvider {
   async deleteFile(bucket: string, path: string): Promise<void> {
     this.logger.debug(`[MOCK STORAGE] Deletando arquivo no bucket: ${bucket}, path: ${path}`);
   }
+
+  async uploadFile(bucket: string, path: string, buffer: Buffer, contentType?: string): Promise<string> {
+    this.logger.debug(`[MOCK STORAGE] Upload de arquivo de ${buffer.length} bytes para ${bucket}/${path}`);
+    return `https://pecae-mock-storage.com/${bucket}/${path}`;
+  }
 }

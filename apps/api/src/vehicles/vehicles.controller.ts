@@ -67,6 +67,7 @@ export class VehiclesController {
   }
 
   @Put(':id')
+  @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserType.SELLER, UserType.BOTH)
   @ApiOperation({ summary: 'Atualiza dados do veículo (Força re-moderação)' })

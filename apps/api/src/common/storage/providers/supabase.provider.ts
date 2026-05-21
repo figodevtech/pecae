@@ -58,4 +58,18 @@ export class SupabaseStorageProvider implements StorageProvider {
   async deleteFile(bucket: string, path: string): Promise<void> {
     await this.supabase.storage.from(bucket).remove([path]);
   }
+
+  async uploadFile(bucket: string, path: string, buffer: Buffer, contentType?: string): Promise<string> {
+    const { data, error } = await this.supabase.storage
+      .from(bucket)
+      .upload(path, buffer, {
+        contentType,
+        upsert: true,
+      });
+
+    if (error) throw error;
+
+    const { data: publicData } = this.supabase.storage.from(bucket).getPublicUrl(path);
+    return publicData.publicUrl;
+  }
 }

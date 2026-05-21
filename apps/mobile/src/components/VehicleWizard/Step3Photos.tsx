@@ -20,8 +20,8 @@ export const Step3Photos: React.FC = () => {
   const { data, updateData, nextStep, prevStep, isStepValid } = useVehicleWizardStore();
 
   const pickImage = async () => {
-    if (data.photos.length >= 12) {
-      Alert.alert('Limite Atingido', 'Você pode adicionar no máximo 12 fotos.');
+    if (data.photos.length >= 10) {
+      Alert.alert('Limite Atingido', 'Você pode adicionar no máximo 10 fotos.');
       return;
     }
 
@@ -78,12 +78,26 @@ export const Step3Photos: React.FC = () => {
     updateData({ coverPhotoUri: uri });
   };
 
+  const moveImage = (index: number, direction: 'prev' | 'next') => {
+    const newPhotos = [...data.photos];
+    const targetIndex = direction === 'prev' ? index - 1 : index + 1;
+    
+    if (targetIndex < 0 || targetIndex >= newPhotos.length) return;
+    
+    // Swap elements
+    const temp = newPhotos[index];
+    newPhotos[index] = newPhotos[targetIndex];
+    newPhotos[targetIndex] = temp;
+    
+    updateData({ photos: newPhotos });
+  };
+
   const isValid = isStepValid(3);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={[styles.instruction, { color: colors.textMuted, fontFamily: typography.body }]}>
-        Adicione entre 3 e 12 fotos. Toque na estrela para definir a capa.
+        Adicione entre 4 e 10 fotos. Use as setas para ordenar e a estrela para definir a capa principal.
       </Text>
 
       <View style={styles.grid}>
@@ -91,26 +105,69 @@ export const Step3Photos: React.FC = () => {
           const isCover = photo.uri === data.coverPhotoUri;
           return (
             <View key={photo.uri + index} style={styles.slotWrapper}>
-              <PecaeGlassCard intensity={isCover ? 30 : 10} style={[styles.photoSlot, isCover && { borderColor: colors.primary, borderWidth: 2 }]}>
+              <PecaeGlassCard 
+                intensity={isCover ? 35 : 10} 
+                style={[
+                  styles.photoSlot, 
+                  isCover && { borderColor: colors.brand, borderWidth: 1.5 }
+                ]}
+              >
                 <Image source={{ uri: photo.uri }} style={styles.image} />
                 
+                {/* Badge de Ordem */}
+                <View style={[styles.orderBadge, isCover && { backgroundColor: colors.brand }]}>
+                  <Text style={[styles.orderText, { color: isCover ? '#000' : '#fff', fontFamily: typography.bold }]}>
+                    #{index + 1}
+                  </Text>
+                </View>
+
+                {/* Remover Foto */}
                 <TouchableOpacity 
                   style={styles.removeBtn} 
                   onPress={() => removeImage(index)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Ionicons name="close" size={18} color="white" />
+                  <Ionicons name="close" size={14} color="white" />
                 </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={[styles.coverBtn, isCover && { backgroundColor: colors.primary }]} 
-                  onPress={() => setAsCover(photo.uri)}
-                >
-                  <Ionicons name={isCover ? "star" : "star-outline"} size={16} color="white" />
-                </TouchableOpacity>
+                {/* Barra de Ações (Bottom) */}
+                <View style={styles.actionRow}>
+                  <TouchableOpacity 
+                    style={[styles.actionIconBtn, isCover && { backgroundColor: colors.brand }]} 
+                    onPress={() => setAsCover(photo.uri)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name={isCover ? "star" : "star-outline"} size={10} color={isCover ? '#000' : '#fff'} />
+                  </TouchableOpacity>
+
+                  <View style={{ flex: 1 }} />
+
+                  {/* Mover para Trás */}
+                  {index > 0 && (
+                    <TouchableOpacity 
+                      style={styles.actionIconBtn} 
+                      onPress={() => moveImage(index, 'prev')}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="chevron-back" size={11} color="white" />
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Mover para Frente */}
+                  {index < data.photos.length - 1 && (
+                    <TouchableOpacity 
+                      style={styles.actionIconBtn} 
+                      onPress={() => moveImage(index, 'next')}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="chevron-forward" size={11} color="white" />
+                    </TouchableOpacity>
+                  )}
+                </View>
 
                 {isCover && (
-                  <View style={[styles.coverLabel, { backgroundColor: colors.primary }]}>
-                    <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>CAPA</Text>
+                  <View style={[styles.coverLabel, { backgroundColor: colors.brand }]}>
+                    <Text style={{ color: '#000', fontSize: 7, fontFamily: typography.bold }}>CAPA</Text>
                   </View>
                 )}
               </PecaeGlassCard>
@@ -118,11 +175,11 @@ export const Step3Photos: React.FC = () => {
           );
         })}
 
-        {data.photos.length < 12 && (
+        {data.photos.length < 10 && (
           <TouchableOpacity style={styles.slotWrapper} onPress={pickImage}>
             <PecaeGlassCard intensity={5} style={[styles.photoSlot, styles.addBtn]}>
-              <Ionicons name="add" size={40} color={colors.textMuted} />
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Adicionar</Text>
+              <Ionicons name="camera-outline" size={32} color={colors.textMuted} />
+              <Text style={{ color: colors.textMuted, fontSize: 10, fontFamily: typography.bold, marginTop: 4 }}>Adicionar</Text>
             </PecaeGlassCard>
           </TouchableOpacity>
         )}
@@ -149,11 +206,13 @@ export const Step3Photos: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
+    paddingBottom: 40,
   },
   instruction: {
     textAlign: 'center',
     marginBottom: 20,
-    fontSize: 14,
+    fontSize: 12,
+    lineHeight: 18,
   },
   grid: {
     flexDirection: 'row',
@@ -177,7 +236,7 @@ const styles = StyleSheet.create({
   addBtn: {
     borderStyle: 'dashed',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.15)',
   },
   image: {
     width: '100%',
@@ -185,35 +244,68 @@ const styles = StyleSheet.create({
   },
   removeBtn: {
     position: 'absolute',
-    top: 5,
-    right: 5,
-    backgroundColor: 'rgba(255,0,0,0.7)',
-    borderRadius: 10,
-    padding: 2,
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.85)',
+    borderRadius: 8,
+    width: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
-  coverBtn: {
+  orderBadge: {
     position: 'absolute',
-    bottom: 5,
-    left: 5,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 10,
-    padding: 4,
+    top: 4,
+    left: 4,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 5,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    zIndex: 10,
+  },
+  orderText: {
+    fontSize: 8,
+  },
+  actionRow: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 24,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    zIndex: 10,
+  },
+  actionIconBtn: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginHorizontal: 1,
   },
   coverLabel: {
     position: 'absolute',
     top: 0,
     left: 0,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderBottomRightRadius: 8,
+    right: 0,
+    bottom: 0,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    borderRadius: 12,
+    pointerEvents: 'none',
   },
   footer: {
     flexDirection: 'row',
     marginTop: 20,
-    paddingBottom: 40,
   },
   button: {
     flex: 1,
     marginHorizontal: 5,
   },
 });
+

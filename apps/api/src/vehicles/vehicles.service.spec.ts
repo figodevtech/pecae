@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../common/storage/storage.service';
 import { VehicleStatus, ListingStatus } from '@prisma/client';
 import { BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { getQueueToken } from '@nestjs/bullmq';
 
 describe('VehiclesService', () => {
   let service: VehiclesService;
@@ -34,12 +35,18 @@ describe('VehiclesService', () => {
     createSignedUploadUrl: jest.fn(),
   };
 
+  const mockQueue = {
+    getJobs: jest.fn(),
+    add: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         VehiclesService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: StorageService, useValue: mockStorageService },
+        { provide: getQueueToken('vehicle-photos'), useValue: mockQueue },
       ],
     }).compile();
 

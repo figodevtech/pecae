@@ -17,12 +17,12 @@ export class ReportsService {
     return this.prisma.report.create({
       data: {
         reporterId,
-        reportedUserId,
+        reportedId: reportedUserId,
         listingId,
         chatRoomId,
         category,
         reason,
-        status: ReportStatus.OPEN,
+        status: ReportStatus.PENDING,
       },
     });
   }
@@ -31,7 +31,7 @@ export class ReportsService {
     return this.prisma.report.findMany({
       include: {
         reporter: { select: { name: true, email: true } },
-        reportedUser: { select: { name: true, email: true } },
+        reported: { select: { name: true, email: true } },
         listing: { select: { title: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -44,8 +44,8 @@ export class ReportsService {
       data: {
         status,
         moderatorId,
-        resolutionNotes,
-        resolvedAt: status !== ReportStatus.OPEN ? new Date() : null,
+        moderatorNotes: resolutionNotes,
+        resolvedAt: status !== ReportStatus.PENDING ? new Date() : null,
       },
     });
   }

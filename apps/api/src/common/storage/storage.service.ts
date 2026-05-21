@@ -52,4 +52,8 @@ export class StorageService implements OnModuleInit {
     if (!this.provider) return;
     await this.provider.deleteFile(bucket, path);
   }
+
+  async uploadFile(bucket: string, path: string, buffer: Buffer, contentType?: string) {
+    return this.provider.uploadFile(bucket, path, buffer, contentType);
+  }
 }
