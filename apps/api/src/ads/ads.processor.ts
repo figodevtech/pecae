@@ -94,10 +94,7 @@ export class AdsProcessor extends WorkerHost {
           });
           
           // Invalida cache de anúncios patrocinados
-          const cacheKeys = await this.redis.keys('sponsored:cache:*');
-          for (const key of cacheKeys) {
-            await this.redis.del(key);
-          }
+          await this.redis.delByPrefix('sponsored:cache:');
         }
       });
 
@@ -166,10 +163,7 @@ export class AdsProcessor extends WorkerHost {
           });
 
           // Invalida cache de anúncios patrocinados
-          const cacheKeys = await this.redis.keys('sponsored:cache:*');
-          for (const key of cacheKeys) {
-            await this.redis.del(key);
-          }
+          await this.redis.delByPrefix('sponsored:cache:');
         }
       });
 
