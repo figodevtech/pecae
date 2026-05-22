@@ -39,93 +39,19 @@ Este documento detalha o roteiro cronológico de desenvolvimento estruturado por
 
 ---
 
-## Milestone 6 (Sprint 6) — Moderação, Qualidade, Alertas e Notificações In-App (Foco: M06 + M09 + M11 + MFA)
+## [CONCLUÍDA] Milestone 6 (Sprint 6) — Moderação, Qualidade, Alertas e Notificações In-App (Foco: M06 + M09 + M11 + MFA)
 
-### M06 — Avaliações e Reputação (P1)
-**Descrição:** Módulo de avaliação de vendedores após uma negociação concluída. Comprador avalia o vendedor com nota (1-5 estrelas) e comentário opcional. Rating média exibida publicamente no perfil do vendedor (M03). Busca de sucatas pode ordenar por rating. Vendedor não avalia comprador nesta versão.
-
-- [ ] **M06-T01: Schema Prisma — Review** (Prioridade: P1)
-  *Descrição:* Criar model Review no Prisma com: sellerProfileId, buyerId, chatRoomId (@unique para garantir 1 avaliação por negociação), rating (1-5), comment? e timestamps. Adicionar campo rating ao SellerStats.
-    - [ ] **M06-T01-ST01:** Escrever model Review e atualizar SellerStats (Estimativa: 2h)
-    - [ ] **M06-T01-ST02:** ReviewService e ReviewController — CRUD de avaliações (Estimativa: 4h)
-    - [ ] **M06-T01-ST03:** Worker BullMQ para recálculo de rating do vendedor (Estimativa: 2h)
-- [ ] **M06-T02: Tela de avaliação e exibição de reviews no app** (Prioridade: P1)
-  *Descrição:* Implementar tela ou modal de avaliação dentro do chat (app/chat/[roomId]/avaliar.tsx). Exibir histórico de avaliações em chips de estrelas e comentários no perfil público do vendedor (M03).
-    - [ ] **M06-T02-ST01:** Componente StarRatingPicker e tela/modal de avaliação (Estimativa: 3h)
-    - [ ] **M06-T02-ST02:** Seção de avaliações no perfil público do vendedor (M03) (Estimativa: 2h)
-
-### M09 — Painel de Moderação (P0)
-**Descrição:** Painel de moderação exclusivo para Admins/Moderadores da equipe PECAÊ. Responsável pela aprovação ou rejeição de anúncios cadastrados pelos vendedores (RN14). Central de revisão de documentos de verificação (Selo Verificado, M03) e denúncias de usuários. Nenhum anúncio vai a público sem aprovação (RN14).
-
-- [ ] **M09-T01: RBAC — Roles Admin e Moderador com CASL no NestJS** (Prioridade: P0)
-  *Descrição:* Implementar controle de acesso baseado em roles (RBAC) usando CASL no NestJS. Criar roles ADMIN e MODERATOR no model User. Criar guard AdminGuard/@Roles decorator para proteger todos os endpoints /moderation/*. Garantir que RN15 seja aplicado em nível de infraestrutura.
-    - [ ] **M09-T01-ST01:** Enum UserRole no Prisma e RolesGuard no NestJS (Estimativa: 3h)
-- [ ] **M09-T02: ModerationController — fila de anúncios pendentes e ações de approve/reject** (Prioridade: P0)
-  *Descrição:* Implementar ModerationController com: GET /moderation/listings (fila de PENDING_APPROVAL com filtros e paginação), GET /moderation/listings/:id (detalhes completos), POST /moderation/listings/:id/approve, POST /moderation/listings/:id/reject { rejectionReason }.
-    - [ ] **M09-T02-ST01:** Endpoints de fila de moderação e detalhes do anúncio (Estimativa: 3h)
-    - [ ] **M09-T02-ST02:** Endpoints de approve e reject com side effects (Estimativa: 4h)
-- [ ] **M09-T03: Moderação de documentos de verificação (Selo Verificado)** (Prioridade: P0)
-  *Descrição:* Implementar fila de revisão de VerificationRequests (Selo Verificado do M03). Endpoints: GET /moderation/verifications (fila PENDING), POST /moderation/verifications/:id/approve, POST /moderation/verifications/:id/reject { reason }.
-    - [ ] **M09-T03-ST01:** Endpoints de moderação de VerificationRequests (Estimativa: 3h)
-
-### M11 — Notificações (P0)
-**Descrição:** Módulo centralizador de todas as notificações do PECAÊ: push notifications (via Expo/FCM/APNs), e-mails transacionais (via Resend API) e notificações in-app em tempo real (via Supabase Realtime). Outros módulos chamam NotificationService para disparar notificações. Respeita preferências de canal configuradas pelo usuário (M02).
-
-- [ ] **M11-T01: Schema Prisma — Notification e NotificationLog** (Prioridade: P0)
-  *Descrição:* Criar model Notification (histórico in-app) e NotificationLog (log de entregas por canal) no Prisma. Notification é a entidade principal persistida para o histórico do usuário. NotificationLog rastreia resultado de envio por canal (push/email).
-    - [ ] **M11-T01-ST01:** Escrever models Notification e NotificationLog (Estimativa: 2h)
-- [ ] **M11-T02: NotificationService — centro de envio multi-canal** (Prioridade: P0)
-  *Descrição:* Implementar NotificationModule com NotificationService.send() que: persiste Notification no banco, emite via Supabase Realtime (CDC automático), e enfileira jobs BullMQ para push e e-mail conforme preferências do usuário e tipo da notificação.
-    - [ ] **M11-T02-ST01:** Implementar NotificationService.send() com persistência e BullMQ (Estimativa: 4h)
-    - [ ] **M11-T02-ST02:** Worker de push notifications e worker de e-mail (Resend) (Estimativa: 4h)
-- [ ] **M11-T03: Central de notificações no app (aba Notificações)** (Prioridade: P0)
-  *Descrição:* Implementar tela app/(tabs)/notificacoes.tsx com lista de notificações do usuário, badge de não lidas no tab, marcação de lida ao tocar, e integração Supabase Realtime para novas notificações em tempo real.
-    - [ ] **M11-T03-ST01:** NotificationController — endpoints de listagem e leitura (Estimativa: 3h)
-    - [ ] **M11-T03-ST02:** Tela de notificações com Realtime e navegação contextual (Estimativa: 4h)
-
-### M_favoritos_alertas — Favoritos e Alertas de Busca (P1)
-**Descrição:** Módulo que gerencia a lista de anúncios favoritados pelo comprador e as buscas salvas com alertas. Quando um novo anúncio é publicado (após aprovação da moderação no M09), o sistema verifica todas as SavedSearches com alertActive=true e notifica compradores com filtros compatíveis via push notification e in-app.
-
-- [ ] **MFA-T01: Worker BullMQ de matching de alertas** (Prioridade: P1)
-  *Descrição:* Implementar worker BullMQ 'match-alerts' que é invocado quando um novo anúncio é publicado. Busca todas as SavedSearches ativas, avalia compatibilidade de filtros com o novo veículo, e enfileira jobs de push notification para matches encontrados.
-    - [ ] **MFA-T01-ST01:** Implementar matchFilters e dispatch de notificações (Estimativa: 5h)
-    - [ ] **MFA-T01-ST02:** Integração com M09 — disparar job ao publicar anúncio (Estimativa: 2h)
-- [ ] **MFA-T02: Telas de favoritos e buscas salvas (extensão do M02)** (Prioridade: P1)
-  *Descrição:* Estender as telas já definidas no M02 (app/(buyer)/favoritos.tsx e app/(buyer)/buscas-salvas.tsx) com integrações do sistema de alertas. Adicionar badge de estado de alerta nas buscas salvas e indicação de anúncio salvo nos cards de favoritos (verificar se ainda PUBLISHED).
-    - [ ] **MFA-T02-ST01:** SavedSearchCard com toggle de alerta e badge de status (Estimativa: 3h)
-    - [ ] **MFA-T02-ST02:** Badge de disponibilidade em anúncios favoritados (Estimativa: 2h)
+> [!NOTE]
+> As tarefas e estimativas originais desta Milestone foram arquivadas em [v6.0-ROADMAP.md](file:///c:/Users/italo/Desktop/Projects/pecae/.planning/milestones/v6.0/v6.0-ROADMAP.md) conforme o protocolo de compressão de contexto.
 
 ---
 
-## Milestone 7 (Sprint 7) — Monetização: Campanhas de Anúncios Patrocinados (Foco: M13)
+---
 
-### M13 — Anúncios e Publicidade In-App (P1)
-**Descrição:** Módulo de monetização via publicidade in-app do PECAÊ. Suporta dois tipos de anúncios: (1) Anúncios programáticos via Google AdMob (banners e intersticiais automáticos gerenciados pelo ecossistema Google), e (2) Anúncios Diretos — desmanches que pagam para ter seus anúncios destacados nas listagens de busca (Sponsored/Patrocinado). O módulo inclui painel admin para gestão de campanhas diretas, configuração de frequência e posicionamento de anúncios AdMob, e tracking de impressões e cliques para relatórios de performance.
+## [CONCLUÍDA] Milestone 7 (Sprint 7) — Monetização: Campanhas de Anúncios Patrocinados (Foco: M13)
 
-- [ ] **M13-T01: Schema Prisma — AdCampaign, AdImpression, AdClick e flag no Listing** (Prioridade: P0)
-  *Descrição:* Criar models de banco para o sistema de anúncios diretos: AdCampaign (campanha vinculada a um Listing), AdImpression (registro de cada impressão) e AdClick (registro de cada clique). Adicionar flag isSponsoredActive ao model Listing existente para queries eficientes de sponsored na busca.
-    - [ ] **M13-T01-ST01:** Adicionar flag isSponsoredActive ao Listing e migration (Estimativa: 1h)
-    - [ ] **M13-T01-ST02:** Models AdCampaign, AdImpression e AdClick (Estimativa: 2h)
-    - [ ] **M13-T01-ST03:** AdCampaignService — lógica de expiração e verificações de criação (Estimativa: 2h)
-- [ ] **M13-T02: AdController — endpoints de campanha (Admin) e tracking (público)** (Prioridade: P0)
-  *Descrição:* Implementar AdController com endpoints admin (POST /admin/campaigns, GET /admin/campaigns, PATCH /admin/campaigns/:id, DELETE /admin/campaigns/:id) e endpoints públicos de tracking (POST /ads/track/impression, POST /ads/track/click). Endpoints admin protegidos por RolesGuard ADMIN.
-    - [ ] **M13-T02-ST01:** DTOs de campanha e endpoints Admin CRUD (Estimativa: 3h)
-    - [ ] **M13-T02-ST02:** Endpoints de tracking — impression e click (fire-and-forget) (Estimativa: 2h)
-    - [ ] **M13-T02-ST03:** Worker BullMQ de tracking — processar impressões e cliques (Estimativa: 3h)
-- [ ] **M13-T03: Integração com M07 — injeção de Sponsored Listings nos resultados de busca** (Prioridade: P0)
-  *Descrição:* Modificar SearchService (M07) para injetar até 2 Sponsored Listings no início da resposta de busca, com base no targeting da campanha (brandId, city, state) e os filtros da busca do usuário. Usar cache Redis de 60s para o resultado de getSponsoredForSearch.
-    - [ ] **M13-T03-ST01:** getSponsoredForSearch com Redis cache e injeção no SearchService (Estimativa: 3h)
-    - [ ] **M13-T03-ST02:** SponsoredListingCard no app — badge e tracking de impressão (Estimativa: 2h)
-- [ ] **M13-T04: Integração Google AdMob SDK no app React Native** (Prioridade: P1)
-  *Descrição:* Instalar e configurar react-native-google-mobile-ads no Expo. Implementar consentimento CMP (UMP SDK) para LGPD compliance. Configurar BannerAd em telas de busca e detalhes do anúncio. Configurar InterstitialAd com frequência capping de 30 minutos via AsyncStorage.
-    - [ ] **M13-T04-ST01:** Instalação e configuração do react-native-google-mobile-ads no Expo (Estimativa: 3h)
-    - [ ] **M13-T04-ST02:** BannerAd nas telas de busca e detalhes do anúncio (Estimativa: 2h)
-    - [ ] **M13-T04-ST03:** InterstitialAd com frequência capping de 30 minutos (Estimativa: 2h)
-- [ ] **M13-T05: Painel Admin de Campanhas e Dashboard de Performance de Anúncios** (Prioridade: P1)
-  *Descrição:* Construir interface admin de gestão de campanhas de Sponsored Listings. Como o painel admin pode ser web ou mobile, implementar telas para: listar campanhas com métricas (CTR, impressões, cliques), criar nova campanha, visualizar detalhes de campanha com gráfico de impressões por dia (integrado ao M12), pausar e cancelar campanhas.
-    - [ ] **M13-T05-ST01:** Endpoint GET /admin/campaigns/:id com timeline de impressões (Estimativa: 2h)
-    - [ ] **M13-T05-ST02:** Tela admin de lista de campanhas com busca e filtros (Estimativa: 3h)
-    - [ ] **M13-T05-ST03:** Formulário de criação de campanha com autocomplete de Listings (Estimativa: 3h)
+> [!NOTE]
+> As tarefas e estimativas originais desta Milestone foram arquivadas em [v7.0-ROADMAP.md](file:///c:/Users/italo/Desktop/Projects/pecae/.planning/milestones/v7.0/v7.0-ROADMAP.md) conforme o protocolo de compressão de contexto.
 
 ---
 

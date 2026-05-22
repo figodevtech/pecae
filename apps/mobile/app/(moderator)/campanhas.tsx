@@ -10,6 +10,7 @@ import {
   TextInput,
   RefreshControl,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -29,7 +30,7 @@ import {
 } from '../../src/hooks/useAds';
 import { AdCampaign } from '../../src/services/ads';
 
-const { width } = Dimensions.get('window');
+const { width, height: screenHeight } = Dimensions.get('window');
 
 export default function AdsCampaignScreen() {
   const { colors, typography } = usePecaeTheme();
@@ -39,6 +40,15 @@ export default function AdsCampaignScreen() {
     budget: '',
     startDate: new Date().toISOString().split('T')[0],
     endDate: '',
+    targetBrandId: '',
+    targetModelId: '',
+    targetYear: '',
+    targetCity: '',
+    targetState: '',
+    maxImpressions: '',
+    budgetType: 'CPC' as 'CPC' | 'CPM' | 'FLAT_PERIOD',
+    notes: '',
+    externalPaymentId: '',
   });
 
   const { data: campaigns = [], isLoading, refetch, isFetching } = useAllCampaigns();
@@ -54,13 +64,25 @@ export default function AdsCampaignScreen() {
       return;
     }
 
+    const payload: any = {
+      listingId: newCampaign.listingId,
+      budget: parseFloat(newCampaign.budget),
+      startDate: newCampaign.startDate,
+      budgetType: newCampaign.budgetType,
+    };
+
+    if (newCampaign.endDate) payload.endDate = newCampaign.endDate;
+    if (newCampaign.targetBrandId) payload.targetBrandId = newCampaign.targetBrandId;
+    if (newCampaign.targetModelId) payload.targetModelId = newCampaign.targetModelId;
+    if (newCampaign.targetYear) payload.targetYear = parseInt(newCampaign.targetYear, 10);
+    if (newCampaign.targetCity) payload.targetCity = newCampaign.targetCity;
+    if (newCampaign.targetState) payload.targetState = newCampaign.targetState.toUpperCase().substring(0, 2);
+    if (newCampaign.maxImpressions) payload.maxImpressions = parseInt(newCampaign.maxImpressions, 10);
+    if (newCampaign.notes) payload.notes = newCampaign.notes;
+    if (newCampaign.externalPaymentId) payload.externalPaymentId = newCampaign.externalPaymentId;
+
     createMutation.mutate(
-      {
-        listingId: newCampaign.listingId,
-        budget: parseFloat(newCampaign.budget),
-        startDate: newCampaign.startDate,
-        endDate: newCampaign.endDate || undefined,
-      },
+      payload,
       {
         onSuccess: () => {
           Alert.alert('Sucesso', 'Campanha criada com sucesso!');
@@ -70,6 +92,15 @@ export default function AdsCampaignScreen() {
             budget: '',
             startDate: new Date().toISOString().split('T')[0],
             endDate: '',
+            targetBrandId: '',
+            targetModelId: '',
+            targetYear: '',
+            targetCity: '',
+            targetState: '',
+            maxImpressions: '',
+            budgetType: 'CPC',
+            notes: '',
+            externalPaymentId: '',
           });
         },
         onError: (error: any) => {
@@ -238,51 +269,191 @@ export default function AdsCampaignScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.form}>
-                  <Text style={[styles.label, { color: colors.textMuted }]}>ID DO ANÚNCIO (LISTING)</Text>
-                  <TextInput
-                    style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
-                    placeholder="Cole o UUID do anúncio"
-                    placeholderTextColor={colors.textMuted}
-                    value={newCampaign.listingId}
-                    onChangeText={(text) => setNewCampaign({ ...newCampaign, listingId: text })}
-                  />
+                <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false} contentContainerStyle={styles.formContentScroll}>
+                  <View style={styles.form}>
+                    <Text style={[styles.label, { color: colors.textMuted }]}>ID DO ANÚNCIO (LISTING)</Text>
+                    <TextInput
+                      style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                      placeholder="Cole o UUID do anúncio"
+                      placeholderTextColor={colors.textMuted}
+                      value={newCampaign.listingId}
+                      onChangeText={(text) => setNewCampaign({ ...newCampaign, listingId: text })}
+                    />
 
-                  <Text style={[styles.label, { color: colors.textMuted }]}>ORÇAMENTO (R$)</Text>
-                  <TextInput
-                    style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
-                    placeholder="Ex: 500.00"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="numeric"
-                    value={newCampaign.budget}
-                    onChangeText={(text) => setNewCampaign({ ...newCampaign, budget: text })}
-                  />
+                    <Text style={[styles.label, { color: colors.textMuted }]}>ORÇAMENTO (R$)</Text>
+                    <TextInput
+                      style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                      placeholder="Ex: 500.00"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                      value={newCampaign.budget}
+                      onChangeText={(text) => setNewCampaign({ ...newCampaign, budget: text })}
+                    />
 
-                  <Text style={[styles.label, { color: colors.textMuted }]}>DATA DE INÍCIO</Text>
-                  <TextInput
-                    style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
-                    placeholder="AAAA-MM-DD"
-                    placeholderTextColor={colors.textMuted}
-                    value={newCampaign.startDate}
-                    onChangeText={(text) => setNewCampaign({ ...newCampaign, startDate: text })}
-                  />
+                    <Text style={[styles.label, { color: colors.textMuted }]}>TIPO DE ORÇAMENTO (MONETIZAÇÃO)</Text>
+                    <View style={styles.budgetTypeSelector}>
+                      {(['CPC', 'CPM', 'FLAT_PERIOD'] as const).map((type) => {
+                        const isSelected = newCampaign.budgetType === type;
+                        const labels = {
+                          CPC: 'CPC (Cliques)',
+                          CPM: 'CPM (Mil Visualizações)',
+                          FLAT_PERIOD: 'Fixo por Período'
+                        };
+                        return (
+                          <TouchableOpacity
+                            key={type}
+                            style={[
+                              styles.budgetTypeBtn,
+                              {
+                                backgroundColor: isSelected ? colors.brand : 'rgba(255,255,255,0.05)',
+                                borderColor: isSelected ? colors.brand : colors.border
+                              }
+                            ]}
+                            onPress={() => setNewCampaign({ ...newCampaign, budgetType: type })}
+                          >
+                            <Text
+                              style={[
+                                styles.budgetTypeBtnText,
+                                {
+                                  color: isSelected ? '#000' : colors.textPrimary,
+                                  fontFamily: typography.medium
+                                }
+                              ]}
+                            >
+                              {labels[type]}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
 
-                  <Text style={[styles.label, { color: colors.textMuted }]}>DATA DE TÉRMINO (OPCIONAL)</Text>
-                  <TextInput
-                    style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
-                    placeholder="AAAA-MM-DD"
-                    placeholderTextColor={colors.textMuted}
-                    value={newCampaign.endDate}
-                    onChangeText={(text) => setNewCampaign({ ...newCampaign, endDate: text })}
-                  />
+                    <View style={styles.row}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.label, { color: colors.textMuted }]}>DATA DE INÍCIO</Text>
+                        <TextInput
+                          style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                          placeholder="AAAA-MM-DD"
+                          placeholderTextColor={colors.textMuted}
+                          value={newCampaign.startDate}
+                          onChangeText={(text) => setNewCampaign({ ...newCampaign, startDate: text })}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.label, { color: colors.textMuted }]}>DATA DE TÉRMINO</Text>
+                        <TextInput
+                          style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                          placeholder="AAAA-MM-DD"
+                          placeholderTextColor={colors.textMuted}
+                          value={newCampaign.endDate}
+                          onChangeText={(text) => setNewCampaign({ ...newCampaign, endDate: text })}
+                        />
+                      </View>
+                    </View>
 
-                  <PecaeButton
-                    title="LANÇAR CAMPANHA"
-                    onPress={handleCreateCampaign}
-                    loading={createMutation.isPending}
-                    style={{ marginTop: 24, backgroundColor: colors.brand }}
-                  />
-                </View>
+                    <Text style={[styles.sectionHeader, { color: colors.brand, fontFamily: typography.display }]}>
+                      // CONFIGURAÇÃO_DE_TARGETING
+                    </Text>
+
+                    <View style={styles.row}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.label, { color: colors.textMuted }]}>ID MARCA (OPCIONAL)</Text>
+                        <TextInput
+                          style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                          placeholder="UUID Marca"
+                          placeholderTextColor={colors.textMuted}
+                          value={newCampaign.targetBrandId}
+                          onChangeText={(text) => setNewCampaign({ ...newCampaign, targetBrandId: text })}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.label, { color: colors.textMuted }]}>ID MODELO (OPCIONAL)</Text>
+                        <TextInput
+                          style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                          placeholder="UUID Modelo"
+                          placeholderTextColor={colors.textMuted}
+                          value={newCampaign.targetModelId}
+                          onChangeText={(text) => setNewCampaign({ ...newCampaign, targetModelId: text })}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.row}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.label, { color: colors.textMuted }]}>ANO DO VEÍCULO (OPCIONAL)</Text>
+                        <TextInput
+                          style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                          placeholder="Ex: 2022"
+                          placeholderTextColor={colors.textMuted}
+                          keyboardType="numeric"
+                          value={newCampaign.targetYear}
+                          onChangeText={(text) => setNewCampaign({ ...newCampaign, targetYear: text })}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.label, { color: colors.textMuted }]}>MÁX IMPRESSÕES (CAPPING)</Text>
+                        <TextInput
+                          style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                          placeholder="Ex: 5000"
+                          placeholderTextColor={colors.textMuted}
+                          keyboardType="numeric"
+                          value={newCampaign.maxImpressions}
+                          onChangeText={(text) => setNewCampaign({ ...newCampaign, maxImpressions: text })}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.row}>
+                      <View style={{ flex: 2 }}>
+                        <Text style={[styles.label, { color: colors.textMuted }]}>CIDADE TARGET (OPCIONAL)</Text>
+                        <TextInput
+                          style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                          placeholder="Cidade"
+                          placeholderTextColor={colors.textMuted}
+                          value={newCampaign.targetCity}
+                          onChangeText={(text) => setNewCampaign({ ...newCampaign, targetCity: text })}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.label, { color: colors.textMuted }]}>UF TARGET</Text>
+                        <TextInput
+                          style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, textAlign: 'center' }]}
+                          placeholder="UF"
+                          placeholderTextColor={colors.textMuted}
+                          value={newCampaign.targetState}
+                          onChangeText={(text) => setNewCampaign({ ...newCampaign, targetState: text.toUpperCase() })}
+                          maxLength={2}
+                        />
+                      </View>
+                    </View>
+
+                    <Text style={[styles.label, { color: colors.textMuted }]}>ID PAGAMENTO EXTERNO (OPCIONAL)</Text>
+                    <TextInput
+                      style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                      placeholder="Identificador do pagamento externo"
+                      placeholderTextColor={colors.textMuted}
+                      value={newCampaign.externalPaymentId}
+                      onChangeText={(text) => setNewCampaign({ ...newCampaign, externalPaymentId: text })}
+                    />
+
+                    <Text style={[styles.label, { color: colors.textMuted }]}>NOTAS ADMINISTRATIVAS / OBSERVAÇÕES</Text>
+                    <TextInput
+                      style={[styles.input, styles.textArea, { color: colors.textPrimary, borderColor: colors.border }]}
+                      placeholder="Escreva detalhes sobre o faturamento manual, observações financeiras..."
+                      placeholderTextColor={colors.textMuted}
+                      multiline
+                      numberOfLines={3}
+                      value={newCampaign.notes}
+                      onChangeText={(text) => setNewCampaign({ ...newCampaign, notes: text })}
+                    />
+
+                    <PecaeButton
+                      title="LANÇAR CAMPANHA PATROCINADA"
+                      onPress={handleCreateCampaign}
+                      loading={createMutation.isPending}
+                      style={{ marginTop: 24, backgroundColor: colors.brand, marginBottom: 40 }}
+                    />
+                  </View>
+                </ScrollView>
               </View>
             </BlurView>
           </View>
@@ -417,20 +588,25 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 40,
+    maxHeight: screenHeight * 0.85,
     borderWidth: 1,
-    borderColor: 'rgba(63, 255, 139, 0.15)',
-    borderBottomWidth: 0,
+    borderColor: 'rgba(212, 175, 55, 0.25)', // Dourado
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   modalTitle: {
     fontSize: 18,
     letterSpacing: 2,
+  },
+  formScroll: {
+    flex: 1,
+  },
+  formContentScroll: {
+    paddingBottom: 24,
   },
   form: {
     gap: 16,
@@ -440,6 +616,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     fontWeight: 'bold',
   },
+  sectionHeader: {
+    fontSize: 11,
+    letterSpacing: 1.5,
+    marginTop: 10,
+    marginBottom: 4,
+  },
   input: {
     height: 48,
     borderWidth: 1,
@@ -447,5 +629,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 14,
     backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  textArea: {
+    height: 80,
+    paddingTop: 12,
+    textAlignVertical: 'top',
+  },
+  row: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  budgetTypeSelector: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  budgetTypeBtn: {
+    flex: 1,
+    minWidth: 100,
+    height: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  budgetTypeBtnText: {
+    fontSize: 10,
+    textAlign: 'center',
   },
 });

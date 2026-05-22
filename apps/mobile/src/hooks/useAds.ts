@@ -12,7 +12,7 @@ export const useCreateCampaign = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (dto: { listingId: string; budget: number; startDate: string; endDate?: string }) =>
+    mutationFn: (dto: any) =>
       adsService.createCampaign(dto),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ads', 'campaigns'] });

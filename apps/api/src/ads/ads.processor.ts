@@ -53,10 +53,52 @@ export class AdsProcessor extends WorkerHost {
           },
         });
 
+        const campaign = await tx.adCampaign.findUnique({
+          where: { id: campaignId },
+        });
+
+        if (!campaign) return;
+
+        let spentIncrement = 0;
+        if (campaign.budgetType === 'CPM') {
+          spentIncrement = 0.005; // Equivalente a R$ 5,00 por CPM (1000 impressões)
+        }
+
+        const newImpressions = campaign.impressions + 1;
+        const newSpent = Number(campaign.spent) + spentIncrement;
+
+        let status = campaign.status;
+        let isSponsoredActive = true;
+
+        if (
+          (campaign.maxImpressions !== null && newImpressions >= campaign.maxImpressions) ||
+          newSpent >= Number(campaign.budget)
+        ) {
+          status = 'EXPIRED';
+          isSponsoredActive = false;
+        }
+
         await tx.adCampaign.update({
           where: { id: campaignId },
-          data: { impressions: { increment: 1 } },
+          data: {
+            impressions: { increment: 1 },
+            spent: { increment: spentIncrement },
+            status,
+          },
         });
+
+        if (!isSponsoredActive) {
+          await tx.listing.update({
+            where: { id: listingId },
+            data: { isSponsoredActive: false },
+          });
+          
+          // Invalida cache de anúncios patrocinados
+          const cacheKeys = await this.redis.keys('sponsored:cache:*');
+          for (const key of cacheKeys) {
+            await this.redis.del(key);
+          }
+        }
       });
 
       // Set TTL of 1 hour (3600 seconds)
@@ -87,10 +129,48 @@ export class AdsProcessor extends WorkerHost {
           },
         });
 
+        const campaign = await tx.adCampaign.findUnique({
+          where: { id: campaignId },
+        });
+
+        if (!campaign) return;
+
+        let spentIncrement = 0;
+        if (campaign.budgetType === 'CPC') {
+          spentIncrement = 0.50; // R$ 0,50 por clique
+        }
+
+        const newSpent = Number(campaign.spent) + spentIncrement;
+
+        let status = campaign.status;
+        let isSponsoredActive = true;
+
+        if (newSpent >= Number(campaign.budget)) {
+          status = 'EXPIRED';
+          isSponsoredActive = false;
+        }
+
         await tx.adCampaign.update({
           where: { id: campaignId },
-          data: { clicks: { increment: 1 } },
+          data: {
+            clicks: { increment: 1 },
+            spent: { increment: spentIncrement },
+            status,
+          },
         });
+
+        if (!isSponsoredActive) {
+          await tx.listing.update({
+            where: { id: listingId },
+            data: { isSponsoredActive: false },
+          });
+
+          // Invalida cache de anúncios patrocinados
+          const cacheKeys = await this.redis.keys('sponsored:cache:*');
+          for (const key of cacheKeys) {
+            await this.redis.del(key);
+          }
+        }
       });
 
       // Set TTL of 24 hours (86400 seconds)

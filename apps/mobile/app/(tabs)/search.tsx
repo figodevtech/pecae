@@ -20,6 +20,7 @@ import { usePecaeTheme } from '../../src/theme';
 import { useSearchVehicles, useSearchSuggestions } from '../../src/hooks/useVehicles';
 import { useSavedSearches } from '../../src/hooks/useSavedSearches';
 import { useRouter } from 'expo-router';
+import { SponsoredListingCard } from '../../src/components/Ads/SponsoredListingCard';
 
 const QUICK_FILTERS = [
   { id: 'all', label: 'Todos', icon: 'apps-outline' },
@@ -287,6 +288,16 @@ export default function SearchScreen() {
         ) : (
           <View style={styles.resultsGrid}>
             {results.map((vehicle: any, index: number) => {
+              if (vehicle.isSponsored) {
+                return (
+                  <SponsoredListingCard
+                    key={`sponsored-${vehicle.id}`}
+                    vehicle={vehicle}
+                    itemWidth={itemWidth}
+                  />
+                );
+              }
+
               const brand = vehicle.version?.model?.brand?.name || '';
               const model = vehicle.version?.model?.name || '';
               const imageUrl = vehicle.thumbnail || (vehicle.photos && vehicle.photos.length > 0 ? vehicle.photos[0] : null);

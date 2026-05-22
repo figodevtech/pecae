@@ -109,45 +109,57 @@ export class SearchService {
       ];
     }
 
-    // Execute query for Vehicles
-    const vehicles = await this.prisma.vehicle.findMany({
-      where,
-      include: {
-        photos: {
-          orderBy: { order: 'asc' },
-        },
-        version: {
-          include: {
-            model: {
-              include: {
-                brand: true,
+    // Execute queries concurrently: Organic Search and Sponsored Listings
+    const [vehicles, sponsoredListings] = await Promise.all([
+      this.prisma.vehicle.findMany({
+        where,
+        include: {
+          photos: {
+            orderBy: { order: 'asc' },
+          },
+          version: {
+            include: {
+              model: {
+                include: {
+                  brand: true,
+                },
               },
             },
           },
-        },
-        yearFab: true,
-        seller: {
-          select: {
-            id: true,
-            storeName: true,
-            city: true,
-            state: true,
-            isVerified: true,
+          yearFab: true,
+          seller: {
+            select: {
+              id: true,
+              storeName: true,
+              city: true,
+              state: true,
+              isVerified: true,
+            },
           },
         },
-      },
-      take: limit + 1,
-      cursor: cursor ? { id: cursor } : undefined,
-      skip: cursor ? 1 : 0,
-      orderBy: { createdAt: 'desc' },
-    });
+        take: limit + 1,
+        cursor: cursor ? { id: cursor } : undefined,
+        skip: cursor ? 1 : 0,
+        orderBy: { createdAt: 'desc' },
+      }),
+      cursor
+        ? Promise.resolve([]) // Apenas injeta patrocinados na 1ª página
+        : this.adsService.getSponsoredListings({
+            brandId: resolvedBrandId,
+            modelId,
+            year: yearMin || yearMax || undefined,
+            city,
+            state,
+            limit: 2,
+          }),
+    ]);
 
     const hasMore = vehicles.length > limit;
     const dataItems = hasMore ? vehicles.slice(0, limit) : vehicles;
     const nextCursor = hasMore ? dataItems[dataItems.length - 1].id : null;
 
-    // Map output to match the UI expectations for Vehicle-Centric
-    const data = dataItems.map((item) => {
+    // Map organic vehicles to final card format
+    const organicData = dataItems.map((item) => {
       const partsIds = Array.isArray(item.availableParts)
         ? (item.availableParts as string[])
         : [];
@@ -175,14 +187,59 @@ export class SearchService {
       };
     });
 
+    // Map sponsored listings to final card format (same as organic card)
+    const sponsoredData = sponsoredListings.map((listing: any) => {
+      const item = listing.vehicle;
+      const partsIds = Array.isArray(item.availableParts)
+        ? (item.availableParts as string[])
+        : [];
+      
+      const partNames = partsIds
+        .map((id) => partCategoryMap.get(id))
+        .filter(Boolean) as string[];
+
+      return {
+        id: item.id,
+        brand: item.version.model.brand.name,
+        model: item.version.model.name,
+        version: item.version.name,
+        yearFab: item.yearFab.yearFab,
+        color: item.color,
+        city: item.city,
+        state: item.state,
+        thumbnail: item.photos[0]?.url || null,
+        photos: item.photos.map((p: any) => p.url),
+        availablePartsCount: partNames.length,
+        availableParts: partNames,
+        seller: {
+          id: item.sellerProfile.id,
+          storeName: item.sellerProfile.storeName,
+          city: item.sellerProfile.city,
+          state: item.sellerProfile.state,
+          isVerified: item.sellerProfile.isVerified,
+        },
+        isSponsored: true,
+        campaignId: listing.campaignId,
+        listingId: listing.id,
+        createdAt: item.createdAt,
+      };
+    });
+
+    // Apply Active Deduplication: filter out sponsored vehicle IDs from organic list
+    const sponsoredVehicleIds = new Set(sponsoredData.map(s => s.id));
+    const dedupedOrganic = organicData.filter(item => !sponsoredVehicleIds.has(item.id));
+
+    // Combine: sponsored listings at the very top of the list
+    const data = [...sponsoredData, ...dedupedOrganic];
+
     const result = {
       data,
       nextCursor,
       hasMore,
     };
 
-    // Cache for 5 minutes
-    await this.redis.set(cacheKey, result, 300);
+    // Cache for 60 seconds (1 minute) to keep ads and listings responsive
+    await this.redis.set(cacheKey, result, 60);
 
     return result;
   }

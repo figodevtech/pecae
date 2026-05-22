@@ -6,30 +6,35 @@ import { getQueueToken } from '@nestjs/bullmq';
 describe('NotificationService', () => {
   let service: NotificationService;
   let prisma: PrismaService;
+  let notifQueue: any;
 
   const mockPrisma: any = {
     notification: {
-      create: jest.fn(),
       createManyAndReturn: jest.fn(),
-    },
-    user: {
+      findMany: jest.fn(),
+      count: jest.fn(),
       findUnique: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
     },
     notificationPreferences: {
-      findUnique: jest.fn(),
       findMany: jest.fn(),
-      create: jest.fn(),
       createMany: jest.fn(),
     },
     notificationLog: {
-      create: jest.fn(),
       createMany: jest.fn(),
     },
-    $transaction: jest.fn((cb) => cb(mockPrisma)),
+    favorite: {
+      findMany: jest.fn(),
+    },
+    $transaction: jest.fn(async (cb) => {
+      return cb(mockPrisma);
+    }),
   };
 
   const mockQueue = {
     add: jest.fn(),
+    addBulk: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -44,28 +49,77 @@ describe('NotificationService', () => {
 
     service = module.get<NotificationService>(NotificationService);
     prisma = module.get<PrismaService>(PrismaService);
+    notifQueue = module.get(getQueueToken('notifications-queue'));
     jest.clearAllMocks();
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+  describe('[NOTIF-S-01] sendBatch logic', () => {
+    it('should create preferences if missing, create notifications, and add to BullMQ queues', async () => {
+      // Setup missing preference for user-2
+      mockPrisma.notificationPreferences.findMany
+        .mockResolvedValueOnce([
+          { userId: 'user-1', inAppEnabled: true, pushEnabled: true, emailEnabled: false }
+        ])
+        .mockResolvedValueOnce([
+          { userId: 'user-2', inAppEnabled: true, pushEnabled: false, emailEnabled: true }
+        ]);
+
+      mockPrisma.notification.createManyAndReturn.mockResolvedValue([
+        { id: 'notif-1', userId: 'user-1', title: 'T1' },
+        { id: 'notif-2', userId: 'user-2', title: 'T2' }
+      ]);
+
+      await service.sendBatch([
+        { userId: 'user-1', type: 'CHAT_NEW_MESSAGE', title: 'T1', body: 'B1' },
+        { userId: 'user-2', type: 'CHAT_NEW_MESSAGE', title: 'T2', body: 'B2' }
+      ]);
+
+      // Check createMany preferences
+      expect(mockPrisma.notificationPreferences.createMany).toHaveBeenCalledWith({
+        data: [{ userId: 'user-2' }],
+        skipDuplicates: true
+      });
+
+      // Check transaction and inApp creations
+      expect(mockPrisma.notification.createManyAndReturn).toHaveBeenCalled();
+      expect(mockPrisma.notificationLog.createMany).toHaveBeenCalled();
+
+      // Check BullMQ queues
+      expect(mockQueue.addBulk).toHaveBeenCalledWith([
+        expect.objectContaining({ name: 'send-push', data: expect.objectContaining({ userId: 'user-1' }) })
+      ]);
+      expect(mockQueue.addBulk).toHaveBeenCalledWith([
+        expect.objectContaining({ name: 'send-email', data: expect.objectContaining({ userId: 'user-2' }) })
+      ]);
+    });
   });
 
-  describe('[NOTIF-U-01] Nova mensagem de chat dispara notificação para o destinatário', () => {
-    it('should call send method with userId and create notification', async () => {
-      mockPrisma.notificationPreferences.findMany.mockResolvedValue([{ userId: 'destinatario-1', inAppEnabled: true, pushEnabled: false, emailEnabled: false }]);
-      mockPrisma.notification.createManyAndReturn.mockResolvedValue([{ id: 'notif-1', userId: 'destinatario-1', title: 'New message' }]);
+  describe('markAsRead', () => {
+    it('should mark notification as read if it belongs to user', async () => {
+      mockPrisma.notification.findUnique.mockResolvedValue({ id: 'notif-1', userId: 'user-1' });
+      
+      await service.markAsRead('user-1', 'notif-1');
 
-      await service.send({ userId: 'destinatario-1', type: 'CHAT_NEW_MESSAGE', title: 'New message', body: 'Hello' });
+      expect(mockPrisma.notification.update).toHaveBeenCalledWith({
+        where: { id: 'notif-1' },
+        data: { isRead: true }
+      });
+    });
+  });
 
-      expect(mockPrisma.notification.createManyAndReturn).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.arrayContaining([
-          expect.objectContaining({
-            userId: 'destinatario-1',
-            type: 'CHAT_NEW_MESSAGE'
-          })
-        ])
-      }));
+  describe('notifySoldListing', () => {
+    it('should notify all users who favorited the listing', async () => {
+      mockPrisma.favorite.findMany.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]);
+      mockPrisma.notificationPreferences.findMany.mockResolvedValue([
+        { userId: 'user-1', inAppEnabled: true },
+        { userId: 'user-2', inAppEnabled: true }
+      ]);
+      mockPrisma.notification.createManyAndReturn.mockResolvedValue([]);
+
+      await service.notifySoldListing('listing-1', 'Carro X');
+
+      expect(mockPrisma.favorite.findMany).toHaveBeenCalledWith({ where: { listingId: 'listing-1' }, select: { userId: true } });
+      expect(mockPrisma.notification.createManyAndReturn).toHaveBeenCalled();
     });
   });
 });

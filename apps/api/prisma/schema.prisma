@@ -296,7 +296,8 @@ model VehicleBrand {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  models VehicleModel[]
+  models      VehicleModel[]
+  adCampaigns AdCampaign[]
 
   @@map("vehicle_brands")
 }
@@ -310,8 +311,9 @@ model VehicleModel {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  brand    VehicleBrand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  versions VehicleVersion[]
+  brand       VehicleBrand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  versions    VehicleVersion[]
+  adCampaigns AdCampaign[]
 
   @@unique([brandId, name])
   @@index([brandId])
@@ -846,6 +848,12 @@ enum PlanType {
   PREMIUM
 }
 
+enum BudgetType {
+  CPM
+  CPC
+  FLAT_PERIOD
+}
+
 model AdCampaign {
   id        String           @id @default(uuid())
   listingId String           @map("listing_id")
@@ -859,13 +867,24 @@ model AdCampaign {
   startDate DateTime         @map("start_date")
   endDate   DateTime?        @map("end_date")
   
+  targetBrandId  String?          @map("target_brand_id")
+  targetModelId  String?          @map("target_model_id")
+  targetYear     Int?             @map("target_year")
+  targetCity     String?          @map("target_city")
+  targetState    String?          @map("target_state")
+  maxImpressions Int?            @map("max_impress_cap")
+  budgetType     BudgetType       @default(CPC) @map("budget_type")
+  notes          String?          @db.Text
+  
   // Billing integration
   externalPaymentId String?   @map("external_payment_id")
   
   createdAt DateTime         @default(now()) @map("created_at")
   updatedAt DateTime         @updatedAt @map("updated_at")
 
-  listing     Listing        @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listing       Listing        @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  targetBrand   VehicleBrand?  @relation(fields: [targetBrandId], references: [id], onDelete: SetNull)
+  targetModel   VehicleModel?  @relation(fields: [targetModelId], references: [id], onDelete: SetNull)
   impressionsLogs AdImpression[]
   clicksLogs      AdClick[]
 

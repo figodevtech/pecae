@@ -88,9 +88,32 @@ export class AdsController {
     return this.adsService.checkInterstitialCapping(userId);
   }
 
-  @ApiOperation({ summary: 'Obter anúncios patrocinados (Pacing Uniforme)' })
+  @ApiOperation({ summary: 'Executar expiração de campanhas ativas que passaram da data final (Admin/Cron)' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserType.ADMIN)
+  @Post('campaigns/expire')
+  async expireCampaigns() {
+    return this.adsService.expireCampaigns();
+  }
+
+  @ApiOperation({ summary: 'Obter anúncios patrocinados com targeting refinado' })
   @Get('sponsored')
-  async getSponsoredListings(@Query('limit', new ParseIntPipe({ optional: true })) limit = 2) {
-    return this.adsService.getSponsoredListings(limit);
+  async getSponsoredListings(
+    @Query('brandId') brandId?: string,
+    @Query('modelId') modelId?: string,
+    @Query('year') year?: string,
+    @Query('city') city?: string,
+    @Query('state') state?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adsService.getSponsoredListings({
+      brandId,
+      modelId,
+      year: year ? parseInt(year, 10) : undefined,
+      city,
+      state,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 }

@@ -6,6 +6,8 @@ import { MatchProcessor } from './match.processor';
 import { DigestProcessor } from './digest.processor';
 import { MailModule } from '../mail/mail.module';
 import { NotificationController } from './notification.controller';
+import { IPushProvider } from './providers/push-provider.interface';
+import { ExpoPushProvider } from './providers/expo-push.provider';
 
 @Global()
 @Module({
@@ -17,7 +19,16 @@ import { NotificationController } from './notification.controller';
     MailModule,
   ],
   controllers: [NotificationController],
-  providers: [NotificationService, NotificationProcessor, MatchProcessor, DigestProcessor],
-  exports: [NotificationService, BullModule],
+  providers: [
+    NotificationService, 
+    NotificationProcessor, 
+    MatchProcessor, 
+    DigestProcessor,
+    {
+      provide: IPushProvider,
+      useClass: ExpoPushProvider,
+    }
+  ],
+  exports: [NotificationService, BullModule, IPushProvider],
 })
 export class NotificationModule {}

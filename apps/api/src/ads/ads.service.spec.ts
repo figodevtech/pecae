@@ -12,10 +12,11 @@ describe('AdsService', () => {
   let redis: RedisService;
   let queue: any;
 
-  const mockPrisma = {
+  const mockPrisma: any = {
     listing: {
       findUnique: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     adCampaign: {
       findFirst: jest.fn(),
@@ -23,12 +24,22 @@ describe('AdsService', () => {
       findUnique: jest.fn(),
       update: jest.fn(),
       findMany: jest.fn(),
+      updateMany: jest.fn(),
     },
+    $transaction: jest.fn(async (cb: any): Promise<any> => {
+      if (typeof cb === 'function') {
+        return cb(mockPrisma);
+      }
+      return cb;
+    }),
   };
 
   const mockRedis = {
     get: jest.fn(),
     set: jest.fn(),
+    keys: jest.fn().mockResolvedValue([]),
+    del: jest.fn(),
+    delByPrefix: jest.fn(),
   };
 
   const mockQueue = {
@@ -57,8 +68,16 @@ describe('AdsService', () => {
     const dto = {
       listingId: 'listing-1',
       budget: 100,
-      startDate: '2023-01-01T00:00:00Z',
-      endDate: '2023-01-31T23:59:59Z',
+      startDate: '2026-01-01T00:00:00Z',
+      endDate: '2026-01-31T23:59:59Z',
+      targetBrandId: 'brand-1',
+      targetModelId: 'model-1',
+      targetYear: 2020,
+      targetCity: 'São Paulo',
+      targetState: 'SP',
+      maxImpressions: 10000,
+      notes: 'Notas de teste',
+      externalPaymentId: 'pay_123',
     };
 
     it('should throw NotFoundException if listing not found', async () => {
@@ -89,15 +108,26 @@ describe('AdsService', () => {
         data: {
           listingId: dto.listingId,
           budget: dto.budget,
+          spent: 0.00,
           startDate: new Date(dto.startDate),
           endDate: new Date(dto.endDate),
           status: AdCampaignStatus.ACTIVE,
+          targetBrandId: dto.targetBrandId,
+          targetModelId: dto.targetModelId,
+          targetYear: dto.targetYear,
+          targetCity: dto.targetCity,
+          targetState: dto.targetState,
+          maxImpressions: dto.maxImpressions,
+          budgetType: 'CPC',
+          notes: dto.notes,
+          externalPaymentId: dto.externalPaymentId,
         },
       });
       expect(mockPrisma.listing.update).toHaveBeenCalledWith({
         where: { id: dto.listingId },
         data: { isSponsoredActive: true },
       });
+      expect(mockRedis.delByPrefix).toHaveBeenCalledWith('sponsored:cache:');
       expect(result).toEqual({ id: 'new-campaign' });
     });
   });
@@ -235,35 +265,77 @@ describe('AdsService', () => {
       expect(result).toEqual({ allowed: false });
     });
 
-    it('should return allowed true and set key if not exists', async () => {
+    it('should return allowed true and set key if not exists (for 1 hour)', async () => {
       mockRedis.get.mockResolvedValue(null);
       const result = await service.checkInterstitialCapping('user-1');
-      expect(mockRedis.set).toHaveBeenCalledWith('admob:interstitial:user-1', true, 1800);
+      expect(mockRedis.set).toHaveBeenCalledWith('admob:interstitial:user-1', true, 3600);
       expect(result).toEqual({ allowed: true });
     });
   });
 
   describe('getSponsoredListings', () => {
-    it('should fetch active campaigns and map to listings', async () => {
+    it('should get cache from Redis if it exists', async () => {
+      const cached = [{ id: 'listing-cached', isSponsored: true }];
+      mockRedis.get.mockResolvedValue(cached);
+
+      const result = await service.getSponsoredListings({ limit: 2 });
+
+      expect(mockRedis.get).toHaveBeenCalledWith('sponsored:cache:any:any:any:any:any:2');
+      expect(result).toEqual(cached);
+    });
+
+    it('should query Prisma, calculate matching scores, sort, cache and return matches', async () => {
+      mockRedis.get.mockResolvedValue(null);
+      
       const campaigns = [
         {
           id: 'camp-1',
-          listing: { id: 'listing-1', title: 'Car 1' },
+          spent: 0,
+          budget: 100,
+          maxImpressions: null,
+          impressions: 10,
+          targetBrandId: 'brand-1',
+          targetModelId: 'model-1',
+          targetYear: 2020,
+          targetCity: 'São Paulo',
+          targetState: 'SP',
+          budgetType: 'CPC',
+          listing: { id: 'listing-1', title: 'Car 1', vehicle: { id: 'v-1' } },
         },
         {
           id: 'camp-2',
-          listing: { id: 'listing-2', title: 'Car 2' },
+          spent: 0,
+          budget: 100,
+          maxImpressions: null,
+          impressions: 5,
+          targetBrandId: 'brand-1',
+          targetModelId: null,
+          targetYear: null,
+          targetCity: null,
+          targetState: null,
+          budgetType: 'CPC',
+          listing: { id: 'listing-2', title: 'Car 2', vehicle: { id: 'v-2' } },
         },
       ];
+      
       mockPrisma.adCampaign.findMany.mockResolvedValue(campaigns);
 
-      const result = await service.getSponsoredListings(2);
+      const result = await service.getSponsoredListings({
+        brandId: 'brand-1',
+        modelId: 'model-1',
+        year: 2020,
+        city: 'São Paulo',
+        state: 'SP',
+        limit: 2,
+      });
 
       expect(mockPrisma.adCampaign.findMany).toHaveBeenCalled();
-      expect(result).toEqual([
-        { id: 'listing-1', title: 'Car 1', campaignId: 'camp-1', isSponsored: true },
-        { id: 'listing-2', title: 'Car 2', campaignId: 'camp-2', isSponsored: true },
-      ]);
+      expect(result.length).toBe(2);
+      
+      // camp-1 deve vir primeiro devido ao score de relevância maior
+      expect(result[0].id).toBe('listing-1');
+      expect(result[1].id).toBe('listing-2');
+      expect(mockRedis.set).toHaveBeenCalled();
     });
   });
 
@@ -275,6 +347,37 @@ describe('AdsService', () => {
 
       expect(mockPrisma.adCampaign.findMany).toHaveBeenCalled();
       expect(result).toEqual([{ id: 'camp-1' }]);
+    });
+  });
+
+  describe('expireCampaigns', () => {
+    it('should expire active campaigns whose end date has passed', async () => {
+      const activeExpiredCampaigns = [
+        { id: 'camp-1', listingId: 'listing-1' },
+      ];
+      mockPrisma.adCampaign.findMany.mockResolvedValue(activeExpiredCampaigns);
+
+      const result = await service.expireCampaigns();
+
+      expect(mockPrisma.adCampaign.findMany).toHaveBeenCalled();
+      expect(mockPrisma.adCampaign.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['camp-1'] } },
+        data: { status: AdCampaignStatus.EXPIRED },
+      });
+      expect(mockPrisma.listing.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['listing-1'] } },
+        data: { isSponsoredActive: false },
+      });
+      expect(mockRedis.delByPrefix).toHaveBeenCalledWith('sponsored:cache:');
+      expect(result).toEqual({ count: 1 });
+    });
+
+    it('should return count 0 if no campaigns to expire', async () => {
+      mockPrisma.adCampaign.findMany.mockResolvedValue([]);
+
+      const result = await service.expireCampaigns();
+
+      expect(result).toEqual({ count: 0 });
     });
   });
 });

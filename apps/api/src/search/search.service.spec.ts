@@ -29,7 +29,9 @@ describe('SearchService', () => {
     set: jest.fn(),
   };
 
-  const mockAdsService = {};
+  const mockAdsService = {
+    getSponsoredListings: jest.fn().mockResolvedValue([]),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({

@@ -26,7 +26,7 @@ export const adsService = {
     return response.data;
   },
 
-  async createCampaign(dto: { listingId: string; budget: number; startDate: string; endDate?: string }): Promise<AdCampaign> {
+  async createCampaign(dto: any): Promise<AdCampaign> {
     const response = await api.post('/ads/campaigns', dto);
     return response.data;
   },

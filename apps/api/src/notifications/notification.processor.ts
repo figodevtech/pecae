@@ -3,13 +3,18 @@ import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { ConfigService } from '@nestjs/config';
+import { Inject, Logger } from '@nestjs/common';
+import { IPushProvider } from './providers/push-provider.interface';
 
 @Processor('notifications-queue')
 export class NotificationProcessor extends WorkerHost {
+  private readonly logger = new Logger(NotificationProcessor.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
+    @Inject(IPushProvider) private readonly pushProvider: IPushProvider,
   ) {
     super();
   }
@@ -39,9 +44,9 @@ export class NotificationProcessor extends WorkerHost {
             return;
           }
 
-          // 2. Disparar via Expo Push API para cada token
+          // 2. Disparar via Provedor Desacoplado para cada token
           for (const pushToken of userTokens) {
-            await this.sendExpoPush(pushToken.token, title, body, job.data.data);
+            await this.pushProvider.sendPush(pushToken.token, title, body, job.data.data);
           }
 
           if (notificationId) {
@@ -89,14 +94,21 @@ export class NotificationProcessor extends WorkerHost {
             return;
           }
 
-          // Disparar via serviço de e-mail existente
-          // Como o MailService só tem formatos rígidos, estenderemos um fluxo padrão
-          await this.mailService.sendVerificationStatusEmail(
-            user.email,
-            user.name || 'Usuário',
-            'APPROVED',
-            body,
-          );
+          // Tratar ambiente de sandbox / fallback caso domínio não validado
+          const isProd = this.configService.get('NODE_ENV') === 'production';
+          const domainVerified = this.configService.get('RESEND_DOMAIN_VERIFIED') === 'true';
+
+          if (!isProd || !domainVerified) {
+            this.logger.debug(`[SANDBOX/TESTE] Mocking E-mail para: ${user.email} - Assunto: ${title}`);
+          } else {
+            // Disparar via serviço de e-mail existente
+            await this.mailService.sendVerificationStatusEmail(
+              user.email,
+              user.name || 'Usuário',
+              'APPROVED',
+              body,
+            );
+          }
 
           if (notificationId) {
             await this.prisma.notificationLog.create({
@@ -124,29 +136,7 @@ export class NotificationProcessor extends WorkerHost {
       }
 
       default:
-        console.warn(`Job desconhecido: ${job.name}`);
-    }
-  }
-
-  private async sendExpoPush(token: string, title: string, body: string, data?: any) {
-    const response = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        to: token,
-        sound: 'default',
-        title,
-        body,
-        data,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Expo API error: ${response.status} ${response.statusText}`);
+        this.logger.warn(`Job desconhecido: ${job.name}`);
     }
   }
 }
