@@ -2,6 +2,8 @@
 
 Este é o **Manual Técnico Definitivo** do monorepo PECAÊ. Este documento detalha a arquitetura, as escolhas tecnológicas, os fluxos de todos os módulos implementados (M01 ao M13), e fornece guias operacionais para manutenção e resolução de problemas (troubleshooting).
 
+> **Status do Projeto:** MVP e módulos adicionais (Milestones 1 a 8) 100% concluídos. A arquitetura de Analytics (M12) e Ads (M13) estão ativas e em pleno funcionamento. O módulo de assinaturas (M10) encontra-se estrategicamente adiado em prol do ecossistema de publicidade direta.
+
 ---
 
 ## Índice

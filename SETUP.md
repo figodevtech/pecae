@@ -33,8 +33,9 @@ Edite `apps/api/.env.local` e preencha:
 | `DIRECT_URL` | Painel Supabase → Settings → Database → Connection String (Session pooler, porta 5432) |
 | `JWT_SECRET` | Rode: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
 | `ADMIN_SEED_PASSWORD` | Define uma senha forte para o admin de dev |
+| `REDIS_URL` | Upstash Redis → Copy Connection String (usado pelas filas do BullMQ) |
 
-> As variáveis de OAuth e e-mail (`RESEND_API_KEY`, `GOOGLE_CLIENT_ID`, etc.) serão configuradas ao final do módulo M01.
+> As variáveis de OAuth, e-mail (`RESEND_API_KEY`, `GOOGLE_CLIENT_ID`) e Redis são obrigatórias para o funcionamento completo do sistema em produção.
 
 ---
 
