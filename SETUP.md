@@ -64,6 +64,22 @@ Isso populará:
 
 ## 5. Rodar a API
 
+Você tem duas opções para subir a infraestrutura do backend: via **Docker** (recomendado para simular o ambiente de produção) ou via **Node.js** (para desenvolvimento rápido).
+
+### Opção A: Executar via Docker (Recomendado)
+A plataforma conta com configurações avançadas de contêiner. Para inicializar a API:
+
+```bash
+# Constrói as imagens dos contêineres
+docker compose build
+
+# Levanta os serviços em background
+docker compose up -d
+```
+
+> **Dica:** Você pode inspecionar os logs do backend e dos workers do BullMQ executando `docker compose logs -f`.
+
+### Opção B: Executar Localmente (Node.js)
 ```bash
 npm run dev --filter=@pecae/api
 # ou na raiz:
