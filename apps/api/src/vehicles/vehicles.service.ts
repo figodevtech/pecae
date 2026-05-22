@@ -100,6 +100,16 @@ export class VehiclesService {
         photos: { orderBy: { order: 'asc' } },
         version: { include: { model: { include: { brand: true } } } },
         yearFab: true,
+        seller: {
+          select: {
+            id: true,
+            storeName: true,
+            city: true,
+            state: true,
+            isVerified: true,
+            userId: true,
+          },
+        },
       } as any,
     });
 

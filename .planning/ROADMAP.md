@@ -25,31 +25,31 @@ Este documento detalha o roteiro cronológico de desenvolvimento estruturado por
 
 ---
 
-## Milestone 4 (Sprint 4) — Busca, Descoberta e Detalhe de Peças (Foco: M07)
+## [CONCLUÍDA] Milestone 4 (Sprint 4) — Busca, Descoberta e Detalhe de Peças (Foco: M07)
 
 ### M07 — Busca e Descoberta (P0)
 **Descrição:** Módulo responsável pela busca e descoberta de sucatas no PECAÊ. Comprador pesquisa por veículo (marca → modelo → ano) e opcionalmente por localização e texto livre (nome da peça). Resultados retornam SEMPRE sucatas completas (veículos), nunca peças avulsas. Usa PostgreSQL Full-Text Search no MVP e migração para OpenSearch na Fase 2.
 
-- [ ] **M07-T01: SearchController e SearchService com PostgreSQL Full-Text Search** (Prioridade: P0)
+- [x] **M07-T01: SearchController e SearchService com PostgreSQL Full-Text Search** (Prioridade: P0)
   *Descrição:* Implementar SearchModule no NestJS com GET /search endpoint. Usar Prisma para queries PostgreSQL otimizadas com filtros em cascata (brandId, modelId, yearMin, yearMax, city, state) e busca por texto livre (FTS nas observações e nome do modelo). Paginação cursor-based. Resultados sempre filtrados por Listing.status=PUBLISHED.
-    - [ ] **M07-T01-ST01:** Implementar SearchService com queries Prisma e filtros em cascata (Estimativa: 5h)
-    - [ ] **M07-T01-ST02:** Cache Redis para resultados de busca frequentes (Estimativa: 3h)
-    - [ ] **M07-T01-ST03:** Endpoint de sugestões de autocomplete de busca (Estimativa: 3h)
-- [ ] **M07-T02: Telas de busca e resultados no app React Native** (Prioridade: P0)
+    - [x] **M07-T01-ST01:** Implementar SearchService com queries Prisma e filtros em cascata (Estimativa: 5h)
+    - [x] **M07-T01-ST02:** Cache Redis para resultados de busca frequentes (Estimativa: 3h)
+    - [x] **M07-T01-ST03:** Endpoint de sugestões de autocomplete de busca (Estimativa: 3h)
+- [x] **M07-T02: Telas de busca e resultados no app React Native** (Prioridade: P0)
   *Descrição:* Implementar tela principal de busca app/(tabs)/busca.tsx com VehicleSelector em modo search, tela de resultados app/resultados.tsx com FlashList e paginação infinita, e tela de detalhe app/anuncio/[id].tsx com galeria de fotos, peças disponíveis e botão de chat.
-    - [ ] **M07-T02-ST01:** Tela de busca (app/(tabs)/busca.tsx) com filtros (Estimativa: 4h)
-    - [ ] **M07-T02-ST02:** Tela de resultados com FlashList e paginação infinita (Estimativa: 4h)
-    - [ ] **M07-T02-ST03:** Tela de detalhe do anúncio (app/anuncio/[id].tsx) (Estimativa: 6h)
-- [ ] **M07-T03: ListingController e endpoint de detalhe** (Prioridade: P0)
+    - [x] **M07-T02-ST01:** Tela de busca (app/(tabs)/busca.tsx) com filtros (Estimativa: 4h)
+    - [x] **M07-T02-ST02:** Tela de resultados com FlashList e paginação infinita (Estimativa: 4h)
+    - [x] **M07-T02-ST03:** Tela de detalhe do anúncio (app/anuncio/[id].tsx) (Estimativa: 6h)
+- [x] **M07-T03: ListingController e endpoint de detalhe** (Prioridade: P0)
   *Descrição:* Implementar ListingController com GET /listings/:id que retorna dados completos de um anúncio para a tela de detalhe. Incluir Vehicle, VehiclePhotos, SellerProfile (dados públicos) e PartCategory names. Endpoint público (@Public()).
-    - [ ] **M07-T03-ST01:** Implementar GET /listings/:id e ListingDetailResponseDto (Estimativa: 4h)
-    - [ ] **M07-T03-ST02:** Incremento assíncrono de views e contagem de favoritos (Estimativa: 2h)
-    - [ ] **M07-T03-ST03:** Compartilhamento de anúncios e deep links (Estimativa: 2h)
-- [ ] **M07-T04: Preparação para migração para OpenSearch (Fase 2)** (Prioridade: P2)
+    - [x] **M07-T03-ST01:** Implementar GET /listings/:id e ListingDetailResponseDto (Estimativa: 4h)
+    - [x] **M07-T03-ST02:** Incremento assíncrono de views e contagem de favoritos (Estimativa: 2h)
+    - [x] **M07-T03-ST03:** Compartilhamento de anúncios e deep links (Estimativa: 2h)
+- [x] **M07-T04: Preparação para migração para OpenSearch (Fase 2)** (Prioridade: P2)
   *Descrição:* Documentar a estratégia de migração do PostgreSQL Full-Text Search para OpenSearch na Fase 2. Definir índices OpenSearch, mapping de campos e estratégia de sincronização. Preparar SearchService para suportar ambas as implementações via Strategy Pattern.
-    - [ ] **M07-T04-ST01:** Definir interface ISearchStrategy e padrão Strategy no SearchService (Estimativa: 3h)
-    - [ ] **M07-T04-ST02:** Estratégia de sincronização com OpenSearch (documento de arquitetura) (Estimativa: 2h)
-    - [ ] **M07-T04-ST03:** Testes de performance da busca PostgreSQL (baseline) (Estimativa: 3h)
+    - [x] **M07-T04-ST01:** Definir interface ISearchStrategy e padrão Strategy no SearchService (Estimativa: 3h)
+    - [x] **M07-T04-ST02:** Estratégia de sincronização com OpenSearch (documento de arquitetura) (Estimativa: 2h)
+    - [x] **M07-T04-ST03:** Testes de performance da busca PostgreSQL (baseline) (Estimativa: 3h)
 
 ---
 

@@ -77,6 +77,24 @@ export const useSearchVehicles = (filters?: {
   });
 };
 
+export interface SearchSuggestion {
+  text: string;
+  type: 'BRAND' | 'MODEL';
+  id: string;
+}
+
+export const useSearchSuggestions = (q: string) => {
+  return useQuery({
+    queryKey: ['search', 'suggestions', q],
+    queryFn: async () => {
+      if (!q || q.trim().length < 2) return [];
+      const { data } = await api.get<SearchSuggestion[]>('/search/suggestions', { params: { q } });
+      return data;
+    },
+    enabled: q.trim().length >= 2,
+  });
+};
+
 export const useVehicleDetails = (id: string) => {
   return useQuery({
     queryKey: ['vehicles', id],

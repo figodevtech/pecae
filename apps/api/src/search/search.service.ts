@@ -53,6 +53,18 @@ export class SearchService {
       limit = 10,
     } = filters;
 
+    // Resolve brand name to UUID if not a valid UUID (resilient filters)
+    let resolvedBrandId = brandId;
+    if (brandId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(brandId)) {
+      const matchedBrand = await this.prisma.vehicleBrand.findFirst({
+        where: {
+          name: { contains: brandId, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      resolvedBrandId = matchedBrand?.id || '00000000-0000-0000-0000-000000000000';
+    }
+
     // Fetch part categories for mapping IDs to names
     const partCategories = await this.prisma.partCategory.findMany();
     const partCategoryMap = new Map(partCategories.map((pc) => [pc.id, pc.name]));
@@ -63,7 +75,12 @@ export class SearchService {
       seller: {
         deletedAt: null, // Ocultar veículos de vendedores deletados (LGPD)
       },
-      ...(brandId && { version: { model: { brandId } } }),
+      listings: {
+        some: {
+          status: 'PUBLISHED',
+        },
+      },
+      ...(resolvedBrandId && { version: { model: { brandId: resolvedBrandId } } }),
       ...(modelId && { version: { modelId } }),
       ...(versionId && { versionId }),
       ...(city && { city: { contains: city, mode: 'insensitive' } }),

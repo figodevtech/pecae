@@ -17,7 +17,8 @@ import {
   PecaeGlassCard 
 } from '../../src/components/PecaeUI';
 import { usePecaeTheme } from '../../src/theme';
-import { useSearchVehicles } from '../../src/hooks/useVehicles';
+import { useSearchVehicles, useSearchSuggestions } from '../../src/hooks/useVehicles';
+import { useSavedSearches } from '../../src/hooks/useSavedSearches';
 import { useRouter } from 'expo-router';
 
 const QUICK_FILTERS = [
@@ -35,20 +36,58 @@ export default function SearchScreen() {
   const router = useRouter();
   
   const [searchText, setSearchText] = useState('');
+  const [debouncedSearchText, setDebouncedSearchText] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // Integração com API
+  // Hook de buscas salvas
+  const { saveSearch } = useSavedSearches();
+
+  // Efeito de Debounce (300ms)
+  React.useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchText(searchText);
+    }, 300);
+
+    return () => clearTimeout(handler);
+  }, [searchText]);
+
+  // Hook de Sugestões de Busca
+  const { data: suggestions = [] } = useSearchSuggestions(searchText);
+
+  // Integração com API (usando debouncedSearchText)
   const { data: searchResponse, isLoading } = useSearchVehicles({
-    q: searchText,
+    q: debouncedSearchText,
     brandId: activeFilter !== 'all' ? activeFilter : undefined,
     city: city || undefined,
     state: state || undefined,
   });
 
   const results = searchResponse?.data || [];
+
+  const handleSaveSearch = async () => {
+    try {
+      await saveSearch.mutateAsync({
+        query: debouncedSearchText,
+        filters: {
+          brandId: activeFilter !== 'all' ? activeFilter : undefined,
+          city: city || undefined,
+          state: state || undefined,
+        },
+        alertActive: true,
+      });
+      alert('Busca salva com sucesso! Você será notificado quando novos doadores semelhantes entrarem no estoque.');
+    } catch (error: any) {
+      if (error?.response?.status === 401) {
+        alert('Apenas usuários autenticados podem salvar buscas. Por favor, faça login ou cadastre-se.');
+      } else {
+        alert('Erro ao salvar busca. Tente novamente mais tarde.');
+      }
+    }
+  };
 
   // Lógica de Grid Responsivo
   const isWeb = width >= 768;
@@ -63,13 +102,31 @@ export default function SearchScreen() {
         <Ionicons name="search-outline" size={48} color={colors.border} />
       </View>
       <Text style={[styles.emptyTitle, { color: colors.textPrimary, fontFamily: typography.display }]}>
-        {searchText ? 'NENHUM RESULTADO' : 'EXPLORE A FORJA'}
+        {debouncedSearchText ? 'NENHUM RESULTADO' : 'EXPLORE A FORJA'}
       </Text>
       <Text style={[styles.emptySubtitle, { color: colors.textMuted, fontFamily: typography.body }]}>
-        {searchText 
-          ? `Não encontramos nada para "${searchText}". Tente termos mais genéricos.`
+        {debouncedSearchText 
+          ? `Não encontramos nada para "${debouncedSearchText}". Tente termos mais genéricos.`
           : 'Busque por peças, modelos ou marcas específicas no inventário.'}
       </Text>
+      {debouncedSearchText && (
+        <TouchableOpacity 
+          style={[styles.saveSearchBtn, { backgroundColor: colors.brand, borderColor: colors.brand }]}
+          onPress={handleSaveSearch}
+          disabled={saveSearch.isPending}
+        >
+          {saveSearch.isPending ? (
+            <ActivityIndicator size="small" color="#000" />
+          ) : (
+            <>
+              <Ionicons name="notifications-outline" size={16} color="#000" style={{ marginRight: 8 }} />
+              <Text style={[styles.saveSearchBtnText, { fontFamily: typography.display }]}>
+                NOTIFICAR-ME SE CHEGAR
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -86,6 +143,10 @@ export default function SearchScreen() {
               placeholderTextColor={colors.textMuted}
               value={searchText}
               onChangeText={setSearchText}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => {
+                setTimeout(() => setShowSuggestions(false), 200);
+              }}
               autoFocus={false}
             />
             {searchText.length > 0 && (
@@ -102,6 +163,42 @@ export default function SearchScreen() {
             <Ionicons name="options-outline" size={24} color={showFilters ? colors.brand : colors.textPrimary} />
           </TouchableOpacity>
         </View>
+
+        {showSuggestions && suggestions.length > 0 && (
+          <PecaeGlassCard intensity={25} style={styles.suggestionsContainer}>
+            <ScrollView keyboardShouldPersistTaps="handled" style={styles.suggestionsScroll}>
+              {suggestions.map((suggestion) => (
+                <TouchableOpacity
+                  key={`${suggestion.type}-${suggestion.id}`}
+                  style={[styles.suggestionItem, { borderBottomColor: colors.border }]}
+                  onPress={() => {
+                    if (suggestion.type === 'BRAND') {
+                      setActiveFilter(suggestion.text.toLowerCase());
+                      setSearchText('');
+                    } else {
+                      setSearchText(suggestion.text);
+                    }
+                    setShowSuggestions(false);
+                  }}
+                >
+                  <Ionicons 
+                    name={suggestion.type === 'BRAND' ? 'car-sport-outline' : 'pricetag-outline'} 
+                    size={16} 
+                    color={colors.brand} 
+                  />
+                  <View style={styles.suggestionTextContainer}>
+                    <Text style={[styles.suggestionText, { color: colors.textPrimary, fontFamily: typography.medium }]}>
+                      {suggestion.text}
+                    </Text>
+                    <Text style={[styles.suggestionType, { color: colors.textMuted, fontFamily: typography.body }]}>
+                      {suggestion.type === 'BRAND' ? 'Marca' : 'Modelo'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </PecaeGlassCard>
+        )}
 
         {showFilters && (
           <View style={styles.advancedFilters}>
@@ -453,5 +550,61 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  saveSearchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 25,
+    borderWidth: 1,
+    marginTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+  },
+  saveSearchBtnText: {
+    color: '#000',
+    fontSize: 12,
+    letterSpacing: 1.5,
+  },
+  suggestionsContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 110 : 90,
+    left: 20,
+    right: 80,
+    maxHeight: 250,
+    borderRadius: 16,
+    zIndex: 1000,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  suggestionsScroll: {
+    maxHeight: 250,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    gap: 12,
+  },
+  suggestionTextContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  suggestionText: {
+    fontSize: 14,
+  },
+  suggestionType: {
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 });

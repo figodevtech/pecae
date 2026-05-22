@@ -1,9 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 
-interface CreateSavedSearchData {
+export interface SavedSearch {
+  id: string;
+  userId: string;
+  query?: string | null;
+  filters: any;
+  alertActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSavedSearchDto {
   query?: string;
-  filters?: any;
+  filters: any;
   alertActive?: boolean;
 }
 
@@ -11,46 +21,36 @@ export function useSavedSearches() {
   const queryClient = useQueryClient();
 
   const getSavedSearches = useQuery({
-    queryKey: ['saved-searches'],
+    queryKey: ['savedSearches'],
     queryFn: async () => {
-      const response = await api.get('/buyers/saved-searches');
+      const response = await api.get<SavedSearch[]>('/buyers/saved-searches');
       return response.data;
     },
   });
 
-  const createSavedSearch = useMutation({
-    mutationFn: async (data: CreateSavedSearchData) => {
-      const response = await api.post('/buyers/saved-searches', data);
+  const saveSearch = useMutation({
+    mutationFn: async (dto: CreateSavedSearchDto) => {
+      const response = await api.post<SavedSearch>('/buyers/saved-searches', dto);
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['saved-searches'] });
+      queryClient.invalidateQueries({ queryKey: ['savedSearches'] });
     },
   });
 
   const deleteSavedSearch = useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/buyers/saved-searches/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['saved-searches'] });
-    },
-  });
-
-  const toggleAlert = useMutation({
-    mutationFn: async ({ id, alertActive }: { id: string; alertActive: boolean }) => {
-      const response = await api.patch(`/buyers/saved-searches/${id}/alert`, { alertActive });
+      const response = await api.delete(`/buyers/saved-searches/${id}`);
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['saved-searches'] });
+      queryClient.invalidateQueries({ queryKey: ['savedSearches'] });
     },
   });
 
   return {
     getSavedSearches,
-    createSavedSearch,
+    saveSearch,
     deleteSavedSearch,
-    toggleAlert,
   };
 }
