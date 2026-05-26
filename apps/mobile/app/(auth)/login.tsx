@@ -65,6 +65,8 @@ export default function LoginScreen() {
         } else {
           router.replace("/(seller)/(seller-tabs)");
         }
+      } else if (user.type === "ADMIN" || user.type === "MODERATOR" || user.role === "ADMIN" || user.role === "MODERATOR") {
+        router.replace("/(moderator)");
       } else {
         // Força o redirecionamento limpo para as tabs do comprador, limpando histórico anterior
         try {
@@ -107,6 +109,8 @@ export default function LoginScreen() {
         } else {
           router.replace("/(seller)/(seller-tabs)");
         }
+      } else if (user.type === "ADMIN" || user.type === "MODERATOR" || user.role === "ADMIN" || user.role === "MODERATOR") {
+        router.replace("/(moderator)");
       } else {
         try {
           (navigation as any).reset({

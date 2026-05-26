@@ -12,6 +12,7 @@ import {
   ScrollView,
   RefreshControl,
 } from 'react-native';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   PecaeBackground,
@@ -124,7 +125,7 @@ export default function ModerationListingsScreen() {
                 {item.title || 'Peça Automotiva'}
               </Text>
               <Text style={[styles.listingMeta, { color: colors.textMuted, fontFamily: typography.heading }]}>
-                {item.vehicle?.brand?.name} {item.vehicle?.model?.name} ({item.vehicle?.yearFab})
+                {item.vehicle?.brandName} {item.vehicle?.modelName} {item.vehicle?.yearFabValue ? `(${item.vehicle.yearFabValue})` : ''}
               </Text>
               <Text style={[styles.listingDate, { color: colors.textMuted, fontFamily: typography.body }]}>
                 Criado em: {new Date(item.createdAt).toLocaleDateString('pt-BR')}
@@ -278,16 +279,16 @@ export default function ModerationListingsScreen() {
                       VEÍCULO
                     </Text>
                     <Text style={[styles.detailText, { color: colors.textPrimary, fontFamily: typography.body }]}>
-                      <Text style={{ fontWeight: 'bold' }}>Placa:</Text> {selectedListing.vehicle?.licensePlate || '***-****'}
+                      <Text style={{ fontWeight: 'bold' }}>Placa:</Text> {selectedListing.vehicle?.plate || '***-****'}
                     </Text>
                     <Text style={[styles.detailText, { color: colors.textPrimary, fontFamily: typography.body }]}>
-                      <Text style={{ fontWeight: 'bold' }}>Marca/Modelo:</Text> {selectedListing.vehicle?.brand?.name} {selectedListing.vehicle?.model?.name}
+                      <Text style={{ fontWeight: 'bold' }}>Marca/Modelo:</Text> {selectedListing.vehicle?.brandName} {selectedListing.vehicle?.modelName}
                     </Text>
                     <Text style={[styles.detailText, { color: colors.textPrimary, fontFamily: typography.body }]}>
-                      <Text style={{ fontWeight: 'bold' }}>Versão:</Text> {selectedListing.vehicle?.version?.name}
+                      <Text style={{ fontWeight: 'bold' }}>Versão:</Text> {selectedListing.vehicle?.versionName || '—'}
                     </Text>
                     <Text style={[styles.detailText, { color: colors.textPrimary, fontFamily: typography.body }]}>
-                      <Text style={{ fontWeight: 'bold' }}>Ano:</Text> {selectedListing.vehicle?.yearFab}
+                      <Text style={{ fontWeight: 'bold' }}>Ano:</Text> {selectedListing.vehicle?.yearFabValue ?? '—'}
                     </Text>
                   </PecaeGlassCard>
 

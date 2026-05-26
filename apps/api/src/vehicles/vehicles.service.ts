@@ -25,14 +25,26 @@ export class VehiclesService {
    */
   async create(sellerId: string, dto: CreateVehicleDto) {
     const { 
-      versionId, 
-      yearFabId, 
+      versionId: initialVersionId, 
+      yearFabId: initialYearFabId, 
       availableParts, 
       title, 
       description, 
       plate,
+      customBrandName,
+      customModelName,
+      customVersionName,
+      customYearFab,
+      customYearModel,
       ...vehicleData 
     } = dto;
+
+    if (!initialVersionId && (!customBrandName || !customModelName || !customVersionName)) {
+      throw new BadRequestException('Você deve fornecer os dados de marca, modelo e versão do veículo.');
+    }
+    if (!initialYearFabId && (!customYearFab || !customYearModel)) {
+      throw new BadRequestException('Você deve fornecer os anos de fabricação e modelo do veículo.');
+    }
 
     // Check for duplicate plate (RN10)
     if (plate) {
@@ -45,29 +57,124 @@ export class VehiclesService {
       }
     }
 
-    // Check for potential listing duplicity (RN10)
-    const duplicate = await this.prisma.listing.findFirst({
-      where: {
-        sellerProfileId: sellerId,
-        vehicle: {
-          versionId,
-          yearFabId,
-        },
-        status: { in: [ListingStatus.PENDING, ListingStatus.PUBLISHED] },
-      },
-      select: { id: true },
-    });
+    const normalizeText = (text: string): string => {
+      if (!text) return '';
+      return text.trim().replace(/\s+/g, ' ');
+    };
 
-    const isDuplicate = !!duplicate;
-    const duplicateOfId = duplicate?.id || null;
+    const capitalizeText = (text: string): string => {
+      const normalized = normalizeText(text);
+      if (!normalized) return '';
+      return normalized
+        .split(' ')
+        .map(word => {
+          if (word.length === 0) return '';
+          return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        })
+        .join(' ');
+    };
 
     return this.prisma.$transaction(async (tx) => {
+      let resolvedVersionId = initialVersionId;
+      let resolvedYearFabId = initialYearFabId;
+
+      // Resolução invisível do catálogo se for customizado
+      if (!resolvedVersionId && customBrandName && customModelName && customVersionName) {
+        const brandNameNorm = normalizeText(customBrandName);
+        let brand = await tx.vehicleBrand.findFirst({
+          where: { name: { equals: brandNameNorm, mode: 'insensitive' } }
+        });
+        if (!brand) {
+          brand = await tx.vehicleBrand.create({
+            data: { name: capitalizeText(customBrandName) }
+          });
+        }
+
+        const modelNameNorm = normalizeText(customModelName);
+        let model = await tx.vehicleModel.findFirst({
+          where: {
+            brandId: brand.id,
+            name: { equals: modelNameNorm, mode: 'insensitive' }
+          }
+        });
+        if (!model) {
+          model = await tx.vehicleModel.create({
+            data: {
+              brandId: brand.id,
+              name: capitalizeText(customModelName),
+              segment: 'OTHER'
+            }
+          });
+        }
+
+        const versionNameNorm = normalizeText(customVersionName);
+        let version = await tx.vehicleVersion.findFirst({
+          where: {
+            modelId: model.id,
+            name: { equals: versionNameNorm, mode: 'insensitive' }
+          }
+        });
+        if (!version) {
+          version = await tx.vehicleVersion.create({
+            data: {
+              modelId: model.id,
+              name: capitalizeText(customVersionName),
+              fuel: 'GASOLINE',
+              transmission: 'MANUAL'
+            }
+          });
+        }
+
+        resolvedVersionId = version.id;
+      }
+
+      if (!resolvedYearFabId && resolvedVersionId && customYearFab && customYearModel) {
+        let year = await tx.vehicleYear.findFirst({
+          where: {
+            versionId: resolvedVersionId,
+            yearFab: customYearFab,
+            yearModel: customYearModel
+          }
+        });
+        if (!year) {
+          year = await tx.vehicleYear.create({
+            data: {
+              versionId: resolvedVersionId,
+              yearFab: customYearFab,
+              yearModel: customYearModel
+            }
+          });
+        }
+
+        resolvedYearFabId = year.id;
+      }
+
+      if (!resolvedVersionId || !resolvedYearFabId) {
+        throw new BadRequestException('Erro ao resolver dados de catálogo do veículo.');
+      }
+
+      // Check for potential listing duplicity (RN10)
+      const duplicate = await tx.listing.findFirst({
+        where: {
+          sellerProfileId: sellerId,
+          vehicle: {
+            versionId: resolvedVersionId,
+            yearFabId: resolvedYearFabId,
+          },
+          status: { in: [ListingStatus.PENDING, ListingStatus.PUBLISHED] },
+        },
+        select: { id: true },
+      });
+
+      const isDuplicate = !!duplicate;
+      const duplicateOfId = duplicate?.id || null;
+
       // 1. Create Vehicle
       const vehicle = await tx.vehicle.create({
         data: {
           ...vehicleData,
-          versionId,
-          yearFabId,
+          versionId: resolvedVersionId,
+          yearFabId: resolvedYearFabId,
           plate,
           sellerId,
           availableParts,

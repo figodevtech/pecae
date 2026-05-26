@@ -9,6 +9,7 @@ type SelectionLevel = 'brand' | 'model' | 'version' | 'year';
 
 interface VehicleSelectorProps {
   resultsCount?: number;
+  requireCompleteSelection?: boolean;
   onSelect?: (selection: {
     brand: any;
     model: any;
@@ -17,7 +18,11 @@ interface VehicleSelectorProps {
   } | null) => void;
 }
 
-export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount = 0, onSelect }) => {
+export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ 
+  resultsCount = 0, 
+  requireCompleteSelection = false,
+  onSelect 
+}) => {
   const { colors, typography, effects } = usePecaeTheme();
   
   const [level, setLevel] = useState<SelectionLevel>('brand');
@@ -34,6 +39,21 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
   const { data: versions, isLoading: loadingVersions } = useVersions(selectedModel?.id);
   const { data: years, isLoading: loadingYears } = useYears(selectedVersion?.id);
 
+  const parseYearInput = (input: string) => {
+    const cleaned = input.trim();
+    const parts = cleaned.split(/[\/\-]/).map(p => p.trim());
+    const yearFab = parseInt(parts[0], 10);
+    const yearModel = parts[1] ? parseInt(parts[1], 10) : yearFab;
+    
+    if (isNaN(yearFab) || yearFab < 1900 || yearFab > 2100) {
+      return null;
+    }
+    if (isNaN(yearModel) || yearModel < 1900 || yearModel > 2100) {
+      return { yearFab, yearModel: yearFab };
+    }
+    return { yearFab, yearModel };
+  };
+
   const currentData = useMemo(() => {
     let data = [];
     if (level === 'brand') data = brands || [];
@@ -41,15 +61,52 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
     else if (level === 'version') data = versions || [];
     else if (level === 'year') data = years || [];
 
+    let filtered = data;
     if (search) {
-      return data.filter((item: any) => {
+      filtered = data.filter((item: any) => {
         if (level === 'year') {
           return `${item.yearFab}/${item.yearModel}`.includes(search);
         }
         return (item.name || '').toLowerCase().includes(search.toLowerCase());
       });
     }
-    return data;
+
+    if (search.trim().length > 0) {
+      const hasExactMatch = filtered.some((item: any) => {
+        if (level === 'year') {
+          return `${item.yearFab}/${item.yearModel}` === search.trim();
+        }
+        return (item.name || '').toLowerCase() === search.trim().toLowerCase();
+      });
+
+      if (!hasExactMatch) {
+        if (level === 'year') {
+          const parsed = parseYearInput(search);
+          if (parsed) {
+            filtered = [
+              {
+                id: 'custom',
+                yearFab: parsed.yearFab,
+                yearModel: parsed.yearModel,
+                isCustom: true,
+              },
+              ...filtered,
+            ];
+          }
+        } else {
+          filtered = [
+            {
+              id: 'custom',
+              name: search.trim(),
+              isCustom: true,
+            },
+            ...filtered,
+          ];
+        }
+      }
+    }
+
+    return filtered;
   }, [level, brands, years, models, search]);
 
   const isLoading = loadingBrands || loadingModels || loadingVersions || loadingYears;
@@ -78,6 +135,14 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
       setLevel('year');
     } else if (level === 'year') {
       setSelectedYear(item);
+      if (requireCompleteSelection) {
+        onSelect?.({
+          brand: selectedBrand,
+          model: selectedModel,
+          version: selectedVersion,
+          year: item,
+        });
+      }
     }
   };
 
@@ -101,6 +166,37 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
   };
 
   const renderItem = useCallback(({ item }: { item: any }) => {
+    if (item.isCustom) {
+      let customLabel = '';
+      if (level === 'brand') customLabel = `+ Cadastrar "${item.name}" como nova Marca`;
+      else if (level === 'model') customLabel = `+ Cadastrar "${item.name}" como novo Modelo`;
+      else if (level === 'version') customLabel = `+ Cadastrar "${item.name}" como nova Versão`;
+      else if (level === 'year') customLabel = `+ Cadastrar Ano: ${item.yearFab}/${item.yearModel}`;
+
+      return (
+        <TouchableOpacity 
+          activeOpacity={0.7} 
+          onPress={() => handleSelect(item)}
+          style={styles.itemContainer}
+        >
+          <PecaeGlassCard 
+            intensity={35} 
+            style={[
+              styles.card, 
+              { borderColor: colors.brand, borderWidth: 1.5, borderStyle: 'dashed' }
+            ]}
+          >
+            <View style={styles.itemContent}>
+              <Text style={[styles.itemText, { color: colors.brand, fontFamily: typography.medium }]}>
+                {customLabel}
+              </Text>
+              <Ionicons name="add-circle" size={22} color={colors.brand} />
+            </View>
+          </PecaeGlassCard>
+        </TouchableOpacity>
+      );
+    }
+
     let itemText = item.name;
     if (level === 'year') {
       itemText = `Fabricação: ${item.yearFab} / Modelo: ${item.yearModel}`;
@@ -185,7 +281,7 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
           disabled={!selectedVersion}
         >
           <Text style={[styles.breadcrumbText, { color: selectedYear ? colors.brand : colors.textMuted, fontFamily: typography.body }]}>
-            {selectedYear ? `${selectedYear.yearFab}/${selectedYear.yearModel}` : 'Ano'}
+            {selectedYear ? (selectedYear.isCustom ? `${selectedYear.yearFab}/${selectedYear.yearModel}` : `${selectedYear.yearFab}/${selectedYear.yearModel}`) : 'Ano'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -204,7 +300,26 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
         </Text>
       </View>
 
-
+      {/* Search Input */}
+      <View style={[styles.searchContainer, { borderColor: colors.border, backgroundColor: 'rgba(255,255,255,0.03)' }]}>
+        <Ionicons name="search" size={20} color={colors.textMuted} />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder={
+            level === 'brand' ? 'Buscar ou digitar marca...' : 
+            level === 'model' ? 'Buscar ou digitar modelo...' : 
+            level === 'version' ? 'Buscar ou digitar versão...' : 'Buscar ano (ex: 2015 ou 2012/2013)...'
+          }
+          placeholderTextColor={colors.textMuted}
+          style={[styles.searchInput, { color: colors.textPrimary, fontFamily: typography.body }]}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch('')}>
+            <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* List */}
       {isLoading ? (
@@ -240,11 +355,17 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({ resultsCount =
 
         <TouchableOpacity 
           onPress={handleApply} 
-          style={[styles.applyButton, { backgroundColor: selectedBrand ? colors.brand : colors.surface }]}
-          disabled={!selectedBrand}
+          style={[
+            styles.applyButton, 
+            { backgroundColor: (requireCompleteSelection ? (selectedBrand && selectedModel && selectedVersion && selectedYear) : selectedBrand) ? colors.brand : colors.surface }
+          ]}
+          disabled={requireCompleteSelection ? !(selectedBrand && selectedModel && selectedVersion && selectedYear) : !selectedBrand}
         >
-          <Text style={[styles.applyButtonText, { color: selectedBrand ? '#000' : colors.textMuted, fontFamily: typography.display }]}>
-            Ver Resultados ({resultsCount})
+          <Text style={[
+            styles.applyButtonText, 
+            { color: (requireCompleteSelection ? (selectedBrand && selectedModel && selectedVersion && selectedYear) : selectedBrand) ? '#000' : colors.textMuted, fontFamily: typography.display }
+          ]}>
+            {requireCompleteSelection ? "Confirmar Veículo" : `Ver Resultados (${resultsCount})`}
           </Text>
         </TouchableOpacity>
       </View>

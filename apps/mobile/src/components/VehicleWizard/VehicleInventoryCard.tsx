@@ -26,6 +26,7 @@ export const VehicleInventoryCard: React.FC<VehicleInventoryCardProps> = ({ vehi
     switch (status) {
       case 'ACTIVE': return colors.brand;
       case 'PENDING': return '#f1c40f';
+      case 'DRAFT': return '#e67e22'; // Laranja vibrante industrial para rascunho
       case 'SOLD': return colors.textMuted;
       case 'INACTIVE': return colors.error;
       default: return colors.textMuted;
@@ -36,6 +37,7 @@ export const VehicleInventoryCard: React.FC<VehicleInventoryCardProps> = ({ vehi
     switch (status) {
       case 'ACTIVE': return 'ATIVO';
       case 'PENDING': return 'EM REVISÃO';
+      case 'DRAFT': return 'RASCUNHO';
       case 'SOLD': return 'VENDIDO';
       case 'INACTIVE': return 'RETIRADO';
       default: return status;
@@ -75,7 +77,7 @@ export const VehicleInventoryCard: React.FC<VehicleInventoryCardProps> = ({ vehi
     <PecaeGlassCard intensity={15} style={styles.container}>
       <View style={styles.content}>
         <Image 
-          source={{ uri: vehicle.photos?.[0]?.url || 'https://via.placeholder.com/150?text=Sem+Foto' }} 
+          source={{ uri: vehicle.photos?.[0]?.url || 'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?auto=format&fit=crop&w=400&q=80' }} 
           style={[styles.image, { borderRadius: effects.radius.md }]} 
         />
         

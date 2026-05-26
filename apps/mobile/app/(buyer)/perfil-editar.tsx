@@ -90,6 +90,16 @@ export default function PerfilEditar() {
     }
   };
 
+  const handleCancel = () => {
+    if (Platform.OS === 'web') {
+      router.replace('/(buyer)/perfil');
+    } else if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(buyer)/perfil');
+    }
+  };
+
   if (isLoadingProfile) {
     return (
       <PecaeBackground>
@@ -196,7 +206,7 @@ export default function PerfilEditar() {
 
           <TouchableOpacity 
             style={styles.cancelBtn}
-            onPress={() => router.back()}
+            onPress={handleCancel}
           >
             <Text style={[styles.cancelBtnText, { color: colors.textMuted, fontFamily: typography.body }]}>
               Cancelar

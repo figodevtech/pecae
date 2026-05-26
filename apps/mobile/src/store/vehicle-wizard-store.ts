@@ -7,6 +7,13 @@ interface WizardData {
   versionId?: string;
   yearFabId?: string;
 
+  // Campos customizados para preenchimento manual
+  customBrandName?: string;
+  customModelName?: string;
+  customVersionName?: string;
+  customYearFab?: number;
+  customYearModel?: number;
+
   // Step 2: Tech details
   color?: string;
   plate?: string;
@@ -97,7 +104,10 @@ export const useVehicleWizardStore = create<WizardState>((set, get) => ({
     const { data } = get();
     switch (step) {
       case 1:
-        return !!(data.versionId && data.yearFabId);
+        return !!(
+          (data.versionId || data.customVersionName) &&
+          (data.yearFabId || (data.customYearFab && data.customYearModel))
+        );
       case 2:
         return !!(data.color && data.city && data.state);
       case 3:

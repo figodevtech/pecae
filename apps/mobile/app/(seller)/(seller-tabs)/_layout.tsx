@@ -22,6 +22,7 @@ export default function SellerTabsLayout() {
         tabBarActiveTintColor: colors.brand,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarShowLabel: true,
+        tabBarLabelPosition: 'below-icon',
         tabBarLabelStyle: {
           fontFamily: typography.medium,
           fontSize: 10,

@@ -76,7 +76,7 @@ export default function FavoritesScreen() {
             >
               <PecaeGlassCard intensity={15} style={styles.productCard}>
                 <Image 
-                  source={{ uri: item.thumbnail || 'https://via.placeholder.com/300x200?text=Sem+Foto' }} 
+                  source={{ uri: item.thumbnail || 'https://images.unsplash.com/photo-1486006920555-c77dce18193b?auto=format&fit=crop&w=600&q=80' }} 
                   style={styles.productImage}
                   resizeMode="cover"
                 />

@@ -118,6 +118,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   initializeAuth: async () => {
     if (typeof window === 'undefined') return;
     
+    // Evita re-inicialização e flashes de loading se já estiver logado
+    const state = useAuthStore.getState();
+    if (state.isAuthenticated && state.user && state.token) {
+      console.log('[AuthStore] ℹ️ Auth already initialized, skipping...');
+      return;
+    }
+    
     console.log('[AuthStore] 🔄 Initializing Auth...');
     set({ isLoading: true });
 

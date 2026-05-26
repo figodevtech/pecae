@@ -51,7 +51,7 @@ services:
       - PORT=3000
       - RESEND_API_KEY=re_dev_placeholder
       - EMAIL_FROM=noreply@pecae.com.br
-      - STORAGE_TYPE=supabase
+      - STORAGE_TYPE=mock
       - SUPABASE_URL=https://placeholder.supabase.co
       - SUPABASE_SERVICE_ROLE_KEY=placeholder
       - ADMIN_SEED_EMAIL=admin@pecae.com.br

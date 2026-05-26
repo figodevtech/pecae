@@ -10,17 +10,25 @@ export interface PendingListing {
   id: string;
   title: string;
   createdAt: string;
+  status: string;
   vehicle: {
-    brand: { name: string };
-    model: { name: string };
-    version: { name: string };
-    yearFab: string;
-    licensePlate: string;
+    plate?: string;
+    // Campos planos normalizados pela API
+    brandName: string | null;
+    modelName: string | null;
+    versionName: string | null;
+    yearFabValue: number | null;
+    yearModelValue: number | null;
     photos: ListingPhoto[];
+    // Campos brutos do Prisma (mantidos para fallback)
+    customBrandName?: string;
+    customModelName?: string;
+    customVersionName?: string;
+    customYearFab?: number;
+    customYearModel?: number;
   };
   sellerProfile: {
     id: string;
-    name: string;
     isVerified: boolean;
     totalListings: number;
     user: {

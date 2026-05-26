@@ -48,7 +48,7 @@ export default function CatalogScreen() {
       <PecaeGlassCard padding={0} intensity={25} style={styles.card}>
         <View style={styles.imageWrapper}>
           <Image 
-            source={{ uri: item.thumbnail || 'https://via.placeholder.com/400x300' }} 
+            source={{ uri: item.thumbnail || 'https://images.unsplash.com/photo-1507136566006-cfc505b114fc?auto=format&fit=crop&w=600&q=80' }} 
             style={styles.image}
             resizeMode="cover"
           />

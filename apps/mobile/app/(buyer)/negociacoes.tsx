@@ -76,7 +76,7 @@ const NegotiationItem: React.FC<{ negotiation: Negotiation }> = ({ negotiation }
     ? negotiation.vehicle.version
     : negotiation.seller.storeName;
 
-  const thumbnail = negotiation.vehicle?.thumbnail || 'https://via.placeholder.com/150?text=PECAÊ';
+  const thumbnail = negotiation.vehicle?.thumbnail || 'https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&w=400&q=80';
 
   return (
     <TouchableOpacity 

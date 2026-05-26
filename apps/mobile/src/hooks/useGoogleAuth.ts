@@ -16,7 +16,8 @@ export function useGoogleAuth({ onSuccess, onError }: UseGoogleAuthOptions) {
   const [loading, setLoading] = useState(false);
 
   const [, , promptAsync] = Google.useAuthRequest({
-    clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
+    clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || 'placeholder-google-client-id.apps.googleusercontent.com',
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || 'placeholder-google-client-id.apps.googleusercontent.com',
     redirectUri: makeRedirectUri({
       // useProxy: true enables flow in Expo Go without custom URI scheme configured
       // When building a standalone app, set to false and configure the scheme

@@ -9,6 +9,9 @@ export default function Index() {
   }
 
   if (isAuthenticated) {
+    if (user?.type === 'ADMIN' || user?.type === 'MODERATOR' || user?.role === 'ADMIN' || user?.role === 'MODERATOR') {
+      return <Redirect href="/(moderator)" />;
+    }
     // Para usuários com ambos os papéis, o padrão agora é o Terminal (Comprador)
     // para evitar redirecionamentos indesejados relatados pelo usuário.
     if (user?.type === 'SELLER') {

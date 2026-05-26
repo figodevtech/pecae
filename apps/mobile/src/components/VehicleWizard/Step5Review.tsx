@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Text, ScrollView, Image, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Text, ScrollView, Image, Alert, ActivityIndicator, Platform } from 'react-native';
 import { usePecaeTheme } from '../../theme';
 import { PecaeGlassCard } from '../PecaeUI/PecaeGlassCard';
 import { PecaeButton } from '../PecaeUI/PecaeButton';
@@ -33,13 +33,18 @@ export const Step5Review: React.FC = () => {
             color: data.color,
             city: data.city,
             state: data.state,
-            plate: data.plate,
+            plate: data.plate?.trim() || undefined,
             observations: data.observations,
             availableParts: data.availableParts,
             title: data.title,
             description: data.description,
             lat: data.lat,
             lng: data.lng,
+            customBrandName: data.customBrandName,
+            customModelName: data.customModelName,
+            customVersionName: data.customVersionName,
+            customYearFab: data.customYearFab,
+            customYearModel: data.customYearModel,
           });
 
       const vehicle = isEditing ? { id: data.editingId } : response.data.vehicle;
@@ -66,14 +71,17 @@ export const Step5Review: React.FC = () => {
             const uploadInfo = uploadUrls.find((u: any) => u.slotIndex === index);
             if (!uploadInfo) return null;
 
-            const fileResponse = await fetch(photo.uri);
-            const blob = await fileResponse.blob();
+            const isMockUrl = uploadInfo.uploadUrl.includes('/mock-upload/');
+            if (!isMockUrl) {
+              const fileResponse = await fetch(photo.uri);
+              const blob = await fileResponse.blob();
 
-            await fetch(uploadInfo.uploadUrl, {
-              method: 'PUT',
-              body: blob,
-              headers: { 'Content-Type': photo.type },
-            });
+              await fetch(uploadInfo.uploadUrl, {
+                method: 'PUT',
+                body: blob,
+                headers: { 'Content-Type': photo.type },
+              });
+            }
 
             return {
               url: uploadInfo.publicUrl,
@@ -88,17 +96,39 @@ export const Step5Review: React.FC = () => {
         });
       }
       
-      Alert.alert(
-        'FORJA CONCLUÍDA!', 
-        'Seu veículo foi cadastrado e está em análise. Você será notificado assim que for publicado.',
-        [{ text: 'ENTENDIDO', onPress: () => {
-          resetWizard();
-          router.replace('/(seller)/(seller-tabs)/inventory');
-        }}]
-      );
+      if (Platform.OS === 'web') {
+        alert('FORJA CONCLUÍDA!\n\nSeu veículo foi cadastrado e está em análise. Você será notificado assim que for publicado.');
+        resetWizard();
+        router.replace('/(seller)/(seller-tabs)/inventory');
+      } else {
+        Alert.alert(
+          'FORJA CONCLUÍDA!', 
+          'Seu veículo foi cadastrado e está em análise. Você será notificado assim que for publicado.',
+          [{ text: 'ENTENDIDO', onPress: () => {
+            resetWizard();
+            router.replace('/(seller)/(seller-tabs)/inventory');
+          }}]
+        );
+      }
     } catch (error: any) {
-      console.error(error);
-      Alert.alert('FALHA NA FORJA', error.response?.data?.message || 'Erro técnico ao processar cadastro.');
+      console.error('Erro detalhado da falha na submissão:', error);
+      if (error.response?.data) {
+        console.error('Dados de erro da API:', error.response.data);
+      }
+
+      const apiMessage = error.response?.data?.message;
+      const formattedMessage = Array.isArray(apiMessage)
+        ? apiMessage.join('\n')
+        : apiMessage || 'Erro técnico ao processar cadastro.';
+
+      if (Platform.OS === 'web') {
+        alert(`FALHA NA FORJA\n\nDetalhes da validação:\n${formattedMessage}`);
+      } else {
+        Alert.alert(
+          'FALHA NA FORJA', 
+          `Detalhes da validação:\n${formattedMessage}`
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }

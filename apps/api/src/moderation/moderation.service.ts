@@ -101,15 +101,27 @@ export class ModerationService {
 
     const nextCursor = items.length > 0 ? items[items.length - 1].id : null;
 
-    // Mask license plates
+    // Normaliza estrutura para o frontend — achata objetos aninhados do Prisma
     const mappedItems = items.map((listing) => {
-      const maskedListing = { ...listing };
-      if (maskedListing.vehicle) {
-        maskedListing.vehicle.plate = this.maskLicensePlate(
-          maskedListing.vehicle.plate || undefined,
-        );
-      }
-      return maskedListing;
+      const v = listing.vehicle as any;
+      return {
+        ...listing,
+        vehicle: v ? {
+          ...v,
+          plate: this.maskLicensePlate(v.plate || undefined),
+          // Campos planos para o frontend
+          brandName: v.version?.model?.brand?.name || v.customBrandName || null,
+          modelName: v.version?.model?.name || v.customModelName || null,
+          versionName: v.version?.name || v.customVersionName || null,
+          yearFabValue: v.yearFab?.yearFab || v.customYearFab || null,
+          yearModelValue: v.yearFab?.yearModel || v.customYearModel || null,
+          photos: v.photos || [],
+        } : null,
+        sellerProfile: listing.sellerProfile ? {
+          ...listing.sellerProfile,
+          totalListings: (listing.sellerProfile as any)._count?.listings || 0,
+        } : null,
+      };
     });
 
     return {
@@ -156,14 +168,21 @@ export class ModerationService {
       throw new NotFoundException(`Anúncio com ID ${id} não encontrado.`);
     }
 
-    // Mask license plate
-    if (listing.vehicle) {
-      listing.vehicle.plate = this.maskLicensePlate(
-        listing.vehicle.plate || undefined,
-      );
-    }
-
-    return listing;
+    // Normaliza estrutura para o frontend — achata objetos aninhados do Prisma
+    const v = listing.vehicle as any;
+    return {
+      ...listing,
+      vehicle: v ? {
+        ...v,
+        plate: this.maskLicensePlate(v.plate || undefined),
+        brandName: v.version?.model?.brand?.name || v.customBrandName || null,
+        modelName: v.version?.model?.name || v.customModelName || null,
+        versionName: v.version?.name || v.customVersionName || null,
+        yearFabValue: v.yearFab?.yearFab || v.customYearFab || null,
+        yearModelValue: v.yearFab?.yearModel || v.customYearModel || null,
+        photos: v.photos || [],
+      } : null,
+    };
   }
 
   async approveListing(id: string, dto: ApproveListingDto, user: any) {

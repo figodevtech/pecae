@@ -36,6 +36,7 @@ export default function TabLayout() {
           },
           tabBarActiveTintColor: colors.brand,
           tabBarInactiveTintColor: colors.textMuted,
+          tabBarLabelPosition: 'below-icon',
           tabBarLabelStyle: {
             fontFamily: typography.medium,
             fontSize: 10,

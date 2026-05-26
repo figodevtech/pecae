@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Image, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Image, Switch, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -27,6 +27,16 @@ export default function PerfilCompradorMenu() {
     await setThemeMode(newTheme);
   };
 
+  const handleBack = () => {
+    if (Platform.OS === 'web') {
+      router.replace('/(tabs)');
+    } else if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
+
   if (isLoading) {
     return (
       <PecaeBackground>
@@ -49,7 +59,7 @@ export default function PerfilCompradorMenu() {
           {/* Custom Header with Back Button */}
           <View style={styles.header}>
             <TouchableOpacity 
-              onPress={() => router.back()}
+              onPress={handleBack}
               style={[styles.backButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
             >
               <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />

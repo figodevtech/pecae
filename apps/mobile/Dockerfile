@@ -2,9 +2,9 @@
 FROM node:22-alpine AS pruner
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
-RUN npm install -g turbo
+RUN npm install -g turbo@2.0.0
 # Cache breaker
-# Timestamp: 2026-05-03T00:50
+# Timestamp: 2026-05-26T15:20
 COPY . .
 RUN turbo prune @pecae/mobile --docker
 
@@ -27,7 +27,7 @@ COPY --from=installer /app/ .
 ARG EXPO_PUBLIC_API_URL=http://localhost:3000/api/v1
 ENV EXPO_PUBLIC_API_URL=$EXPO_PUBLIC_API_URL
 
-RUN npx turbo run build --filter=@pecae/mobile
+RUN npx turbo@2.0.0 run build --filter=@pecae/mobile
 
 # Stage 4: Runner (Nginx com proxy reverso para a API)
 FROM nginx:alpine AS runner

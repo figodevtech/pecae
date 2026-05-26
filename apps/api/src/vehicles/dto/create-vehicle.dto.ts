@@ -7,7 +7,8 @@ import {
   IsLatLong, 
   MaxLength, 
   Matches,
-  IsNumber
+  IsNumber,
+  ValidateIf
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -17,15 +18,43 @@ import { ApiProperty } from '@nestjs/swagger';
  * CRITICAL (RN04/RN05): MUST NOT contain price or chassis fields.
  */
 export class CreateVehicleDto {
-  @ApiProperty({ example: 'uuid-version-123' })
+  @ApiProperty({ example: 'uuid-version-123', required: false })
+  @IsOptional()
   @IsUUID()
-  @IsNotEmpty()
-  versionId: string;
+  versionId?: string;
 
-  @ApiProperty({ example: 'uuid-year-456' })
+  @ApiProperty({ example: 'uuid-year-456', required: false })
+  @IsOptional()
   @IsUUID()
-  @IsNotEmpty()
-  yearFabId: string;
+  yearFabId?: string;
+
+  @ApiProperty({ example: 'Fiat', required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  customBrandName?: string;
+
+  @ApiProperty({ example: 'Uno', required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  customModelName?: string;
+
+  @ApiProperty({ example: 'Mille 1.0 Flex', required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  customVersionName?: string;
+
+  @ApiProperty({ example: 2012, required: false })
+  @IsOptional()
+  @IsNumber()
+  customYearFab?: number;
+
+  @ApiProperty({ example: 2013, required: false })
+  @IsOptional()
+  @IsNumber()
+  customYearModel?: number;
 
   @ApiProperty({ example: 'Prata' })
   @IsString()
@@ -48,6 +77,7 @@ export class CreateVehicleDto {
   @ApiProperty({ example: 'ABC-1234', required: false })
   @IsOptional()
   @IsString()
+  @ValidateIf((o) => o.plate && o.plate !== '')
   @Matches(/^[A-Z]{3}-?\d{4}$|^[A-Z]{3}[A-Z0-9]\d{3}$/, { 
     message: 'Placa deve estar no formato brasileiro ou Mercosul' 
   })

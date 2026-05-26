@@ -111,7 +111,8 @@ export const useVehicleActions = () => {
 
   const markAsSold = useMutation({
     mutationFn: async (id: string) => {
-      const { data } = await api.patch(`/vehicles/${id}/status`, { status: 'SOLD' });
+      // PATCH /vehicles/:id/sold — endpoint real da API
+      const { data } = await api.patch(`/vehicles/${id}/sold`);
       return data;
     },
     onSuccess: () => {
@@ -122,7 +123,8 @@ export const useVehicleActions = () => {
 
   const markAsRemoved = useMutation({
     mutationFn: async (id: string) => {
-      const { data } = await api.patch(`/vehicles/${id}/status`, { status: 'INACTIVE' });
+      // PATCH /vehicles/:id/removed — endpoint real da API
+      const { data } = await api.patch(`/vehicles/${id}/removed`);
       return data;
     },
     onSuccess: () => {
