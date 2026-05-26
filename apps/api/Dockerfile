@@ -51,6 +51,7 @@ COPY --from=builder --chown=nestjs:nodejs /app/apps/api/tsconfig.json ./apps/api
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nestjs:nodejs /app/apps/api/entrypoint.sh ./apps/api/entrypoint.sh
+RUN sed -i 's/\r$//' ./apps/api/entrypoint.sh && chmod +x ./apps/api/entrypoint.sh
 
 USER nestjs
 
