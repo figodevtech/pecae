@@ -5,7 +5,7 @@ import * as crypto from 'crypto';
 // Função auxiliar para rodar queries SQL no WSL
 function runSqlQuery(sql: string): string {
   try {
-    const command = 'wsl docker exec -i pecae-postgres-test psql -U postgres -d pecae_test_db -t -A';
+    const command = 'wsl -u root docker exec -i pecae-postgres-test psql -U postgres -d pecae_test_db -t -A';
     return execSync(command, { input: sql, stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim();
   } catch (error: any) {
     console.error(`[SQL ERROR] Falha ao rodar query: ${sql}`);
@@ -19,13 +19,15 @@ test.describe('PECAÊ E2E - Fluxo 2: Chat, Negociação e Avaliação', () => {
   let preExistingChatId = '';
 
   test.beforeAll(async () => {
+    // Limpar reviews anteriores para evitar 409 Conflict na primeira avaliação
+    runSqlQuery("DELETE FROM reviews;");
     // Obter IDs determinísticos do seed E2E
     publishedVehicleId = runSqlQuery("SELECT id FROM vehicles WHERE plate = 'E2E-8888' LIMIT 1;");
     preExistingChatId = runSqlQuery("SELECT id FROM chat_rooms WHERE buyer_id = (SELECT id FROM users WHERE email = 'buyer-e2e@pecae.com.br') LIMIT 1;");
     console.log(`ℹ️ [FLOW 2] Veículo Publicado ID: ${publishedVehicleId}, Chat Pré-existente ID: ${preExistingChatId}`);
   });
 
-  test.skip('Deve executar a negociação no chat e a avaliação do vendedor sem duplicidade', async ({ page }) => {
+  test('Deve executar a negociação no chat e a avaliação do vendedor sem duplicidade', async ({ page }) => {
     /**
      * ⏸️ PAUSADO — CAUSA RAIZ DOCUMENTADA
      *
@@ -48,7 +50,7 @@ test.describe('PECAÊ E2E - Fluxo 2: Chat, Negociação e Avaliação', () => {
      *   2. Verificar se o chatRoom seedado usa o seller user_id ou seller_profile_id.
      *   3. Testar a rota /chat/[roomId] autenticado como vendedor.
      *
-     * REFERÊNCIA: Screenshot em test-results/flow2-chat-negotiation-*/test-failed-1.png
+     * REFERÊNCIA: Screenshot em test-results/flow2-chat-negotiation/test-failed-1.png
      * ARQUIVO: e2e/flow2-chat-negotiation.spec.ts
      */
     console.log('▶️ Iniciando Fluxo 2: Chat, Negociação e Avaliação');
@@ -85,6 +87,10 @@ test.describe('PECAÊ E2E - Fluxo 2: Chat, Negociação e Avaliação', () => {
     if (await logoutBtn.isVisible()) {
       await logoutBtn.click();
     }
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
     console.log('✅ Logout do Comprador realizado.');
 
     // 5. Login do Vendedor
@@ -102,7 +108,7 @@ test.describe('PECAÊ E2E - Fluxo 2: Chat, Negociação e Avaliação', () => {
     const chatListVisible = await page.locator('text=/Onix|câmbio|Comprador|buyer/i').first().isVisible({ timeout: 8000 }).catch(() => false);
     if (!chatListVisible) {
       // Se a listagem web não renderizou o chat, acessa o chat diretamente para validar o fluxo
-      await page.goto(`/(seller)/chat/${preExistingChatId}`);
+      await page.goto(`/chat/${preExistingChatId}`);
       await expect(page.locator('text=/câmbio|Onix|mensagem/i').first()).toBeVisible({ timeout: 8000 });
     } else {
       await expect(page.locator('text=/Onix|câmbio|Comprador|buyer/i').first()).toBeVisible();
@@ -115,6 +121,10 @@ test.describe('PECAÊ E2E - Fluxo 2: Chat, Negociação e Avaliação', () => {
     if (await logoutSellerBtn.isVisible()) {
       await logoutSellerBtn.click();
     }
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
     console.log('✅ Logout do Vendedor realizado.');
 
     // 9. Login do Comprador para Avaliação
@@ -122,36 +132,44 @@ test.describe('PECAÊ E2E - Fluxo 2: Chat, Negociação e Avaliação', () => {
     await page.locator('input[type="email"]').fill('buyer-e2e@pecae.com.br');
     await page.locator('input[type="password"]').fill('Pecae@E2e123');
     await page.getByText('ENTRAR', { exact: true }).click();
+    await expect(page).toHaveURL(/.*(\(tabs\)|\/$)/);
 
-    // 10. Acessar o chat pré-existente (elegível para avaliação)
-    await page.goto(`/chat/${preExistingChatId}`);
+    // 10. Acessar a tela de avaliação diretamente (rota interna do app)
+    const sellerProfileId = runSqlQuery("SELECT id FROM seller_profiles WHERE store_name = 'Sucatão E2E Principal';").trim();
+    const storeName = 'Sucatão E2E Principal';
+    console.log(`ℹ️ Navegando diretamente para a tela de avaliação. SellerProfile=${sellerProfileId}`);
+    await page.goto(`/chat/${preExistingChatId}/avaliar?sellerId=${sellerProfileId}&storeName=${encodeURIComponent(storeName)}`);
 
-    // 11. Realizar a avaliação de 5 estrelas
-    const evalBtn = page.getByRole('button', { name: /Avaliar Vendedor|Avaliar/i }).first();
-    if (await evalBtn.isVisible()) {
-      await evalBtn.click();
-      
-      // Preencher avaliação
-      await page.locator('text=5 estrelas|★★★★★').first().click();
-      await page.getByPlaceholder('Descreva detalhes da negociação, agilidade e estado das peças...').fill('Otimo atendimento!');
-      await page.getByRole('button', { name: /Enviar Avaliacao|Enviar/i }).click();
-      console.log('✅ Avaliação de 5 estrelas enviada.');
+    // 11. Realizar a avaliação de 5 estrelas pela UI
+    await expect(page.locator('text=AVALIAR VENDEDOR').first()).toBeVisible({ timeout: 10000 });
+    
+    // Clica na 5ª estrela usando o testID definido
+    await page.getByTestId('star-rating-5').click();
+    
+    await page.getByPlaceholder('Descreva detalhes da negociação, agilidade e estado das peças...').fill('Otimo atendimento!');
+    await page.getByTestId('submit-eval-button').click();
+    
+    // Aguarda o card de sucesso aparecer confirmando a transação avaliada antes de prosseguir
+    await expect(page.locator('text=TRANSAÇÃO AVALIADA').first()).toBeVisible({ timeout: 15000 });
+    console.log('✅ Avaliação de 5 estrelas enviada.');
 
-      // 12. Validar bloqueio de avaliação duplicada (RN-M06-02)
-      await page.goto(`/chat/${preExistingChatId}`);
-      const disabledEvalBtn = page.getByRole('button', { name: /Voce ja avaliou|Avaliado/i }).first();
-      await expect(disabledEvalBtn).toBeDisabled;
-      console.log('✅ Validação RN-M06-02: Bloqueio de avaliação duplicada ativo e verificado.');
-    } else {
-      // Se a UI web não renderizou o botão de avaliar, simulamos o clique enviando direto via REST
-      const buyerId = runSqlQuery("SELECT id FROM users WHERE email = 'buyer-e2e@pecae.com.br';");
-      const sellerProfileId = runSqlQuery("SELECT id FROM seller_profiles WHERE store_name = 'Sucatão E2E Principal';");
-      runSqlQuery(`
-        INSERT INTO reviews (id, seller_profile_id, buyer_id, chat_room_id, rating, comment, is_removed, created_at, updated_at)
-        VALUES ('${crypto.randomUUID()}', '${sellerProfileId}', '${buyerId}', '${preExistingChatId}', 5, 'Otimo atendimento!', false, NOW(), NOW())
-        ON CONFLICT DO NOTHING;
-      `);
-      console.log('✅ Bypass: Avaliação registrada via SQL.');
-    }
+    // 12. Validar bloqueio de avaliação duplicada (RN-M06-02)
+    console.log('ℹ️ Verificando bloqueio de avaliação duplicada...');
+    await page.goto(`/chat/${preExistingChatId}/avaliar?sellerId=${sellerProfileId}&storeName=${encodeURIComponent(storeName)}`);
+    
+    await expect(page.locator('text=AVALIAR VENDEDOR').first()).toBeVisible({ timeout: 10000 });
+    await page.getByTestId('star-rating-5').click();
+    await page.getByPlaceholder('Descreva detalhes da negociação, agilidade e estado das peças...').fill('Tentativa duplicada');
+    
+    // Configura a promessa do diálogo para pegar o erro 409 Conflict da API
+    const dialogPromise = page.waitForEvent('dialog');
+    
+    await page.getByTestId('submit-eval-button').click();
+    
+    const dialog = await dialogPromise;
+    console.log(`💬 Dialog de Erro de Avaliação Duplicada: ${dialog.message()}`);
+    expect(dialog.message()).toMatch(/já avaliou|duplicada|409|Conflict|Falha/i);
+    await dialog.accept();
+    console.log('✅ Validação RN-M06-02: Bloqueio de avaliação duplicada ativo e verificado.');
   });
 });
