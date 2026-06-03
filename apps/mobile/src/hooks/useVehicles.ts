@@ -141,6 +141,10 @@ export const useVehicleActions = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vehicles', 'me'] });
     },
+    onError: (error: any) => {
+      console.error('Failed to delete vehicle:', error);
+      alert('Erro ao excluir: ' + (error.response?.data?.message || error.message));
+    }
   });
 
   const reactivateVehicle = useMutation({

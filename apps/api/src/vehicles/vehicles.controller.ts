@@ -8,6 +8,7 @@ import {
   Req, 
   UseGuards, 
   Patch,
+  Delete,
   NotFoundException
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -134,6 +135,15 @@ export class VehiclesController {
   async reactivate(@Param('id') id: string, @Req() req: any) {
     const sellerId = await this.getSellerId(req.user.id);
     return this.vehiclesService.reactivate(id, sellerId);
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserType.SELLER, UserType.BOTH)
+  @ApiOperation({ summary: 'Exclui permanentemente um veículo' })
+  async remove(@Param('id') id: string, @Req() req: any) {
+    const sellerId = await this.getSellerId(req.user.id);
+    return this.vehiclesService.remove(id, sellerId);
   }
 
   @Post(':id/photos/upload-url')

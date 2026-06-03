@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, Platform } from 'react-native';
 import { usePecaeTheme } from '../../theme';
 import { PecaeGlassCard } from '../PecaeUI/PecaeGlassCard';
 import { Ionicons } from '@expo/vector-icons';
@@ -48,6 +48,15 @@ export const VehicleInventoryCard: React.FC<VehicleInventoryCardProps> = ({ vehi
   };
 
   const handleSold = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Deseja marcar esta sucata como vendida? Ela não aparecerá mais nas buscas.')) {
+        setTimeout(() => {
+          markAsSold.mutate(vehicle.id);
+        }, 10);
+      }
+      return;
+    }
+    
     Alert.alert(
       'Confirmar Venda',
       'Deseja marcar esta sucata como vendida? Ela não aparecerá mais nas buscas.',
@@ -62,6 +71,15 @@ export const VehicleInventoryCard: React.FC<VehicleInventoryCardProps> = ({ vehi
   };
 
   const handleDelete = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Deseja excluir permanentemente esta sucata do seu inventário?')) {
+        setTimeout(() => {
+          deleteVehicle.mutate(vehicle.id);
+        }, 10);
+      }
+      return;
+    }
+
     Alert.alert(
       'Excluir Registro',
       'Deseja excluir permanentemente esta sucata do seu inventário?',

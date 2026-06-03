@@ -84,7 +84,7 @@ export const Step5Review: React.FC = () => {
             }
 
             return {
-              url: uploadInfo.publicUrl,
+              url: isMockUrl ? photo.uri : uploadInfo.publicUrl,
               type: 'OTHER', 
               order: photoOrder,
             };

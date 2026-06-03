@@ -629,4 +629,30 @@ export class VehiclesService {
       return { vehicle: updatedVehicle, message: 'Sucata reativada com sucesso. Enviada para moderação.' };
     });
   }
+  /**
+   * Deletes a vehicle and its related listings from the database.
+   */
+  async remove(id: string, sellerId: string) {
+    const vehicle = await this.prisma.vehicle.findUnique({
+      where: { id },
+      select: { sellerId: true },
+    });
+
+    if (!vehicle) throw new NotFoundException('Veículo não encontrado');
+    if (vehicle.sellerId !== sellerId) throw new ForbiddenException('Ação não permitida');
+
+    return this.prisma.$transaction(async (tx) => {
+      // First delete associated listings to satisfy foreign key constraints
+      await tx.listing.deleteMany({
+        where: { vehicleId: id },
+      });
+
+      // Then delete the vehicle
+      const deletedVehicle = await tx.vehicle.delete({
+        where: { id },
+      });
+
+      return { vehicle: deletedVehicle, message: 'Sucata excluída com sucesso.' };
+    });
+  }
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { PecaeBackground, PecaeGlassCard, StatWidget, PecaeButton } from '../../../src/components/PecaeUI';
@@ -22,6 +22,7 @@ export default function SellerProfileScreen() {
     },
   });
 
+  const queryClient = useQueryClient();
   const { data: analytics, isLoading: isLoadingAnalytics } = useQuery({
     queryKey: ['seller-analytics'],
     queryFn: async () => {
@@ -30,8 +31,29 @@ export default function SellerProfileScreen() {
     },
   });
 
+  const { clearAuth } = useAuthStore();
+
   const handleVerificationRequest = () => {
     router.push('/(seller)/solicitar-verificacao');
+  };
+
+  const handleLogout = async () => {
+    Alert.alert(
+      'Sair da conta',
+      'Tem certeza que deseja sair?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { 
+          text: 'Sair', 
+          style: 'destructive',
+          onPress: async () => {
+            await clearAuth();
+            queryClient.clear();
+            router.replace('/login');
+          }
+        }
+      ]
+    );
   };
 
   const menuItems = [

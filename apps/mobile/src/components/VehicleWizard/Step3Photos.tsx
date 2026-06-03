@@ -34,25 +34,28 @@ export const Step3Photos: React.FC = () => {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
+      allowsMultipleSelection: true,
       quality: 0.7,
     });
 
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      const newPhoto = {
-        uri: asset.uri,
-        type: 'image/jpeg',
-        name: `photo_${Date.now()}.jpg`,
-      };
+    if (!result.canceled && result.assets.length > 0) {
+      let newPhotos = [...data.photos];
+
+      for (const asset of result.assets) {
+        if (newPhotos.length >= 10) break; // Maximum 10 photos
+        const newPhoto = {
+          uri: asset.uri,
+          type: 'image/jpeg',
+          name: `photo_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`,
+        };
+        newPhotos.push(newPhoto);
+      }
       
-      const newPhotos = [...data.photos, newPhoto];
       const updatePayload: any = { photos: newPhotos };
       
-      // If it's the first photo, set as cover by default
-      if (!data.coverPhotoUri) {
-        updatePayload.coverPhotoUri = asset.uri;
+      // If it's the first photo(s) added, set the first one as cover by default
+      if (!data.coverPhotoUri && newPhotos.length > 0) {
+        updatePayload.coverPhotoUri = newPhotos[0].uri;
       }
 
       updateData(updatePayload);

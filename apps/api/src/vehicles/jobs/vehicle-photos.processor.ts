@@ -56,9 +56,14 @@ export class VehiclePhotosProcessor extends WorkerHost {
         try {
           this.logger.debug(`Baixando foto original: ${photo.url}`);
           
-          // Se for mock storage do ambiente de desenvolvimento, pulamos download e injetamos o mock do Unsplash de alta qualidade
-          if (photo.url.includes('pecae-mock-storage.com') || photo.url.includes('placeholder') || photo.url.includes('localhost:3000')) {
-            throw new Error('URL de desenvolvimento/mock detectada, usando fallback estético do Unsplash');
+          if (photo.url.includes('pecae-mock-storage.com') || photo.url.includes('placeholder') || photo.url.includes('localhost:3000') || photo.url.startsWith('file://')) {
+            this.logger.log(`URL local/mock detectada, mantendo URL original: ${photo.url}`);
+            processedPhotosRecords.push({
+              url: photo.url,
+              type: this.mapPhotoType(photo.type),
+              order: photo.order,
+            });
+            continue;
           }
 
           // 1. Download da foto original bruta
@@ -135,11 +140,10 @@ export class VehiclePhotosProcessor extends WorkerHost {
             this.logger.warn(`Não foi possível remover a foto bruta antiga: ${cleanupErr.message}`);
           }
         } catch (photoError) {
-          // Se falhar em desenvolvimento ou se for mock, usamos fallback elegante de imagem do Unsplash para não quebrar a transação
-          this.logger.warn(`Aviso de desvio/falha ao processar foto individual ${photo.url}: ${photoError.message}. Adotando fallback estético Unsplash.`);
-          const chosenUrl = mockImages[photo.order % mockImages.length];
+          // Se falhar em desenvolvimento ou se for mock, mantemos a URL para não quebrar
+          this.logger.warn(`Aviso de falha ao processar foto individual ${photo.url}: ${photoError.message}. Mantendo URL original.`);
           processedPhotosRecords.push({
-            url: chosenUrl,
+            url: photo.url,
             type: this.mapPhotoType(photo.type),
             order: photo.order,
           });
