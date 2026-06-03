@@ -34,7 +34,8 @@ export const Step4Inventory: React.FC<Step4InventoryProps> = ({ isInline }) => {
     updateData({ availableParts: [] });
   };
 
-  const isValid = data.availableParts.length > 0 && !!data.title;
+  // Apenas o título é obrigatório para avançar; as partes do inventário são opcionais
+  const isValid = !!data.title?.trim();
 
 
   const inventoryGroups = [
@@ -185,7 +186,7 @@ export const Step4Inventory: React.FC<Step4InventoryProps> = ({ isInline }) => {
               style={styles.button}
             />
             <PecaeButton
-              title="Revisar Cadastro"
+              title="Próximo"
               onPress={nextStep}
               disabled={!isValid}
               style={styles.button}

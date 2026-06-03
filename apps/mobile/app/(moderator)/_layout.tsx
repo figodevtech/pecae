@@ -63,6 +63,20 @@ export default function ModeratorLayout() {
             ),
           }}
         />
+        <Tabs.Screen
+          name="perfil"
+          options={{
+            title: 'PERFIL',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="person-circle-outline" size={size} color={color} />
+            ),
+          }}
+        />
+        {/* reports fica oculto do rodapé — a funcionalidade existe na tela de Moderação como "Fila de Denúncias" */}
+        <Tabs.Screen
+          name="reports"
+          options={{ href: null }}
+        />
       </Tabs>
     </ProtectedRoute>
   );

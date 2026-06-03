@@ -1,16 +1,21 @@
 # Stage 1: Pruning
-FROM node:22-alpine AS pruner
-RUN apk add --no-cache libc6-compat
+# Usando node:22-slim (Debian) para evitar bug do OpenSSL GCM no Alpine
+FROM node:22-slim AS pruner
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 RUN npm install -g turbo@2.0.0
 # Cache breaker
-# Timestamp: 2026-05-26T15:20
+# Timestamp: 2026-06-03T16:19
 COPY . .
 RUN turbo prune @pecae/mobile --docker
 
 # Stage 2: Dependencies
-FROM node:22-alpine AS installer
-RUN apk add --no-cache libc6-compat python3 make g++
+FROM node:22-slim AS installer
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/package-lock.json ./package-lock.json
@@ -18,7 +23,7 @@ COPY scripts/ ./scripts/
 RUN npm install --legacy-peer-deps
 
 # Stage 3: Build — A variavel EXPO_PUBLIC_API_URL DEVE ser passada como ARG para ser embutida no bundle
-FROM node:22-alpine AS builder
+FROM node:22-slim AS builder
 WORKDIR /app
 COPY --from=pruner /app/out/full/ .
 COPY --from=installer /app/ .
