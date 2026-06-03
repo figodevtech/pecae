@@ -146,15 +146,16 @@ test.describe('PECAÊ E2E - Fluxo 1: Core do Marketplace', () => {
     pendingListingId = runSqlQuery(`SELECT id FROM listings WHERE vehicle_id = '${createdVehicleId}' LIMIT 1;`);
     console.log(`ℹ️ IDs Gerados: Veículo=${createdVehicleId}, Anúncio=${pendingListingId}`);
 
-    // 5.5 Limpar storage do Vendedor (simula logout virtual) para podermos acessar a rota pública com segurança
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
-    console.log('✅ Logout virtual do Vendedor realizado.');
+    // 5.5 Logar como Comprador para validar que ele não vê o veículo pendente de terceiros (RN14)
+    await page.goto('/(auth)/login');
+    await page.locator('input[type="email"]').fill('buyer-e2e@pecae.com.br');
+    await page.locator('input[type="password"]').fill('Pecae@E2e123');
+    await page.getByText('ENTRAR', { exact: true }).click();
+    await expect(page).toHaveURL(/.*(\(tabs\)|\/$)/);
+    console.log('✅ Login do Comprador realizado para validação da RN14.');
 
     // 6. Validar invisibilidade do anúncio pendente (RN14)
-    // O veículo com status DRAFT/PENDING deve retornar 404 pela API, exibindo página de erro
+    // O veículo com status DRAFT/PENDING deve retornar 404 pela API para terceiros, exibindo página de erro
     await page.goto(`/(tabs)/vehicle/${createdVehicleId}`);
     // Aguarda o bundle do Expo carregar completamente (pode aparecer "Refreshing..." temporariamente)
     await page.waitForLoadState('domcontentloaded');
@@ -173,13 +174,20 @@ test.describe('PECAÊ E2E - Fluxo 1: Core do Marketplace', () => {
     await expect(notFoundText).toBeVisible({ timeout: 10000 });
     console.log('✅ Validação RN14: Anúncio com status PENDING não está visível publicamente.');
 
+    // 6.5 Limpar storage do Comprador (logout) para podermos logar como Moderador na sequência
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+    console.log('✅ Logout do Comprador realizado pós-validação.');
+
     // 8. Login do Moderador
     await page.goto('/(auth)/login');
     await page.locator('input[type="email"]').fill('moderator-e2e@pecae.com.br');
     await page.locator('input[type="password"]').fill('Pecae@E2e123');
     await page.getByText('ENTRAR', { exact: true }).click();
     await expect(page).toHaveURL(/.*(\(moderator\)|\/$)/);
-    await expect(page.locator('text=Moderador|Moderação|Pendente|Lista|Aprovar').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=/Moderador|Moderação|Pendente|Lista|Aprovar/i').first()).toBeVisible({ timeout: 10000 });
     console.log('✅ Login do Moderador realizado.');
 
     // 9. Acessar anúncio pendente e validar placa mascarada (RN08)
@@ -239,7 +247,7 @@ test.describe('PECAÊ E2E - Fluxo 1: Core do Marketplace', () => {
 
     await page.goto('/(tabs)/notificacoes');
     await page.reload();
-    await expect(page.locator('text=Match|Gol|Novo').first()).toBeVisible();
+    await expect(page.locator('text=/Match|Gol|Novo/i').first()).toBeVisible();
     console.log('✅ Validação M11: Alerta de Match notificado com sucesso ao comprador.');
   });
 });

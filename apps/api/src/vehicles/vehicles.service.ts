@@ -221,6 +221,13 @@ export class VehiclesService {
     });
 
     if (!vehicle) throw new NotFoundException('Veículo não encontrado');
+
+    // RN14: Veículos em DRAFT ou PENDING não são visíveis publicamente
+    // Apenas veículos com status ACTIVE são acessíveis no marketplace público
+    if (vehicle.status === VehicleStatus.DRAFT || vehicle.status === VehicleStatus.PENDING) {
+      throw new NotFoundException('Veículo não disponível para visualização pública');
+    }
+
     return vehicle;
   }
 

@@ -161,12 +161,14 @@ test.describe('PECAÊ E2E - Fluxo 2: Chat, Negociação e Avaliação', () => {
     await page.getByTestId('star-rating-5').click();
     await page.getByPlaceholder('Descreva detalhes da negociação, agilidade e estado das peças...').fill('Tentativa duplicada');
     
-    // Configura a promessa do diálogo para pegar o erro 409 Conflict da API
+    // Configura a promessa do diálogo de forma concorrente para evitar deadlock com alert() nativo
     const dialogPromise = page.waitForEvent('dialog');
     
-    await page.getByTestId('submit-eval-button').click();
+    const [dialog] = await Promise.all([
+      dialogPromise,
+      page.getByTestId('submit-eval-button').click()
+    ]);
     
-    const dialog = await dialogPromise;
     console.log(`💬 Dialog de Erro de Avaliação Duplicada: ${dialog.message()}`);
     expect(dialog.message()).toMatch(/já avaliou|duplicada|409|Conflict|Falha/i);
     await dialog.accept();

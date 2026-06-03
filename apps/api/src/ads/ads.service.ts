@@ -267,13 +267,13 @@ export class AdsService {
         }
 
         // Aplica regras de matching de targeting refinado com fallbacks
-        // 1. Marca
-        if (c.targetBrandId && c.targetBrandId !== brandId) {
+        // 1. Marca (só filtra se o comprador buscou por uma marca específica)
+        if (c.targetBrandId && brandId && c.targetBrandId !== brandId) {
           return false;
         }
 
-        // 2. Modelo
-        if (c.targetModelId && c.targetModelId !== modelId) {
+        // 2. Modelo (só filtra se o comprador buscou por um modelo específico)
+        if (c.targetModelId && modelId && c.targetModelId !== modelId) {
           return false;
         }
 
@@ -327,7 +327,7 @@ export class AdsService {
 
     try {
       // Salva no cache com TTL de 60 segundos
-      await this.redis.set(cacheKey, JSON.stringify(result), 60);
+      await this.redis.set(cacheKey, result, 60);
     } catch (err) {
       console.error('Falha ao salvar anúncios patrocinados no Redis Cache:', err);
     }

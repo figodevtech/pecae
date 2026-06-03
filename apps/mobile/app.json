@@ -67,6 +67,7 @@
       "typedRoutes": true
     },
     "extra": {
+      "apiUrl": "http://localhost:3001/api/v1",
       "eas": {
         "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
       }

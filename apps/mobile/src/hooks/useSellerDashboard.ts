@@ -36,8 +36,22 @@ export function useSellerDashboard() {
   const recentMessagesQuery = useQuery({
     queryKey: ['seller-recent-messages'],
     queryFn: async (): Promise<RecentMessage[]> => {
-      // TODO M08: substituir por GET /chat/rooms quando M08 estiver integrado
-      return [];
+      try {
+        const { data } = await api.get<any[]>('/chat/rooms');
+        return data.map((room) => ({
+          id: room.id,
+          senderName: room.interlocutor?.name || 'Comprador',
+          subject: room.listingTitle,
+          lastText: room.lastMessage?.content || 'Nenhuma mensagem ainda',
+          time: room.lastMessage 
+            ? new Date(room.lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : '',
+          avatar: room.interlocutor?.avatar || null,
+        }));
+      } catch (error) {
+        console.error("Erro ao carregar mensagens no hook:", error);
+        return [];
+      }
     },
   });
 

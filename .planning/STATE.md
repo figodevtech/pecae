@@ -15,6 +15,15 @@
 - **Milestone 7 (Sprint 7)**: M13 (Ads e Monetização) — Status: `completed`
 - **Milestone 8 (Sprint 8)**: M12 (Analytics) — Status: `completed` (M10 Assinaturas: `deferred`)
 
+### Estabilização e Testes E2E (Playwright)
+
+- **Suíte E2E Completa**: Estabilizada e 100% aprovada rodando sob o WSL/Docker em 03/06/2026.
+  - *Fluxo 1 (Core Marketplace)*: ✅ Aprovado com correções de seletores de RegExp e login de Comprador.
+  - *Fluxo 2 (Chat/Negociação)*: ✅ Aprovado com correção de deadlock e suporte a diálogos alert() nativos na Web.
+  - *Fluxo 3 (Identidade/Onboarding)*: ✅ Aprovado.
+  - *Fluxo 4 (Monetização/Quotas)*: ✅ Aprovado.
+  - *Fluxo 5 (RBAC/CASL)*: ✅ Aprovado.
+
 ### Próxima Etapa Ativa:
 - **Milestones 1 a 8 concluídas**. MVP e escopos adicionais entregues com sucesso.
 - **Próximos Passos**: Manutenção, deploy em produção, monitoramento e eventuais melhorias pós-lançamento.

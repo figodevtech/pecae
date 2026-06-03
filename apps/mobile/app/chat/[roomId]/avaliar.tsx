@@ -44,13 +44,22 @@ export default function EvalSellerScreen() {
     },
     onError: (error: any) => {
       const msg = error?.response?.data?.message || 'Erro ao enviar avaliação.';
-      Alert.alert('Falha', Array.isArray(msg) ? msg.join('\n') : msg);
+      const formattedMsg = Array.isArray(msg) ? msg.join('\n') : msg;
+      if (Platform.OS === 'web') {
+        alert(formattedMsg);
+      } else {
+        Alert.alert('Falha', formattedMsg);
+      }
     }
   });
 
   const handleSubmit = () => {
     if (rating === 0) {
-      Alert.alert('Atenção', 'Por favor, selecione uma nota de 1 a 5 estrelas.');
+      if (Platform.OS === 'web') {
+        alert('Por favor, selecione uma nota de 1 a 5 estrelas.');
+      } else {
+        Alert.alert('Atenção', 'Por favor, selecione uma nota de 1 a 5 estrelas.');
+      }
       return;
     }
     mutation.mutate();
@@ -149,6 +158,7 @@ export default function EvalSellerScreen() {
             loading={mutation.isPending}
             style={styles.submitButton}
             variant="primary"
+            testID="submit-eval-button"
           />
         </PecaeGlassCard>
         

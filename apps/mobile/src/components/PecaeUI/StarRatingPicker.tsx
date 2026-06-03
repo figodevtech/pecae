@@ -52,6 +52,7 @@ export const StarRatingPicker: React.FC<StarRatingPickerProps> = ({
             onPress={() => handlePress(index)}
             activeOpacity={0.7}
             style={styles.starWrapper}
+            testID={`star-rating-${index + 1}`}
           >
             <Animated.View style={{ transform: [{ scale }] }}>
               <Ionicons

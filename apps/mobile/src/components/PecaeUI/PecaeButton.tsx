@@ -21,6 +21,7 @@ interface PecaeButtonProps {
   textStyle?: TextStyle;
   variant?: 'primary' | 'secondary' | 'outline';
   leftIcon?: React.ReactNode;
+  testID?: string;
 }
 
 export const PecaeButton: React.FC<PecaeButtonProps> = ({
@@ -32,6 +33,7 @@ export const PecaeButton: React.FC<PecaeButtonProps> = ({
   textStyle,
   variant = 'primary',
   leftIcon,
+  testID,
 }) => {
   const { colors, typography, effects } = usePecaeTheme();
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -66,6 +68,7 @@ export const PecaeButton: React.FC<PecaeButtonProps> = ({
         disabled={disabled || loading}
         activeOpacity={1}
         style={[styles.button, { borderRadius: effects.radius.md }, style]}
+        testID={testID}
       >
         <LinearGradient
           colors={

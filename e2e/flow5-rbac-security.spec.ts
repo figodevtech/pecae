@@ -16,10 +16,10 @@ test.describe('PECAÊ E2E - Fluxo 5: Controle de Acesso RBAC/CASL', () => {
     // 2. Tentar acessar a rota restrita de Moderador no frontend
     await page.goto('/(moderator)');
     
-    // 3. Validar bloqueio visual (redirecionamento, 403, ou aviso de não autorizado)
-    const rbacFrontendBlock = page.locator('text=Nao autorizado|Sem permissao|403|Proibido|Forbidden|Entrar').first();
-    await expect(rbacFrontendBlock).toBeVisible;
-    console.log('✅ Validação RBAC Frontend: Acesso à rota restrita de moderação foi bloqueado visualmente.');
+    // 3. Validar bloqueio visual (o conteúdo restrito do moderador NÃO deve ser renderizado para o hacker)
+    const rbacTitle = page.getByText('FILA DE MODERAÇÃO').first();
+    await expect(rbacTitle).not.toBeVisible();
+    console.log('✅ Validação RBAC Frontend: Acesso à rota restrita de moderação foi bloqueado de forma bem-sucedida (conteúdo restrito não visível).');
 
     // 4. Testar proteção a nível de API (Bypass de segurança)
     const token = await page.evaluate(() => {
