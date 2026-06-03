@@ -16,6 +16,7 @@ import { Action } from "../auth/casl/action.enum";
 import { subject } from "@casl/ability";
 import { CaslAbilityFactory } from "../auth/casl/casl-ability.factory";
 import { StorageService } from "../common/storage/storage.service";
+import { RedisService } from "../common/redis/redis.service";
 
 @Injectable()
 export class ModerationService {
@@ -24,6 +25,7 @@ export class ModerationService {
     private readonly caslAbilityFactory: CaslAbilityFactory,
     @InjectQueue("alerts") private readonly alertsQueue: Queue,
     private readonly storageService: StorageService,
+    private readonly redisService: RedisService,
   ) {}
 
   private maskLicensePlate(plate?: string): string {
@@ -229,6 +231,9 @@ export class ModerationService {
             data: { status: "ACTIVE" },
           });
         }
+        
+        // Clear search cache so buyers see it immediately
+        await this.redisService.delByPrefix('search:');
 
         // 2. Create AuditLog
         await tx.auditLog.create({

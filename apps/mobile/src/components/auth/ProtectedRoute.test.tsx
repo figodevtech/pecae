@@ -26,6 +26,7 @@ describe('ProtectedRoute', () => {
   it('[NAV-01] BUYER redirecionado ao tentar acessar rota de SELLER', () => {
     act(() => { useAuthStore.setState({ isAuthenticated: true, user: { id: '1', type: 'BUYER', email: 'test@test.com' } }); });
     act(() => { TestRenderer.create(<ProtectedRoute allowedRoles={['SELLER']}><Text>Protected Content</Text></ProtectedRoute>); });
+    act(() => { jest.runAllTimers(); });
     expect(routerReplaceMock).toHaveBeenCalledWith('/(tabs)/');
   });
 

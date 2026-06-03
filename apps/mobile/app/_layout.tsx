@@ -21,15 +21,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
-// QueryClient singleton — deve estar fora do componente para não ser recriado
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      staleTime: 1000 * 60, // 1 minuto
-    },
-  },
-});
+import { queryClient } from '../src/lib/queryClient';
 
 export default function RootLayout() {
   const { initializeAuth, isLoading: isAuthLoading } = useAuthStore();

@@ -10,7 +10,7 @@ export default function BuyerLayout() {
   const router = useRouter();
 
   return (
-    <ProtectedRoute allowedRoles={['BUYER', 'BOTH', 'ADMIN', 'MODERATOR']}>
+    <ProtectedRoute allowedRoles={['BUYER', 'BOTH']}>
       <Stack
         screenOptions={{
           headerStyle: {

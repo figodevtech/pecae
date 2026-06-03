@@ -12,18 +12,33 @@ export default function ModeratorProfileScreen() {
   const user = useAuthStore((state) => state.user);
 
   const handleLogout = () => {
-    Alert.alert(
-      'Sair da Conta',
-      'Deseja encerrar a sessão de moderação?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sair',
-          style: 'destructive',
-          onPress: () => useAuthStore.getState().clearAuth(),
-        },
-      ],
-    );
+    const performLogout = () => {
+      // Redireciona para o login primeiro para desmontar o layout com segurança
+      router.replace('/(auth)/login');
+      // Limpa o estado de autenticação depois
+      setTimeout(() => {
+        useAuthStore.getState().clearAuth();
+      }, 100);
+    };
+
+    if (Platform.OS === 'web') {
+      if (confirm('Deseja encerrar a sessão de moderação?')) {
+        performLogout();
+      }
+    } else {
+      Alert.alert(
+        'Sair da Conta',
+        'Deseja encerrar a sessão de moderação?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Sair',
+            style: 'destructive',
+            onPress: performLogout,
+          },
+        ],
+      );
+    }
   };
 
   const roleLabel = user?.type === 'ADMIN' ? 'Administrador' : 'Moderador';

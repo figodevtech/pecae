@@ -48,17 +48,23 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     if (isLoading || !isAuthenticated || !allowedRoles || !user) return;
 
     const userRole = user.type || 'BUYER';
-    const isAllowed =
-      allowedRoles.includes(userRole) || userRole === 'ADMIN' || userRole === 'BOTH';
+    const isAllowed = allowedRoles.includes(userRole);
 
     if (!isAllowed && !hasRedirected.current) {
       hasRedirected.current = true;
       console.log(`[ProtectedRoute] 🚫 Access denied: ${userRole}. Needed: ${allowedRoles}`);
-      if (userRole === 'SELLER') {
-        router.replace('/(seller)/(seller-tabs)');
-      } else {
-        router.replace('/(tabs)/');
-      }
+      
+      const timer = setTimeout(() => {
+        if (userRole === 'SELLER') {
+          router.replace('/(seller)/(seller-tabs)');
+        } else if (userRole === 'ADMIN' || userRole === 'MODERATOR') {
+          router.replace('/(moderator)');
+        } else {
+          router.replace('/(tabs)/');
+        }
+      }, 150);
+
+      return () => clearTimeout(timer);
     }
   }, [isAuthenticated, user, isLoading, allowedRoles, router]);
 
@@ -76,8 +82,7 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
 
   if (allowedRoles && user) {
     const userRole = user.type || 'BUYER';
-    const isAllowed =
-      allowedRoles.includes(userRole) || userRole === 'ADMIN' || userRole === 'BOTH';
+    const isAllowed = allowedRoles.includes(userRole);
     if (!isAllowed) {
       return <View style={{ flex: 1, backgroundColor: '#0D0D0D' }} />;
     }

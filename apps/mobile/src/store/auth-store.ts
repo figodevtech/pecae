@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import axios from 'axios';
+import { queryClient } from '../lib/queryClient';
 
 interface User {
   id: string;
@@ -108,6 +109,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         localStorage.removeItem(USER_KEY);
       }
       
+      queryClient.clear(); // Clear React Query cache!
       set({ user: null, token: null, refreshToken: null, isAuthenticated: false, isLoading: false });
     } catch (error) {
       console.error('Error clearing auth state:', error);

@@ -4,11 +4,13 @@ import { ModerationController } from './moderation.controller';
 import { ModerationService } from './moderation.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
+import { RedisModule } from '../common/redis/redis.module';
 
 @Module({
   imports: [
     PrismaModule,
     AuthModule,
+    RedisModule,
     BullModule.registerQueue({
       name: 'alerts',
     }),
