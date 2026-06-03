@@ -26,6 +26,12 @@ export class VehiclePhotosProcessor extends WorkerHost {
     super();
   }
 
+  private mapPhotoType(type: string): PhotoType {
+    const validTypes = ['EXTERIOR', 'INTERIOR', 'ENGINE', 'DAMAGE', 'OTHER'];
+    const uppercaseType = type?.toUpperCase();
+    return validTypes.includes(uppercaseType) ? (uppercaseType as PhotoType) : PhotoType.OTHER;
+  }
+
   async process(job: Job<ProcessPhotoPayload>): Promise<any> {
     const { vehicleId, photos } = job.data;
     this.logger.log(`Iniciando processamento assíncrono de ${photos.length} fotos para o veículo ${vehicleId}`);
@@ -109,7 +115,7 @@ export class VehiclePhotosProcessor extends WorkerHost {
           // Armazenar as informações de sucesso
           processedPhotosRecords.push({
             url: processedUrl,
-            type: photo.type,
+            type: this.mapPhotoType(photo.type),
             order: photo.order,
           });
 
@@ -134,7 +140,7 @@ export class VehiclePhotosProcessor extends WorkerHost {
           const chosenUrl = mockImages[photo.order % mockImages.length];
           processedPhotosRecords.push({
             url: chosenUrl,
-            type: photo.type,
+            type: this.mapPhotoType(photo.type),
             order: photo.order,
           });
         }

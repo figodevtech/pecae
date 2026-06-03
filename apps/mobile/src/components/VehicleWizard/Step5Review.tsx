@@ -63,7 +63,7 @@ export const Step5Review: React.FC = () => {
             if (photo.uri.startsWith('http')) {
               return {
                 url: photo.uri,
-                type: 'EXTERNAL',
+                type: 'OTHER',
                 order: photoOrder,
               };
             }
@@ -85,7 +85,7 @@ export const Step5Review: React.FC = () => {
 
             return {
               url: uploadInfo.publicUrl,
-              type: 'EXTERNAL', 
+              type: 'OTHER', 
               order: photoOrder,
             };
           })

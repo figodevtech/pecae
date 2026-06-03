@@ -1,8 +1,9 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, FlatList } from 'react-native';
 import { usePecaeTheme } from '../../theme';
 import { PecaeGlassCard } from '../PecaeUI/PecaeGlassCard';
 import { useBrands, useModels, useVersions, useYears } from '../../hooks/useCatalog';
+import { useVehicleWizardStore } from '../../store/vehicle-wizard-store';
 import { Ionicons } from '@expo/vector-icons';
 
 type SelectionLevel = 'brand' | 'model' | 'version' | 'year';
@@ -38,6 +39,92 @@ export const VehicleSelector: React.FC<VehicleSelectorProps> = ({
   const { data: models, isLoading: loadingModels } = useModels(selectedBrand?.id);
   const { data: versions, isLoading: loadingVersions } = useVersions(selectedModel?.id);
   const { data: years, isLoading: loadingYears } = useYears(selectedVersion?.id);
+
+  const wizardData = useVehicleWizardStore(s => s.data);
+
+  console.log('[DEBUG VehicleSelector]', {
+    level,
+    brandId: wizardData.brandId,
+    brandsCount: brands?.length,
+    selectedBrand: selectedBrand?.name,
+    modelId: wizardData.modelId,
+    modelsCount: models?.length,
+    selectedModel: selectedModel?.name,
+    versionId: wizardData.versionId,
+    versionsCount: versions?.length,
+    selectedVersion: selectedVersion?.name,
+    yearFabId: wizardData.yearFabId,
+    yearsCount: years?.length,
+    selectedYear: selectedYear ? `${selectedYear.yearFab}/${selectedYear.yearModel}` : undefined,
+  });
+
+  // Sincronizar Marca
+  useEffect(() => {
+    if (wizardData.brandId && brands && !selectedBrand) {
+      const found = brands.find(b => b.id === wizardData.brandId);
+      if (found) {
+        setSelectedBrand(found);
+        setLevel('model');
+      }
+    } else if (wizardData.customBrandName && !selectedBrand) {
+      setSelectedBrand({ id: 'custom', name: wizardData.customBrandName, isCustom: true });
+      setLevel('model');
+    }
+  }, [brands, wizardData.brandId, wizardData.customBrandName]);
+
+  // Sincronizar Modelo
+  useEffect(() => {
+    if (!selectedBrand) return;
+    if (wizardData.modelId && models && !selectedModel) {
+      const found = models.find(m => m.id === wizardData.modelId);
+      if (found) {
+        setSelectedModel(found);
+        setLevel('version');
+      }
+    } else if (wizardData.customModelName && !selectedModel) {
+      setSelectedModel({ id: 'custom', name: wizardData.customModelName, isCustom: true });
+      setLevel('version');
+    }
+  }, [models, selectedBrand, wizardData.modelId, wizardData.customModelName]);
+
+  // Sincronizar Versão
+  useEffect(() => {
+    if (!selectedModel) return;
+    if (wizardData.versionId && versions && !selectedVersion) {
+      const found = versions.find(v => v.id === wizardData.versionId);
+      if (found) {
+        setSelectedVersion(found);
+        setLevel('year');
+      }
+    } else if (wizardData.customVersionName && !selectedVersion) {
+      setSelectedVersion({ id: 'custom', name: wizardData.customVersionName, isCustom: true });
+      setLevel('year');
+    }
+  }, [versions, selectedModel, wizardData.versionId, wizardData.customVersionName]);
+
+  // Sincronizar Ano
+  useEffect(() => {
+    if (!selectedVersion) return;
+    console.log('[DEBUG VehicleSelector SyncYear]', {
+      yearFabId: wizardData.yearFabId,
+      yearsList: years?.map(y => ({ id: y.id, yearFab: y.yearFab, yearModel: y.yearModel })),
+      selectedYear: selectedYear?.id
+    });
+    if (wizardData.yearFabId && years && !selectedYear) {
+      const found = years.find(y => y.id === wizardData.yearFabId);
+      console.log('[DEBUG VehicleSelector SyncYear Found]', found);
+      if (found) {
+        setSelectedYear(found);
+      }
+    } else if (wizardData.customYearFab && wizardData.customYearModel && !selectedYear) {
+      setSelectedYear({ 
+        id: 'custom', 
+        yearFab: wizardData.customYearFab, 
+        yearModel: wizardData.customYearModel, 
+        isCustom: true 
+      });
+    }
+  }, [years, selectedVersion, wizardData.yearFabId, wizardData.customYearFab, wizardData.customYearModel]);
 
   const parseYearInput = (input: string) => {
     const cleaned = input.trim();

@@ -143,5 +143,17 @@ export const useVehicleActions = () => {
     },
   });
 
-  return { markAsSold, markAsRemoved, deleteVehicle };
+  const reactivateVehicle = useMutation({
+    mutationFn: async (id: string) => {
+      // PATCH /vehicles/:id/reactivate — endpoint real da API
+      const { data } = await api.patch(`/vehicles/${id}/reactivate`);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vehicles', 'me'] });
+      queryClient.invalidateQueries({ queryKey: ['vehicles'] });
+    },
+  });
+
+  return { markAsSold, markAsRemoved, deleteVehicle, reactivateVehicle };
 };

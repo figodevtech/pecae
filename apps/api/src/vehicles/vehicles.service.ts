@@ -8,6 +8,7 @@ import { SearchListingsDto } from './dto/search-listings.dto';
 import { ListingStatus, VehicleStatus, PhotoType } from '@prisma/client';
 import { StorageService } from '../common/storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CatalogService } from '../catalog/catalog.service';
 
 @Injectable()
 export class VehiclesService {
@@ -16,6 +17,7 @@ export class VehiclesService {
   constructor(
     private prisma: PrismaService,
     private storageService: StorageService,
+    private catalogService: CatalogService,
     @InjectQueue('vehicle-photos') private vehiclePhotosQueue: Queue,
   ) {}
 
@@ -74,6 +76,8 @@ export class VehiclesService {
         .join(' ');
     };
 
+    let isCustomCatalogCreated = false;
+
     return this.prisma.$transaction(async (tx) => {
       let resolvedVersionId = initialVersionId;
       let resolvedYearFabId = initialYearFabId;
@@ -88,6 +92,7 @@ export class VehiclesService {
           brand = await tx.vehicleBrand.create({
             data: { name: capitalizeText(customBrandName) }
           });
+          isCustomCatalogCreated = true;
         }
 
         const modelNameNorm = normalizeText(customModelName);
@@ -105,6 +110,7 @@ export class VehiclesService {
               segment: 'OTHER'
             }
           });
+          isCustomCatalogCreated = true;
         }
 
         const versionNameNorm = normalizeText(customVersionName);
@@ -123,6 +129,7 @@ export class VehiclesService {
               transmission: 'MANUAL'
             }
           });
+          isCustomCatalogCreated = true;
         }
 
         resolvedVersionId = version.id;
@@ -144,6 +151,7 @@ export class VehiclesService {
               yearModel: customYearModel
             }
           });
+          isCustomCatalogCreated = true;
         }
 
         resolvedYearFabId = year.id;
@@ -196,10 +204,15 @@ export class VehiclesService {
       });
 
       return { vehicle, listing: mainListing, warnings: isDuplicate ? ['Anúncio similar já existente.'] : [] };
+    }).then(async (result) => {
+      if (isCustomCatalogCreated) {
+        await this.catalogService.invalidateCatalogCache();
+      }
+      return result;
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, userId?: string) {
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id },
       include: {
@@ -223,9 +236,17 @@ export class VehiclesService {
     if (!vehicle) throw new NotFoundException('Veículo não encontrado');
 
     // RN14: Veículos em DRAFT ou PENDING não são visíveis publicamente
-    // Apenas veículos com status ACTIVE são acessíveis no marketplace público
+    // Apenas veículos com status ACTIVE são acessíveis no marketplace público.
+    // O dono do veículo (vendedor) tem permissão de visualizar para fins de edição.
     if (vehicle.status === VehicleStatus.DRAFT || vehicle.status === VehicleStatus.PENDING) {
-      throw new NotFoundException('Veículo não disponível para visualização pública');
+      let isOwner = false;
+      const vehicleAny = vehicle as any;
+      if (userId && vehicleAny.seller?.userId === userId) {
+        isOwner = true;
+      }
+      if (!isOwner) {
+        throw new NotFoundException('Veículo não disponível para visualização pública');
+      }
     }
 
     return vehicle;
@@ -370,11 +391,40 @@ export class VehiclesService {
   }
 
   async findBySeller(sellerId: string) {
-    return this.prisma.vehicle.findMany({
+    const vehicles = await this.prisma.vehicle.findMany({
       where: { sellerId },
-      include: { listings: true, photos: { take: 1, orderBy: { order: 'asc' } } } as any,
+      include: { 
+        listings: true, 
+        photos: { take: 1, orderBy: { order: 'asc' } },
+        version: {
+          include: {
+            model: {
+              include: {
+                brand: true
+              }
+            }
+          }
+        },
+        yearFab: true
+      } as any,
       orderBy: { createdAt: 'desc' },
     });
+
+    return vehicles.map((v: any) => ({
+      id: v.id,
+      title: v.listings?.[0]?.title,
+      brand: v.version?.model?.brand?.name || '',
+      model: v.version?.model?.name || '',
+      version: v.version?.name || '',
+      yearFab: v.yearFab?.yearFab || 0,
+      color: v.color,
+      city: v.city,
+      state: v.state,
+      status: v.status,
+      createdAt: v.createdAt,
+      photos: v.photos || [],
+      availableParts: v.availableParts || [],
+    }));
   }
 
   /**
@@ -543,6 +593,40 @@ export class VehiclesService {
       });
 
       return { message: 'Fotos recebidas com sucesso. O processamento assíncrono e otimização das imagens foram iniciados em background.' };
+    });
+  }
+
+  /**
+   * Reactivates a removed/inactive vehicle (RN14: goes back to PENDING).
+   */
+  async reactivate(id: string, sellerId: string) {
+    const vehicle = await this.prisma.vehicle.findUnique({
+      where: { id },
+      select: { sellerId: true, status: true },
+    });
+
+    if (!vehicle) throw new NotFoundException('Veículo não encontrado');
+    if (vehicle.sellerId !== sellerId) throw new ForbiddenException('Ação não permitida');
+
+    if (vehicle.status === VehicleStatus.SOLD) {
+      throw new BadRequestException('Não é possível reativar um veículo vendido.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedVehicle = await tx.vehicle.update({
+        where: { id },
+        data: { status: VehicleStatus.PENDING },
+      });
+
+      await tx.listing.updateMany({
+        where: { vehicleId: id },
+        data: { 
+          status: ListingStatus.PENDING,
+          publishedAt: null
+        },
+      });
+
+      return { vehicle: updatedVehicle, message: 'Sucata reativada com sucesso. Enviada para moderação.' };
     });
   }
 }

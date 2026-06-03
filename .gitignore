@@ -52,3 +52,23 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+
+# === SECURITY & CREDENTIALS ===
+*.pem
+*.key
+*.pub
+*.cert
+*.pfx
+*.p12
+.aws/
+.gcloud/
+.vercel/
+.netlify/
+
+# === LOCAL DATABASE & CACHE ===
+*.db
+*.sqlite
+*.sqlite-journal
+.eslintcache
+.stylelintcache
+docker-compose.override.yml

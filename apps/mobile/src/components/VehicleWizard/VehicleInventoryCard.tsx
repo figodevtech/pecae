@@ -13,13 +13,16 @@ interface VehicleInventoryCardProps {
 
 export const VehicleInventoryCard: React.FC<VehicleInventoryCardProps> = ({ vehicle }) => {
   const { colors, typography, effects } = usePecaeTheme();
-  const { markAsSold, markAsRemoved, deleteVehicle } = useVehicleActions();
+  const { markAsSold, markAsRemoved, deleteVehicle, reactivateVehicle } = useVehicleActions();
   const loadVehicle = useVehicleWizardStore(s => s.loadVehicle);
   const router = useRouter();
 
   const handleEdit = () => {
     loadVehicle(vehicle);
-    router.push('/(seller)/cadastrar-sucata');
+    router.push({
+      pathname: '/(seller)/cadastrar-sucata',
+      params: { id: vehicle.id }
+    });
   };
 
   const getStatusColor = (status: string) => {
@@ -124,7 +127,7 @@ export const VehicleInventoryCard: React.FC<VehicleInventoryCardProps> = ({ vehi
             <Text style={[styles.actionText, { color: colors.brand, fontFamily: typography.bold }]}>VENDIDO</Text>
           </TouchableOpacity>
         ) : (
-           <TouchableOpacity style={styles.actionBtn} onPress={() => markAsRemoved.mutate(vehicle.id)}>
+           <TouchableOpacity style={styles.actionBtn} onPress={() => reactivateVehicle.mutate(vehicle.id)}>
             <Ionicons name="refresh-outline" size={18} color={colors.brand} />
             <Text style={[styles.actionText, { color: colors.brand, fontFamily: typography.medium }]}>REATIVAR</Text>
           </TouchableOpacity>

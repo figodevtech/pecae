@@ -5,8 +5,11 @@ import { VehiclesController } from './vehicles.controller';
 import { ListingsController } from './listings.controller';
 import { VehiclePhotosProcessor } from './jobs/vehicle-photos.processor';
 
+import { CatalogModule } from '../catalog/catalog.module';
+
 @Module({
   imports: [
+    CatalogModule,
     BullModule.registerQueue({
       name: 'vehicle-photos',
     }),

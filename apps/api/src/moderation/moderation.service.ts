@@ -222,6 +222,14 @@ export class ModerationService {
           },
         });
 
+        // Atualiza também o status do veículo associado para ACTIVE (Ativo)
+        if (listing.vehicleId) {
+          await tx.vehicle.update({
+            where: { id: listing.vehicleId },
+            data: { status: "ACTIVE" },
+          });
+        }
+
         // 2. Create AuditLog
         await tx.auditLog.create({
           data: {

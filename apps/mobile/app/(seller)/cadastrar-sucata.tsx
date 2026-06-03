@@ -6,6 +6,7 @@ import { usePecaeTheme } from '../../src/theme';
 import { PecaeBackground } from '../../src/components/PecaeUI/PecaeBackground';
 import { PecaeGlassCard } from '../../src/components/PecaeUI/PecaeGlassCard';
 import { useVehicleWizardStore } from '../../src/store/vehicle-wizard-store';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../../src/services/api';
 
 // Steps
@@ -29,6 +30,7 @@ export default function CadastrarSucataScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const [isLoadingVehicle, setIsLoadingVehicle] = useState(false);
+  const queryClient = useQueryClient();
 
   const handleClose = useCallback(() => {
     Alert.alert(
@@ -69,6 +71,10 @@ export default function CadastrarSucataScreen() {
 
   // Load vehicle data if editing
   useEffect(() => {
+    // Garante que o catálogo local de marcas/modelos em cache do React Query
+    // seja invalidado e atualizado caso novas marcas customizadas tenham sido cadastradas.
+    queryClient.invalidateQueries({ queryKey: ['catalog'] });
+
     if (id) {
       const fetchVehicle = async () => {
         setIsLoadingVehicle(true);
@@ -90,7 +96,7 @@ export default function CadastrarSucataScreen() {
     } else {
       resetWizard();
     }
-  }, [id]);
+  }, [id, queryClient]);
 
   const renderStep = () => {
     switch (currentStep) {

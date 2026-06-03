@@ -21,6 +21,8 @@ import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import { UpdateAvailablePartsDto } from './dto/update-available-parts.dto';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
+
 @ApiTags('vehicles')
 @ApiBearerAuth()
 @Controller('vehicles')
@@ -61,17 +63,31 @@ export class VehiclesController {
   }
 
   @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Busca detalhes de um veículo específico' })
-  async findOne(@Param('id') id: string) {
-    return this.vehiclesService.findOne(id);
+  async findOne(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user?.id;
+    return this.vehiclesService.findOne(id, userId);
   }
 
   @Put(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserType.SELLER, UserType.BOTH)
+  @ApiOperation({ summary: 'Atualiza dados do veículo via PUT (Força re-moderação)' })
+  async updatePut(
+    @Param('id') id: string, 
+    @Req() req: any, 
+    @Body() dto: UpdateVehicleDto
+  ) {
+    const sellerId = await this.getSellerId(req.user.id);
+    return this.vehiclesService.update(id, sellerId, dto);
+  }
+
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserType.SELLER, UserType.BOTH)
-  @ApiOperation({ summary: 'Atualiza dados do veículo (Força re-moderação)' })
-  async update(
+  @ApiOperation({ summary: 'Atualiza dados do veículo via PATCH (Força re-moderação)' })
+  async updatePatch(
     @Param('id') id: string, 
     @Req() req: any, 
     @Body() dto: UpdateVehicleDto
@@ -109,6 +125,15 @@ export class VehiclesController {
   async markAsRemoved(@Param('id') id: string, @Req() req: any) {
     const sellerId = await this.getSellerId(req.user.id);
     return this.vehiclesService.markAsRemoved(id, sellerId);
+  }
+
+  @Patch(':id/reactivate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserType.SELLER, UserType.BOTH)
+  @ApiOperation({ summary: 'Reativa uma sucata inativa (Envia para moderação)' })
+  async reactivate(@Param('id') id: string, @Req() req: any) {
+    const sellerId = await this.getSellerId(req.user.id);
+    return this.vehiclesService.reactivate(id, sellerId);
   }
 
   @Post(':id/photos/upload-url')
