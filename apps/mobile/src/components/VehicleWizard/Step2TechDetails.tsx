@@ -20,13 +20,7 @@ export const Step2TechDetails: React.FC = () => {
         onChangeText={(text) => updateData({ color: text })}
       />
 
-      <PecaeInput
-        label="Placa (Opcional)"
-        placeholder="ABC-1234"
-        value={data.plate}
-        onChangeText={(text) => updateData({ plate: text.toUpperCase() })}
-        autoCapitalize="characters"
-      />
+
 
       <View style={styles.row}>
         <View style={{ flex: 3, marginRight: 10 }}>

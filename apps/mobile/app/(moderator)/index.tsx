@@ -278,9 +278,11 @@ export default function ModerationListingsScreen() {
                     <Text style={[styles.sectionTitle, { color: colors.brand, fontFamily: typography.heading }]}>
                       VEÍCULO
                     </Text>
-                    <Text style={[styles.detailText, { color: colors.textPrimary, fontFamily: typography.body }]}>
-                      <Text style={{ fontWeight: 'bold' }}>Placa:</Text> {selectedListing.vehicle?.plate || '***-****'}
-                    </Text>
+                    {selectedListing.vehicle?.plate && selectedListing.vehicle?.plate !== '***-****' && (
+                      <Text style={[styles.detailText, { color: colors.textPrimary, fontFamily: typography.body }]}>
+                        <Text style={{ fontWeight: 'bold' }}>Placa:</Text> {selectedListing.vehicle.plate}
+                      </Text>
+                    )}
                     <Text style={[styles.detailText, { color: colors.textPrimary, fontFamily: typography.body }]}>
                       <Text style={{ fontWeight: 'bold' }}>Marca/Modelo:</Text> {selectedListing.vehicle?.brandName} {selectedListing.vehicle?.modelName}
                     </Text>
