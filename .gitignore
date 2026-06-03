@@ -7,9 +7,8 @@ build
 
 # === SECRETS - NEVER COMMIT ===
 .env
-.env.local
-.env.production
-.env.staging
+.env.*
+!.env.example
 
 # === EDITORS ===
 .vscode/*
@@ -47,3 +46,9 @@ __pycache__/
 .agent/
 .planning/
 .gemini/
+
+# === PLAYWRIGHT ===
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
