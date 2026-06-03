@@ -55,6 +55,7 @@ export const PecaeInput: React.FC<PecaeInputProps> = ({
           {leftIcon && <View style={styles.iconLeft}>{leftIcon}</View>}
           <TextInput
             {...props}
+            value={props.value ?? ''}
             placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)'}
             onFocus={(e) => {
               setIsFocused(true);

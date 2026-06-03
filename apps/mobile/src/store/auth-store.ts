@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { api } from '../services/api';
+import axios from 'axios';
 
 interface User {
   id: string;
@@ -62,9 +62,8 @@ export const useAuthStore = create<AuthState>((set) => ({
           }
           if (finalStatus === 'granted') {
             const token = (await Notifications.getExpoPushTokenAsync()).data;
-            // API interceptors usually handle the Authorization header
-            // But we pass it explicitly just in case the interceptor is not ready yet
-            await api.post('/users/push-token', {
+            const API_URL = process.env.EXPO_PUBLIC_API_URL || Constants.expoConfig?.extra?.apiUrl || 'http://localhost:3000/api/v1';
+            await axios.post(`${API_URL}/users/push-token`, {
               token,
               platform: Platform.OS,
             }, {

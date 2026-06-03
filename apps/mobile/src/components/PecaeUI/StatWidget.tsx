@@ -10,17 +10,17 @@ interface StatWidgetProps {
 }
 
 export const StatWidget: React.FC<StatWidgetProps> = ({ icon, value, label }) => {
-  const { colors, PecaeTokens } = { ...usePecaeTheme(), PecaeTokens: require('../../theme/pecae-tokens').PecaeTokens };
+  const { colors, typography } = usePecaeTheme();
 
   return (
     <View style={styles.container}>
       <View style={[styles.iconContainer, { backgroundColor: `${colors.brand}20` }]}>
-        <Ionicons name={icon} size={20} color={colors.brand} />
+        <Ionicons key={icon} name={icon} size={20} color={colors.brand} />
       </View>
-      <Text style={[styles.value, { color: colors.textPrimary, fontFamily: PecaeTokens.typography.display }]}>
+      <Text style={[styles.value, { color: colors.textPrimary, fontFamily: typography.display }]}>
         {value}
       </Text>
-      <Text style={[styles.label, { color: colors.textMuted, fontFamily: PecaeTokens.typography.body }]}>
+      <Text style={[styles.label, { color: colors.textMuted, fontFamily: typography.body }]}>
         {label}
       </Text>
     </View>
