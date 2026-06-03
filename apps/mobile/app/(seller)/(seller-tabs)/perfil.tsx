@@ -234,7 +234,7 @@ export default function SellerProfileScreen() {
         <PecaeButton 
           title="Sair da Conta" 
           variant="outline" 
-          onPress={() => useAuthStore.getState().clearAuth()}
+          onPress={handleLogout}
           style={styles.logoutButton}
         />
         

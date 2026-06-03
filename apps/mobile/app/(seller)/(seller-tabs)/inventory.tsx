@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { StyleSheet, View, Text, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity, TextInput } from 'react-native';
 import { PecaeBackground, PecaeGlassCard, StatWidget } from '../../../src/components/PecaeUI';
 import { usePecaeTheme } from '../../../src/theme';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useVehicles } from '../../../src/hooks/useVehicles';
 import { VehicleInventoryCard } from '../../../src/components/VehicleWizard/VehicleInventoryCard';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +13,12 @@ export default function InventoryScreen() {
   const router = useRouter();
   const { data: vehicles, isLoading, refetch } = useVehicles();
   const [search, setSearch] = useState('');
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
   // Stats computation
   const stats = useMemo(() => {

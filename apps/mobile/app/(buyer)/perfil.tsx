@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Image, Switch, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Image, Switch, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -17,9 +17,32 @@ export default function PerfilCompradorMenu() {
   const { clearAuth, user } = useAuthStore();
   const { themeMode, setThemeMode } = useUIStore();
 
-  const handleLogout = async () => {
-    await clearAuth();
-    router.replace('/(auth)/login');
+  const handleLogout = () => {
+    const performLogout = () => {
+      router.replace('/(auth)/login');
+      setTimeout(() => {
+        clearAuth();
+      }, 100);
+    };
+
+    if (Platform.OS === 'web') {
+      if (confirm('Deseja encerrar a sua sessão?')) {
+        performLogout();
+      }
+    } else {
+      Alert.alert(
+        'Sair da Conta',
+        'Deseja encerrar a sua sessão?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Sair',
+            style: 'destructive',
+            onPress: performLogout,
+          },
+        ],
+      );
+    }
   };
 
   const toggleTheme = async () => {

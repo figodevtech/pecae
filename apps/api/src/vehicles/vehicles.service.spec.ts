@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { VehiclesService } from './vehicles.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../common/storage/storage.service';
+import { CatalogService } from '../catalog/catalog.service';
 import { VehicleStatus, ListingStatus } from '@prisma/client';
 import { BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
@@ -35,6 +36,10 @@ describe('VehiclesService', () => {
     createSignedUploadUrl: jest.fn(),
   };
 
+  const mockCatalogService = {
+    invalidateCatalogCache: jest.fn(),
+  };
+
   const mockQueue = {
     getJobs: jest.fn(),
     add: jest.fn(),
@@ -46,6 +51,7 @@ describe('VehiclesService', () => {
         VehiclesService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: StorageService, useValue: mockStorageService },
+        { provide: CatalogService, useValue: mockCatalogService },
         { provide: getQueueToken('vehicle-photos'), useValue: mockQueue },
       ],
     }).compile();

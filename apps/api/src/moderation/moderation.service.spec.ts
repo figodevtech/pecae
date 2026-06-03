@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ForbiddenException, BadRequestException } from '@nestjs/common';
 import { CaslAbilityFactory } from '../auth/casl/casl-ability.factory';
 import { StorageService } from '../common/storage/storage.service';
+import { RedisService } from '../common/redis/redis.service';
 import { getQueueToken } from '@nestjs/bullmq';
 
 describe('ModerationService', () => {
@@ -44,6 +45,10 @@ describe('ModerationService', () => {
     getSignedUrls: jest.fn(),
   };
 
+  const mockRedisService = {
+    delByPrefix: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -52,6 +57,7 @@ describe('ModerationService', () => {
         { provide: CaslAbilityFactory, useValue: mockCaslFactory },
         { provide: getQueueToken('alerts'), useValue: mockQueue },
         { provide: StorageService, useValue: mockStorageService },
+        { provide: RedisService, useValue: mockRedisService },
       ],
     }).compile();
 
