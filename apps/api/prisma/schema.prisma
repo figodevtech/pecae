@@ -391,7 +391,7 @@ model SellerProfile {
   description String?    @db.Text
 
   isVerified       Boolean @default(false) @map("is_verified")
-  showWhatsapp     Boolean @default(false) @map("show_whatsapp")
+  showContactInfo  Boolean @default(false) @map("show_contact_info")
   responseTimeAvg Int?    @map("response_time_avg")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -401,6 +401,7 @@ model SellerProfile {
   // Billing (Fase 3 Wave 2)
   stripeCustomerId String? @unique @map("stripe_customer_id")
   plan             PlanType @default(FREE)
+  planExpiresAt    DateTime? @map("plan_expires_at")
   
   // Reputation & Badges (Fase 3 Wave 3)
   badges           Json     @default("[]")

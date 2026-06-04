@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, Put, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Put, Req, UseGuards, Query } from '@nestjs/common';
 import { SellersService } from './sellers.service';
 import { CreateSellerProfileDto } from './dto/create-seller-profile.dto';
 import { UpdateSellerProfileDto } from './dto/update-seller-profile.dto';
@@ -6,7 +6,6 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserType } from '@prisma/client';
-import { VerificationRequestDto } from './dto/verification-request.dto';
 
 @Controller('sellers')
 export class SellersController {
@@ -40,48 +39,14 @@ export class SellersController {
     return this.sellersService.getStats(req.user.id);
   }
 
-  @Post('me/logo')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserType.SELLER, UserType.BOTH)
-  async generateLogoUrl(@Req() req: any, @Body('filename') filename: string) {
-    return this.sellersService.generateLogoUploadUrl(req.user.id, filename);
-  }
-
-  @Post('me/logo/confirm')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserType.SELLER, UserType.BOTH)
-  async confirmLogo(@Req() req: any, @Body('publicUrl') publicUrl: string) {
-    return this.sellersService.confirmLogoUpload(req.user.id, publicUrl);
-  }
-
-  @Get('verification/status')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserType.SELLER, UserType.BOTH)
-  async getVerificationStatus(@Req() req: any) {
-    return this.sellersService.getVerificationStatus(req.user.id);
-  }
-
-  @Post('verification/request')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserType.SELLER, UserType.BOTH)
-  async requestVerification(@Req() req: any) {
-    return this.sellersService.requestVerification(req.user.id);
-  }
-
-  @Post('verification/confirm')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserType.SELLER, UserType.BOTH)
-  async confirmVerification(@Req() req: any, @Body() dto: VerificationRequestDto) {
-    return this.sellersService.confirmVerificationRequest(req.user.id, dto.documentUrls);
-  }
-
   @Get(':id')
   async getPublicProfile(@Param('id') id: string) {
     return this.sellersService.findPublicProfile(id);
   }
 
   @Get(':id/listings')
-  async getSellerListings(@Param('id') id: string) {
-    return this.sellersService.getSellerListings(id);
+  async getSellerListings(@Param('id') id: string, @Query() query: any) {
+    return this.sellersService.getSellerListings(id, query);
   }
 }
+

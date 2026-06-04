@@ -23,7 +23,7 @@ export class VehiclesService {
 
   /**
    * Creates a new vehicle and its corresponding listing in an atomic transaction.
-   * RN14: Both entities are created with PENDING status for moderation.
+   * RN14: Both entities are created with DRAFT status until photos are confirmed/processed.
    */
   async create(sellerId: string, dto: CreateVehicleDto) {
     const { 
@@ -46,17 +46,6 @@ export class VehiclesService {
     }
     if (!initialYearFabId && (!customYearFab || !customYearModel)) {
       throw new BadRequestException('Você deve fornecer os anos de fabricação e modelo do veículo.');
-    }
-
-    // Check for duplicate plate (RN10)
-    if (plate) {
-      const existingVehicle = await this.prisma.vehicle.findFirst({
-        where: { plate },
-        select: { id: true },
-      });
-      if (existingVehicle) {
-        throw new ConflictException('Já existe um veículo cadastrado com esta placa.');
-      }
     }
 
     const normalizeText = (text: string): string => {
@@ -177,7 +166,7 @@ export class VehiclesService {
       const isDuplicate = !!duplicate;
       const duplicateOfId = duplicate?.id || null;
 
-      // 1. Create Vehicle
+      // 1. Create Vehicle as DRAFT (BUG-V01)
       const vehicle = await tx.vehicle.create({
         data: {
           ...vehicleData,
@@ -186,18 +175,18 @@ export class VehiclesService {
           plate,
           sellerId,
           availableParts,
-          status: VehicleStatus.PENDING,
+          status: VehicleStatus.DRAFT,
         },
       });
 
-      // 2. Create Main Listing (The vehicle itself)
+      // 2. Create Main Listing (The vehicle itself) as DRAFT
       const mainListing = await tx.listing.create({
         data: {
           sellerProfileId: sellerId,
           vehicleId: vehicle.id,
           title,
           description,
-          status: ListingStatus.PENDING,
+          status: ListingStatus.DRAFT,
           isDuplicate,
           duplicateOfId,
         },
@@ -230,7 +219,7 @@ export class VehiclesService {
             userId: true,
           },
         },
-      } as any,
+      },
     });
 
     if (!vehicle) throw new NotFoundException('Veículo não encontrado');
@@ -267,10 +256,18 @@ export class VehiclesService {
 
     const { title, description, ...vehicleData } = dto;
 
+    // Remover propriedades undefined para evitar sobrescrever dados com NULL no Prisma (BUG-V03)
+    const safeVehicleData = Object.entries(vehicleData).reduce((acc, [key, val]) => {
+      if (val !== undefined) {
+        acc[key] = val;
+      }
+      return acc;
+    }, {} as any);
+
     return this.prisma.$transaction(async (tx) => {
       const updatedVehicle = await tx.vehicle.update({
         where: { id },
-        data: { ...vehicleData, status: VehicleStatus.PENDING },
+        data: { ...safeVehicleData, status: VehicleStatus.PENDING },
       });
 
       const listings = await tx.listing.findMany({ where: { vehicleId: id } });
@@ -325,7 +322,7 @@ export class VehiclesService {
     if (vehicle.sellerId !== sellerId) throw new ForbiddenException('Ação não permitida');
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.vehicle.update({
+      const updatedVehicle = await tx.vehicle.update({
         where: { id },
         data: { status: VehicleStatus.SOLD },
       });
@@ -337,6 +334,8 @@ export class VehiclesService {
           soldAt: new Date()
         },
       });
+
+      return updatedVehicle; // ✅ Retorna o veículo atualizado (BUG-V06)
     });
   }
 
@@ -353,7 +352,7 @@ export class VehiclesService {
     if (vehicle.sellerId !== sellerId) throw new ForbiddenException('Ação não permitida');
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.vehicle.update({
+      const updatedVehicle = await tx.vehicle.update({
         where: { id },
         data: { status: VehicleStatus.INACTIVE },
       });
@@ -364,6 +363,8 @@ export class VehiclesService {
           status: ListingStatus.EXPIRED,
         },
       });
+
+      return updatedVehicle; // ✅ Retorna o veículo atualizado (BUG-V06)
     });
   }
 
@@ -390,41 +391,64 @@ export class VehiclesService {
     });
   }
 
-  async findBySeller(sellerId: string) {
-    const vehicles = await this.prisma.vehicle.findMany({
-      where: { sellerId },
-      include: { 
-        listings: true, 
-        photos: { take: 1, orderBy: { order: 'asc' } },
-        version: {
-          include: {
-            model: {
-              include: {
-                brand: true
+  async findBySeller(sellerId: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+
+    const [total, vehicles] = await Promise.all([
+      this.prisma.vehicle.count({ where: { sellerId } }),
+      this.prisma.vehicle.findMany({
+        where: { sellerId },
+        include: { 
+          listings: true, 
+          photos: { take: 1, orderBy: { order: 'asc' } },
+          version: {
+            include: {
+              model: {
+                include: {
+                  brand: true
+                }
               }
             }
-          }
+          },
+          yearFab: true
         },
-        yearFab: true
-      } as any,
-      orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      })
+    ]);
+
+    const items = vehicles.map((v: any) => {
+      if (!v.version?.model?.brand) {
+        this.logger.warn(`Veículo ${v.id} sem versão/marca vinculada no catálogo.`);
+      }
+
+      return {
+        id: v.id,
+        title: v.listings?.[0]?.title || '',
+        brand: v.version?.model?.brand?.name || 'Não informado',
+        model: v.version?.model?.name || 'Não informado',
+        version: v.version?.name || 'Não informado',
+        yearFab: v.yearFab?.yearFab || 0,
+        color: v.color,
+        city: v.city,
+        state: v.state,
+        status: v.status,
+        createdAt: v.createdAt,
+        photos: v.photos || [],
+        availableParts: v.availableParts || [],
+      };
     });
 
-    return vehicles.map((v: any) => ({
-      id: v.id,
-      title: v.listings?.[0]?.title,
-      brand: v.version?.model?.brand?.name || '',
-      model: v.version?.model?.name || '',
-      version: v.version?.name || '',
-      yearFab: v.yearFab?.yearFab || 0,
-      color: v.color,
-      city: v.city,
-      state: v.state,
-      status: v.status,
-      createdAt: v.createdAt,
-      photos: v.photos || [],
-      availableParts: v.availableParts || [],
-    }));
+    return {
+      items,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   /**
@@ -434,12 +458,19 @@ export class VehiclesService {
     const { q, brandId, modelId, yearFabId, city, state, page = 1, limit = 20 } = dto;
     const skip = (page - 1) * limit;
 
+    const listingsFilter: any = { status: ListingStatus.PUBLISHED };
+
+    if (q) {
+      listingsFilter.OR = [
+        { title: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
     const whereClause: any = {
       status: VehicleStatus.ACTIVE,
       listings: {
-        some: {
-          status: ListingStatus.PUBLISHED,
-        },
+        some: listingsFilter,
       },
     };
 
@@ -468,19 +499,6 @@ export class VehiclesService {
       };
     }
 
-    // Busca Full-Text (No Listing vinculado)
-    if (q) {
-      whereClause.listings = {
-        some: {
-          status: ListingStatus.PUBLISHED,
-          OR: [
-            { title: { contains: q, mode: 'insensitive' } },
-            { description: { contains: q, mode: 'insensitive' } },
-          ],
-        },
-      };
-    }
-
     const [total, items] = await Promise.all([
       this.prisma.vehicle.count({ where: whereClause }),
       this.prisma.vehicle.findMany({
@@ -496,7 +514,7 @@ export class VehiclesService {
             } 
           },
           yearFab: true,
-        } as any,
+        },
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
@@ -526,6 +544,10 @@ export class VehiclesService {
     if (!vehicle) throw new NotFoundException('Veículo não encontrado');
     if (vehicle.sellerId !== sellerId) throw new ForbiddenException('Ação não permitida');
 
+    if (count < 1 || count > 20) {
+      throw new BadRequestException('A quantidade de fotos deve ser um número inteiro entre 1 e 20.');
+    }
+
     const uploadUrls = await Promise.all(
       Array.from({ length: count }, async (_, i) => {
         const path = `vehicles/${id}/photo_${Date.now()}_${i}`;
@@ -553,26 +575,36 @@ export class VehiclesService {
     if (!vehicle) throw new NotFoundException('Veículo não encontrado');
     if (vehicle.sellerId !== sellerId) throw new ForbiddenException('Ação não permitida');
 
-    // 1. Cancelar/remover jobs anteriores associados a este veículo na fila (Option A)
+    // Validar quantidade máxima de fotos (FLUXO-02)
+    if (photos.length > 20) {
+      throw new BadRequestException('Não é permitido exceder o limite de 20 fotos por veículo.');
+    }
+
+    // 1. Cancelar/remover jobs anteriores associados a este veículo na fila em O(1) (BUG-V12)
     try {
-      const jobs = await this.vehiclePhotosQueue.getJobs(['waiting', 'active', 'delayed', 'paused']);
-      for (const job of jobs) {
-        if (job.data?.vehicleId === id) {
-          this.logger.log(`Cancelando job anterior ${job.id} na fila para o veículo ${id}`);
-          await job.remove();
-        }
-      }
+      await this.vehiclePhotosQueue.remove(`vehicle-photos-${id}`).catch(() => null);
     } catch (err) {
       this.logger.warn(`Falha não fatal ao remover jobs anteriores da fila: ${err.message}`);
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      // 2. Limpar os registros antigos de fotos do banco para evitar sujeira
+    // 2. Transação do Prisma para atualizar fotos provisórias e reverter para DRAFT (BUG-V02)
+    await this.prisma.$transaction(async (tx) => {
+      // Limpar os registros antigos de fotos do banco para evitar sujeira
       await tx.vehiclePhoto.deleteMany({
         where: { vehicleId: id },
       });
 
-      // 3. Manter/Reverter status para DRAFT (rascunho) temporariamente enquanto processa em background
+      // Salvar registros provisórios com as URLs brutas enviadas pelo frontend
+      await tx.vehiclePhoto.createMany({
+        data: photos.map((p) => ({
+          vehicleId: id,
+          url: p.url,
+          type: p.type,
+          order: p.order,
+        })),
+      });
+
+      // Reverter status do veículo e listing para DRAFT temporariamente enquanto processa
       await tx.vehicle.update({
         where: { id },
         data: { status: VehicleStatus.DRAFT },
@@ -585,15 +617,24 @@ export class VehiclesService {
           publishedAt: null
         },
       });
-
-      // 4. Enfileirar o novo lote de fotos para processamento assíncrono
-      await this.vehiclePhotosQueue.add('process-vehicle-photo', {
-        vehicleId: id,
-        photos,
-      });
-
-      return { message: 'Fotos recebidas com sucesso. O processamento assíncrono e otimização das imagens foram iniciados em background.' };
     });
+
+    // 3. Enfileirar o novo lote de fotos fora da transação do Prisma
+    try {
+      await this.vehiclePhotosQueue.add(
+        'process-vehicle-photo',
+        {
+          vehicleId: id,
+          photos,
+        },
+        { jobId: `vehicle-photos-${id}` } // ID determinístico para cancelamento O(1)
+      );
+    } catch (queueError) {
+      this.logger.error(`Falha ao enfileirar job de fotos para veículo ${id}: ${queueError.message}`);
+      throw new BadRequestException('Falha ao agendar o processamento das fotos. Tente novamente.');
+    }
+
+    return { message: 'Fotos recebidas com sucesso. O processamento assíncrono e otimização das imagens foram iniciados em background.' };
   }
 
   /**
@@ -602,7 +643,7 @@ export class VehiclesService {
   async reactivate(id: string, sellerId: string) {
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id },
-      select: { sellerId: true, status: true },
+      select: { sellerId: true, status: true, versionId: true, yearFabId: true },
     });
 
     if (!vehicle) throw new NotFoundException('Veículo não encontrado');
@@ -610,6 +651,23 @@ export class VehiclesService {
 
     if (vehicle.status === VehicleStatus.SOLD) {
       throw new BadRequestException('Não é possível reativar um veículo vendido.');
+    }
+
+    // ✅ Re-checar RN10 antes de reativar (BUG-V10)
+    const duplicate = await this.prisma.listing.findFirst({
+      where: {
+        sellerProfileId: sellerId,
+        vehicle: {
+          versionId: vehicle.versionId,
+          yearFabId: vehicle.yearFabId,
+        },
+        status: { in: [ListingStatus.PENDING, ListingStatus.PUBLISHED] },
+        NOT: { vehicleId: id },
+      },
+    });
+
+    if (duplicate) {
+      throw new ConflictException('Você já possui um anúncio ativo para este veículo.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -629,6 +687,7 @@ export class VehiclesService {
       return { vehicle: updatedVehicle, message: 'Sucata reativada com sucesso. Enviada para moderação.' };
     });
   }
+
   /**
    * Deletes a vehicle and its related listings from the database.
    */

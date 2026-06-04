@@ -149,7 +149,7 @@ async function main() {
       zipCode: '04578-000',
       whatsapp: '11988888888',
       isVerified: true,
-      showWhatsapp: true,
+      showContactInfo: true,
       plan: PlanType.PRO,
     },
   });
@@ -171,7 +171,7 @@ async function main() {
       zipCode: '07000-000',
       whatsapp: '11977777777',
       isVerified: false,
-      showWhatsapp: true,
+      showContactInfo: true,
       plan: PlanType.FREE,
     },
   });

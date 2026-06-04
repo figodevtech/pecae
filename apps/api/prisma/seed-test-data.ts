@@ -49,7 +49,7 @@ async function main() {
       zipCode: '01001-000',
       whatsapp: '11999999999',
       isVerified: true,
-      showWhatsapp: true,
+      showContactInfo: true,
     },
   });
 

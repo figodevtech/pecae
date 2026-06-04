@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../common/storage/storage.service';
 import { CreateSellerProfileDto } from './dto/create-seller-profile.dto';
@@ -29,7 +29,7 @@ export class SellersService {
         data: {
           ...dto,
           userId,
-          openHours: dto.openHours || undefined, // Prisma requires undefined for JSON if not provided
+          openHours: dto.openHours !== undefined ? dto.openHours : undefined, // Prisma requires undefined for JSON if not provided
         },
       });
 
@@ -56,7 +56,7 @@ export class SellersService {
       where: { userId },
       data: {
         ...dto,
-        openHours: dto.openHours || undefined,
+        openHours: dto.openHours !== undefined ? dto.openHours : undefined,
       },
     });
   }
@@ -103,8 +103,8 @@ export class SellersService {
     return {
       ...publicData,
       cnpj: maskedCnpj,
-      whatsapp: profile.showWhatsapp ? whatsapp : undefined,
-      phone: profile.showWhatsapp ? phone : undefined,
+      whatsapp: profile.showContactInfo ? whatsapp : undefined,
+      phone: profile.showContactInfo ? phone : undefined,
       stats: profile.stats ? {
         activeListings: profile.stats.activeListings,
         avgResponseTimeMinutes: profile.stats.avgResponseTimeMinutes,
@@ -130,7 +130,7 @@ export class SellersService {
     return profile.stats;
   }
 
-  async getSellerListings(sellerProfileId: string) {
+  async getSellerListings(sellerProfileId: string, query?: { page?: string | number; limit?: string | number }) {
     const profile = await this.prisma.sellerProfile.findUnique({
       where: { id: sellerProfileId },
       include: {
@@ -138,9 +138,14 @@ export class SellersService {
       }
     });
 
-    if (!profile || profile.user.status === 'SUSPENDED' || profile.user.status === 'BANNED') {
+    if (!profile || profile.deletedAt || profile.user.status === 'SUSPENDED' || profile.user.status === 'BANNED') {
       throw new NotFoundException('Seller profile not found or unavailable');
     }
+
+    const page = query?.page ? Math.max(1, parseInt(String(query.page), 10)) : undefined;
+    const limit = query?.limit ? Math.max(1, parseInt(String(query.limit), 10)) : undefined;
+    const skip = page && limit ? (page - 1) * limit : undefined;
+    const take = limit;
 
     // Note: Assuming `Listing` model is now available in schema
     return this.prisma.listing.findMany({
@@ -151,6 +156,8 @@ export class SellersService {
       orderBy: {
         createdAt: 'desc',
       },
+      ...(skip !== undefined && { skip }),
+      ...(take !== undefined && { take }),
     });
   }
 
@@ -196,52 +203,73 @@ export class SellersService {
   }
 
   async requestVerification(userId: string) {
-    const profile = await this.prisma.sellerProfile.findUnique({
-      where: { userId },
-      include: { verifications: { where: { status: 'PENDING' } } },
+    return this.prisma.$transaction(async (tx) => {
+      const profile = await tx.sellerProfile.findUnique({
+        where: { userId },
+        include: { verifications: { where: { status: 'PENDING' } } },
+      });
+
+      if (!profile) {
+        throw new NotFoundException('Seller profile not found');
+      }
+
+      if (profile.verifications.length > 0) {
+        throw new ConflictException('A verification request is already pending');
+      }
+
+      if (profile.isVerified) {
+        throw new ConflictException('Seller is already verified');
+      }
+
+      // Criamos a solicitação com status PENDING imediatamente para evitar race condition
+      await tx.sellerVerification.create({
+        data: {
+          sellerProfileId: profile.id,
+          documentUrls: [],
+          status: 'PENDING',
+        },
+      });
+
+      // Geramos 5 slots de upload para o processo de verificação
+      const signedUrls = await Promise.all(
+        Array.from({ length: 5 }, async (_, i) => {
+          const path = `verifications/${profile.id}/doc_${Date.now()}_${i}`;
+          const data = await this.storageService.createSignedUploadUrl('verification-docs', path);
+          return {
+            id: `doc_${i}`,
+            ...data,
+          };
+        }),
+      );
+
+      return signedUrls;
     });
-
-    if (!profile) {
-      throw new NotFoundException('Seller profile not found');
-    }
-
-    if (profile.verifications.length > 0) {
-      throw new ConflictException('A verification request is already pending');
-    }
-
-    if (profile.isVerified) {
-      throw new ConflictException('Seller is already verified');
-    }
-
-    // Geramos 5 slots de upload para o processo de verificação
-    const signedUrls = await Promise.all(
-      Array.from({ length: 5 }, async (_, i) => {
-        const path = `verifications/${profile.id}/doc_${Date.now()}_${i}`;
-        const data = await this.storageService.createSignedUploadUrl('verification-docs', path);
-        return {
-          id: `doc_${i}`,
-          ...data,
-        };
-      }),
-    );
-
-    return signedUrls;
   }
 
   async confirmVerificationRequest(userId: string, documentUrls: string[]) {
     const profile = await this.prisma.sellerProfile.findUnique({
       where: { userId },
+      include: {
+        verifications: {
+          where: { status: 'PENDING' },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     });
 
     if (!profile) {
       throw new NotFoundException('Seller profile not found');
     }
 
-    return this.prisma.sellerVerification.create({
+    const pendingVerification = profile.verifications[0];
+    if (!pendingVerification) {
+      throw new BadRequestException('No pending verification request found. Start verification first.');
+    }
+
+    return this.prisma.sellerVerification.update({
+      where: { id: pendingVerification.id },
       data: {
-        sellerProfileId: profile.id,
         documentUrls,
-        status: 'PENDING',
       },
     });
   }

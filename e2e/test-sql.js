@@ -1,8 +1,10 @@
 const { execSync } = require('child_process');
+const path = require('path');
 
 function runSqlQuery(sql) {
   try {
-    const command = 'wsl -u root docker exec -i pecae-postgres-test psql -U postgres -d pecae_test_db -t -A';
+    const scriptPath = path.resolve(__dirname, 'helpers/query.js');
+    const command = `node "${scriptPath}"`;
     const result = execSync(command, { 
       input: sql, 
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -15,10 +17,11 @@ function runSqlQuery(sql) {
     console.error(`[SQL ERROR] Falha ao rodar query: ${sql}`);
     if (error.stderr) console.error('STDERR:', error.stderr.toString());
     if (error.stdout) console.log('STDOUT:', error.stdout.toString());
-    console.error('Error code:', error.status);
+    console.error('Error:', error.message);
     return '';
   }
 }
+
 
 // Testar
 const brandId = runSqlQuery("SELECT id FROM vehicle_brands WHERE name = 'Volkswagen' LIMIT 1;");

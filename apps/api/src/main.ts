@@ -6,16 +6,19 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
   const port = config.get<number>('PORT', 3001);
   const env = config.get<string>('NODE_ENV', 'development');
 
   // --- Security ---
-  if (env === 'production') {
-    app.use(helmet());
-  }
+  app.use(
+    helmet({
+      contentSecurityPolicy: env === 'production',
+      crossOriginEmbedderPolicy: env === 'production',
+    }),
+  );
 
   // --- CORS ---
   app.enableCors({

@@ -42,22 +42,18 @@ export class VehiclePhotosProcessor extends WorkerHost {
     const processedPhotosRecords: { url: string; type: PhotoType; order: number }[] = [];
 
     try {
-      const mockImages = [
-        'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=800&q=80', // Chevy
-        'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?auto=format&fit=crop&w=800&q=80', // Ford
-        'https://images.unsplash.com/photo-1542282088-fe8426682b8f?auto=format&fit=crop&w=800&q=80', // Audi
-        'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80', // Porsche
-        'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=800&q=80', // Supercar
-        'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&w=800&q=80', // Ferrari
-        'https://images.unsplash.com/photo-1555353540-64580b51c258?auto=format&fit=crop&w=800&q=80', // Classic
-      ];
-
       for (const photo of photos) {
         try {
           this.logger.debug(`Baixando foto original: ${photo.url}`);
           
-          if (photo.url.includes('pecae-mock-storage.com') || photo.url.includes('placeholder') || photo.url.includes('localhost:3000') || photo.url.startsWith('file://')) {
-            this.logger.log(`URL local/mock detectada, mantendo URL original: ${photo.url}`);
+          const skipProcessing = process.env.SKIP_IMAGE_PROCESSING === 'true' || 
+                                 photo.url.includes('pecae-mock-storage.com') || 
+                                 photo.url.includes('localhost:3000') || 
+                                 photo.url.includes('placeholder') ||
+                                 photo.url.startsWith('file://');
+
+          if (skipProcessing) {
+            this.logger.log(`Pulando processamento para foto (dev/mock/teste): ${photo.url}`);
             processedPhotosRecords.push({
               url: photo.url,
               type: this.mapPhotoType(photo.type),
@@ -140,13 +136,8 @@ export class VehiclePhotosProcessor extends WorkerHost {
             this.logger.warn(`Não foi possível remover a foto bruta antiga: ${cleanupErr.message}`);
           }
         } catch (photoError) {
-          // Se falhar em desenvolvimento ou se for mock, mantemos a URL para não quebrar
-          this.logger.warn(`Aviso de falha ao processar foto individual ${photo.url}: ${photoError.message}. Mantendo URL original.`);
-          processedPhotosRecords.push({
-            url: photo.url,
-            type: this.mapPhotoType(photo.type),
-            order: photo.order,
-          });
+          this.logger.error(`Aviso de falha ao processar foto individual ${photo.url}: ${photoError.message}.`);
+          throw photoError; // Relança o erro para falhar o lote completo de forma atômica
         }
       }
 

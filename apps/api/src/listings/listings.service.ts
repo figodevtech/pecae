@@ -1,11 +1,11 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ListingDetailResponseDto } from './dto/listing-detail-response.dto';
-import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { NotificationService } from '../notifications/notification.service';
+import { ListingStatusMachine } from './listing-status.machine';
 
 @Injectable()
 export class ListingsService {
@@ -15,54 +15,6 @@ export class ListingsService {
     @InjectQueue('listings') private readonly listingsQueue: Queue,
   ) {}
 
-  async create(userId: string, dto: CreateListingDto) {
-    const seller = await this.prisma.sellerProfile.findUnique({
-      where: { userId },
-    });
-
-    if (!seller) {
-      throw new ForbiddenException('Apenas vendedores podem criar anúncios.');
-    }
-
-    const { photos, ...vehicleData } = dto;
-
-    return this.prisma.$transaction(async (tx) => {
-      // 1. Create Vehicle
-      const vehicle = await tx.vehicle.create({
-        data: {
-          sellerId: seller.id,
-          versionId: vehicleData.versionId,
-          yearFabId: vehicleData.yearFabId,
-          color: vehicleData.color,
-          plate: vehicleData.plate,
-          city: vehicleData.city,
-          state: vehicleData.state,
-          availableParts: vehicleData.availableParts,
-          observations: vehicleData.observations,
-          status: 'PENDING',
-          photos: {
-            create: photos.map((p: any) => ({
-              url: p.url,
-              order: p.order,
-              type: p.type,
-            })),
-          },
-        },
-      });
-
-      // 2. Create Listing
-      return tx.listing.create({
-        data: {
-          sellerProfileId: seller.id,
-          vehicleId: vehicle.id,
-          title: dto.title,
-          description: dto.description,
-          status: 'PENDING',
-        },
-      });
-    });
-  }
-
   private readonly logger = new Logger(ListingsService.name);
 
   async findAll(query: { 
@@ -71,6 +23,8 @@ export class ListingsService {
     city?: string; 
     state?: string;
     partCategoryId?: string;
+    page?: string | number;
+    limit?: string | number;
   }) {
     try {
       this.logger.log(`Fetching published listings with filters: ${JSON.stringify(query)}`);
@@ -96,6 +50,11 @@ export class ListingsService {
         };
       }
 
+      const page = query.page ? Math.max(1, parseInt(String(query.page), 10)) : undefined;
+      const limit = query.limit ? Math.max(1, parseInt(String(query.limit), 10)) : undefined;
+      const skip = page && limit ? (page - 1) * limit : undefined;
+      const take = limit;
+
       const listings = await this.prisma.listing.findMany({
         where,
         include: {
@@ -108,6 +67,8 @@ export class ListingsService {
           },
         },
         orderBy: { publishedAt: 'desc' },
+        ...(skip !== undefined && { skip }),
+        ...(take !== undefined && { take }),
       });
       
       this.logger.log(`Found ${listings.length} listings.`);
@@ -239,14 +200,30 @@ export class ListingsService {
     const { title, description, ...vehicleFields } = dto;
     const { photos, ...directVehicleFields } = vehicleFields as any;
 
+    ListingStatusMachine.validateTransition(listing.status, 'PENDING');
+
+    const hasVehicleUpdates = Object.keys(directVehicleFields).length > 0 || (photos && photos.length > 0);
+
     return this.prisma.listing.update({
       where: { id },
       data: {
         title,
         description,
         status: 'PENDING', // RN14: Reset to PENDING on update
-        vehicle: Object.keys(directVehicleFields).length > 0 ? {
-          update: directVehicleFields
+        vehicle: hasVehicleUpdates ? {
+          update: {
+            ...directVehicleFields,
+            ...(photos && photos.length > 0 ? {
+              photos: {
+                deleteMany: {},
+                create: photos.map((p: any) => ({
+                  url: p.url,
+                  order: p.order,
+                  type: p.type,
+                })),
+              },
+            } : {}),
+          },
         } : undefined,
       },
     });
@@ -254,17 +231,19 @@ export class ListingsService {
 
   async softDelete(id: string, userId: string) {
     const listing = await this.prisma.listing.findUnique({
-      where: { id },
+      where: { id, deletedAt: null },
       include: { sellerProfile: true },
     });
 
     if (!listing) {
-      throw new NotFoundException('Anúncio não encontrado.');
+      throw new NotFoundException('Anúncio não encontrado ou já removido.');
     }
 
     if (listing.sellerProfile.userId !== userId) {
       throw new ForbiddenException('Você não tem permissão para remover este anúncio.');
     }
+
+    ListingStatusMachine.validateTransition(listing.status, 'EXPIRED');
 
     return this.prisma.listing.update({
       where: { id },
@@ -296,6 +275,8 @@ export class ListingsService {
     if (listing.status === 'SOLD') {
       return listing;
     }
+
+    ListingStatusMachine.validateTransition(listing.status, 'SOLD');
 
     const soldAt = new Date();
     const publishedAt = listing.publishedAt || listing.createdAt;

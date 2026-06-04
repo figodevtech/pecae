@@ -86,7 +86,7 @@ O modelo SellerProfile representa os dados da loja do vendedor.
 | logo | Text? | URL do logo da loja |
 | description | Text? | Descrição da loja |
 | isVerified | Boolean @default(false) | Flag de Seller Verificado |
-| showWhatsapp | Boolean @default(false) | Exibir WhatsApp no perfil público |
+| showContactInfo | Boolean @default(false) | Exibir informações de contato (WhatsApp e Telefone) no perfil público |
 | responseTimeAvg | Int? | Tempo médio de resposta (minutos) |
 | createdAt | DateTime | Data de criação |
 | updatedAt | DateTime | Data de atualização |
@@ -182,7 +182,7 @@ O modelo SellerVerification armazena o histórico de solicitações de verifica�
   lng?: number;          // Longitude (opcional)
   whatsapp: string;      // +5511999999999
   phone?: string;        // Telefone (opcional)
-  showWhatsapp?: boolean; // Exibir no perfil público
+  showContactInfo?: boolean; // Exibir no perfil público
   openHours?: object;    // Json com horários por dia
   description?: string;  // Descrição da loja
 }
@@ -296,8 +296,8 @@ O modelo SellerVerification armazena o histórico de solicitações de verifica�
   description?: string;
   isVerified: boolean;
   cnpj?: string;  // Formatado: XX.XXX.XXX/0001-**
-  whatsapp?: string;   // Apenas se showWhatsapp=true
-  phone?: string;     // Apenas se showWhatsapp=true
+  whatsapp?: string;   // Apenas se showContactInfo=true
+  phone?: string;     // Apenas se showContactInfo=true
   stats: {
     activeListings: number;
     avgResponseTimeMinutes?: number;
@@ -356,7 +356,7 @@ export class CreateSellerProfileDto {
 
   @IsOptional()
   @IsBoolean()
-  showWhatsapp?: boolean;
+  showContactInfo?: boolean;
 
   @IsOptional()
   @IsObject()

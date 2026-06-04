@@ -154,7 +154,7 @@ export default function PublicProfileScreen() {
             variant="outline"
             style={{ marginTop: 8 }}
           />
-          {seller?.showWhatsapp && (
+          {seller?.showContactInfo && (
             <TouchableOpacity 
               onPress={handleWhatsApp}
               style={styles.whatsappButton}

@@ -17,6 +17,7 @@ import { subject } from "@casl/ability";
 import { CaslAbilityFactory } from "../auth/casl/casl-ability.factory";
 import { StorageService } from "../common/storage/storage.service";
 import { RedisService } from "../common/redis/redis.service";
+import { ListingStatusMachine } from "../listings/listing-status.machine";
 
 @Injectable()
 export class ModerationService {
@@ -213,6 +214,7 @@ export class ModerationService {
     }
 
     // Option A: Execute side effects in transaction to guarantee rollback on failure
+    ListingStatusMachine.validateTransition(listing.status, "PUBLISHED");
     try {
       await this.prisma.$transaction(async (tx) => {
         // 1. Update listing status and publishedAt
@@ -302,6 +304,7 @@ export class ModerationService {
     }
 
     // Option A: Execute side effects in transaction to guarantee rollback on failure
+    ListingStatusMachine.validateTransition(listing.status, "REJECTED");
     try {
       await this.prisma.$transaction(async (tx) => {
         // 1. Update listing status

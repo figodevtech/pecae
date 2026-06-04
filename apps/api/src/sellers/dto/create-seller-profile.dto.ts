@@ -1,5 +1,6 @@
 import { IsString, IsEnum, IsOptional, IsObject, Matches, MinLength, ValidateIf, IsBoolean } from 'class-validator';
 import { SellerType } from '@prisma/client';
+import { IsCNPJ } from '../../common/decorators/is-cnpj.decorator';
 
 export class CreateSellerProfileDto {
   @IsString()
@@ -11,6 +12,10 @@ export class CreateSellerProfileDto {
 
   @ValidateIf(o => o.type === SellerType.PJ)
   @IsString()
+  @Matches(/^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$|^\d{14}$/, {
+    message: 'CNPJ deve estar no formato XX.XXX.XXX/XXXX-XX ou 14 dígitos',
+  })
+  @IsCNPJ({ message: 'CNPJ inválido (dígitos verificadores incorretos)' })
   cnpj?: string;
 
   @IsString()
@@ -37,7 +42,7 @@ export class CreateSellerProfileDto {
 
   @IsOptional()
   @IsBoolean()
-  showWhatsapp?: boolean;
+  showContactInfo?: boolean;
 
   @IsOptional()
   @IsObject()

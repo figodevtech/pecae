@@ -1,11 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { execSync } from 'child_process';
 import * as crypto from 'crypto';
+import * as path from 'path';
 
-// Função auxiliar para rodar queries SQL no WSL
+// Função auxiliar para rodar queries SQL via bridge Node.js e Prisma
 function runSqlQuery(sql: string): string {
   try {
-    const command = 'wsl -u root docker exec -i pecae-postgres-test psql -U postgres -d pecae_test_db -t -A';
+    const scriptPath = path.resolve(__dirname, 'helpers/query.js');
+    const command = `node "${scriptPath}"`;
     return execSync(command, { input: sql, stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim();
   } catch (error: any) {
     console.error(`[SQL ERROR] Falha ao rodar query: ${sql}`);

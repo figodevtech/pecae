@@ -1,11 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { execSync } from 'child_process';
 import * as crypto from 'crypto';
+import * as path from 'path';
 
-// Helper to execute SQL directly in the PostgreSQL test container under WSL
+// Helper to execute SQL via bridge Node.js and Prisma
 function runSqlQuery(sql: string): string {
   try {
-    const command = 'wsl -u root docker exec -i pecae-postgres-test psql -U postgres -d pecae_test_db -t -A';
+    const scriptPath = path.resolve(__dirname, 'helpers/query.js');
+    const command = `node "${scriptPath}"`;
     return execSync(command, { input: sql, stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim();
   } catch (error: any) {
     console.error(`[SQL ERROR] Failed to run query: ${sql}`);
@@ -14,11 +16,14 @@ function runSqlQuery(sql: string): string {
   }
 }
 
-// Helper to execute command directly in the Redis test container under WSL
+// Helper to execute command directly in the Redis test container via node bridge
 function runRedisCommand(command: string): string {
   try {
-    const fullCommand = `wsl docker exec -i pecae-redis-test redis-cli ${command}`;
-    return execSync(fullCommand).toString().trim();
+    if (command === 'flushall') {
+      const scriptPath = path.resolve(__dirname, 'helpers/redis-flush.js');
+      return execSync(`node "${scriptPath}"`).toString().trim();
+    }
+    return '';
   } catch (error: any) {
     console.error(`[REDIS ERROR] Failed to run Redis command: ${command}`);
     return '';

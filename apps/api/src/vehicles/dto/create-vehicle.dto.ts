@@ -8,9 +8,15 @@ import {
   MaxLength, 
   Matches,
   IsNumber,
-  ValidateIf
+  ValidateIf,
+  IsIn
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+
+const VALID_UF = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
+];
 
 /**
  * DTO for creating a new salvage vehicle (sucata) and its corresponding listing.
@@ -19,40 +25,47 @@ import { ApiProperty } from '@nestjs/swagger';
  */
 export class CreateVehicleDto {
   @ApiProperty({ example: 'uuid-version-123', required: false })
-  @IsOptional()
+  @ValidateIf(o => !o.customBrandName && !o.customModelName && !o.customVersionName)
+  @IsNotEmpty({ message: 'versionId é obrigatório se os dados de marca, modelo e versão customizados não forem fornecidos' })
   @IsUUID()
   versionId?: string;
 
   @ApiProperty({ example: 'uuid-year-456', required: false })
-  @IsOptional()
+  @ValidateIf(o => !o.customYearFab && !o.customYearModel)
+  @IsNotEmpty({ message: 'yearFabId é obrigatório se os dados de ano de fabricação e modelo customizados não forem fornecidos' })
   @IsUUID()
   yearFabId?: string;
 
   @ApiProperty({ example: 'Fiat', required: false })
-  @IsOptional()
+  @ValidateIf(o => !o.versionId)
+  @IsNotEmpty({ message: 'customBrandName é obrigatório quando versionId não é fornecido' })
   @IsString()
   @MaxLength(100)
   customBrandName?: string;
 
   @ApiProperty({ example: 'Uno', required: false })
-  @IsOptional()
+  @ValidateIf(o => !o.versionId)
+  @IsNotEmpty({ message: 'customModelName é obrigatório quando versionId não é fornecido' })
   @IsString()
   @MaxLength(100)
   customModelName?: string;
 
   @ApiProperty({ example: 'Mille 1.0 Flex', required: false })
-  @IsOptional()
+  @ValidateIf(o => !o.versionId)
+  @IsNotEmpty({ message: 'customVersionName é obrigatório quando versionId não é fornecido' })
   @IsString()
   @MaxLength(100)
   customVersionName?: string;
 
   @ApiProperty({ example: 2012, required: false })
-  @IsOptional()
+  @ValidateIf(o => !o.yearFabId)
+  @IsNotEmpty({ message: 'customYearFab é obrigatório quando yearFabId não é fornecido' })
   @IsNumber()
   customYearFab?: number;
 
   @ApiProperty({ example: 2013, required: false })
-  @IsOptional()
+  @ValidateIf(o => !o.yearFabId)
+  @IsNotEmpty({ message: 'customYearModel é obrigatório quando yearFabId não é fornecido' })
   @IsNumber()
   customYearModel?: number;
 
@@ -71,7 +84,7 @@ export class CreateVehicleDto {
   @ApiProperty({ example: 'SP' })
   @IsString()
   @IsNotEmpty()
-  @MaxLength(2)
+  @IsIn(VALID_UF, { message: 'Estado deve ser uma UF brasileira válida' })
   state: string;
 
   @ApiProperty({ example: 'ABC-1234', required: false })

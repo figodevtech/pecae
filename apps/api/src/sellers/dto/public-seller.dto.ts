@@ -9,7 +9,7 @@ export class PublicSellerDto {
   logo?: string;
   description?: string;
   isVerified: boolean;
-  showWhatsapp: boolean;
+  showContactInfo: boolean;
   whatsapp?: string;
   phone?: string;
   stats?: {

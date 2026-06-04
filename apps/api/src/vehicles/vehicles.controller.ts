@@ -4,12 +4,13 @@ import {
   Body, 
   Get, 
   Param, 
-  Put, 
   Req, 
   UseGuards, 
   Patch,
   Delete,
-  NotFoundException
+  NotFoundException,
+  BadRequestException,
+  Query
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -58,9 +59,13 @@ export class VehiclesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserType.SELLER, UserType.BOTH)
   @ApiOperation({ summary: 'Lista os veículos/anúncios do vendedor autenticado' })
-  async getMyVehicles(@Req() req: any) {
+  async getMyVehicles(
+    @Req() req: any,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number
+  ) {
     const sellerId = await this.getSellerId(req.user.id);
-    return this.vehiclesService.findBySeller(sellerId);
+    return this.vehiclesService.findBySeller(sellerId, page ? Number(page) : 1, limit ? Number(limit) : 20);
   }
 
   @Get(':id')
@@ -69,19 +74,6 @@ export class VehiclesController {
   async findOne(@Param('id') id: string, @Req() req: any) {
     const userId = req.user?.id;
     return this.vehiclesService.findOne(id, userId);
-  }
-
-  @Put(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserType.SELLER, UserType.BOTH)
-  @ApiOperation({ summary: 'Atualiza dados do veículo via PUT (Força re-moderação)' })
-  async updatePut(
-    @Param('id') id: string, 
-    @Req() req: any, 
-    @Body() dto: UpdateVehicleDto
-  ) {
-    const sellerId = await this.getSellerId(req.user.id);
-    return this.vehiclesService.update(id, sellerId, dto);
   }
 
   @Patch(':id')
@@ -156,7 +148,11 @@ export class VehiclesController {
     @Body('count') count: number
   ) {
     const sellerId = await this.getSellerId(req.user.id);
-    return this.vehiclesService.generateUploadUrls(id, sellerId, count || 5);
+    const resolvedCount = count !== undefined ? count : 5;
+    if (typeof resolvedCount !== 'number' || resolvedCount < 1 || resolvedCount > 20) {
+      throw new BadRequestException('A quantidade de fotos deve ser um número inteiro entre 1 e 20.');
+    }
+    return this.vehiclesService.generateUploadUrls(id, sellerId, resolvedCount);
   }
 
   @Post(':id/photos/confirm')

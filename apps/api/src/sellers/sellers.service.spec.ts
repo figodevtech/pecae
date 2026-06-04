@@ -3,7 +3,7 @@ import { SellersService } from './sellers.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../common/storage/storage.service';
 import { getQueueToken } from '@nestjs/bullmq';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 
 // Mock do Prisma
 const mockPrisma = {
@@ -11,12 +11,14 @@ const mockPrisma = {
     findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    findFirst: jest.fn(),
   },
   sellerStats: {
     create: jest.fn(),
   },
   sellerVerification: {
     create: jest.fn(),
+    update: jest.fn(),
   },
   listing: {
     findMany: jest.fn(),
@@ -48,6 +50,7 @@ describe('SellersService', () => {
     }).compile();
 
     service = module.get<SellersService>(SellersService);
+    mockPrisma.$transaction.mockImplementation(async (callback) => callback(mockPrisma));
     jest.clearAllMocks();
   });
 
@@ -95,7 +98,7 @@ describe('SellersService', () => {
         lng: -46.63,
         whatsapp: '+5511999999999',
         phone: '11999999999',
-        showWhatsapp: false,
+        showContactInfo: false,
         userId: 'user-1',
         isVerified: true,
         user: { status: 'ACTIVE' },
@@ -110,12 +113,39 @@ describe('SellersService', () => {
       expect(result).not.toHaveProperty('lat');
       expect(result).not.toHaveProperty('lng');
       expect(result).not.toHaveProperty('userId');
-      // whatsapp deve ser undefined pois showWhatsapp=false
+      // whatsapp e phone devem ser undefined pois showContactInfo=false
       expect(result.whatsapp).toBeUndefined();
+      expect(result.phone).toBeUndefined();
       // CNPJ mascarado
       expect(result.cnpj).toMatch(/\*\*/);
       // Stats incluídos
       expect(result.stats?.rating).toBe(4.8);
+    });
+
+    it('deve retornar whatsapp e phone quando showContactInfo for true', async () => {
+      const mockProfile = {
+        id: 'sp-1',
+        storeName: 'Desmanche Alpha',
+        city: 'São Paulo',
+        state: 'SP',
+        cnpj: '12345678000195',
+        address: 'Rua das Peças, 100 — dado privado',
+        lat: -23.55,
+        lng: -46.63,
+        whatsapp: '+5511999999999',
+        phone: '11999999999',
+        showContactInfo: true,
+        userId: 'user-1',
+        isVerified: true,
+        user: { status: 'ACTIVE' },
+        stats: { activeListings: 5, avgResponseTimeMinutes: 15, rating: 4.8, totalReviews: 42 },
+      };
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue(mockProfile);
+
+      const result = await service.findPublicProfile('sp-1');
+
+      expect(result.whatsapp).toBe('+5511999999999');
+      expect(result.phone).toBe('11999999999');
     });
 
     it('deve lançar NotFoundException para vendedor suspenso', async () => {
@@ -143,12 +173,99 @@ describe('SellersService', () => {
     });
   });
 
+  describe('getSellerListings', () => {
+    it('deve retornar anuncios publicados se o perfil do vendedor estiver ativo e nao deletado', async () => {
+      const mockProfile = {
+        id: 'sp-1',
+        deletedAt: null,
+        user: { status: 'ACTIVE' },
+      };
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue(mockProfile);
+      mockPrisma.listing.findMany.mockResolvedValue([
+        { id: 'list-1', title: 'Peca A', status: 'PUBLISHED' },
+      ]);
+
+      const result = await service.getSellerListings('sp-1');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('list-1');
+      expect(mockPrisma.listing.findMany).toHaveBeenCalledWith({
+        where: {
+          sellerProfileId: 'sp-1',
+          status: 'PUBLISHED',
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+    });
+
+    it('deve lancar NotFoundException se o perfil nao for encontrado', async () => {
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue(null);
+
+      await expect(service.getSellerListings('sp-inexistente')).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lancar NotFoundException se o vendedor estiver deletado via soft-delete', async () => {
+      const mockProfile = {
+        id: 'sp-1',
+        deletedAt: new Date(),
+        user: { status: 'ACTIVE' },
+      };
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue(mockProfile);
+
+      await expect(service.getSellerListings('sp-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lancar NotFoundException se o vendedor estiver suspenso ou banido', async () => {
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue({
+        id: 'sp-1',
+        deletedAt: null,
+        user: { status: 'SUSPENDED' },
+      });
+
+      await expect(service.getSellerListings('sp-1')).rejects.toThrow(NotFoundException);
+
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue({
+        id: 'sp-1',
+        deletedAt: null,
+        user: { status: 'BANNED' },
+      });
+
+      await expect(service.getSellerListings('sp-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve aplicar skip e take na paginação de getSellerListings se page e limit forem informados', async () => {
+      const mockProfile = {
+        id: 'sp-1',
+        deletedAt: null,
+        user: { status: 'ACTIVE' },
+      };
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue(mockProfile);
+      mockPrisma.listing.findMany.mockResolvedValue([]);
+
+      await service.getSellerListings('sp-1', { page: 2, limit: 5 });
+
+      expect(mockPrisma.listing.findMany).toHaveBeenCalledWith({
+        where: {
+          sellerProfileId: 'sp-1',
+          status: 'PUBLISHED',
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip: 5,
+        take: 5,
+      });
+    });
+  });
+
   describe('requestVerification', () => {
-    it('deve gerar 5 slots de upload para verificação', async () => {
+    it('deve gerar 5 slots de upload para verificação e criar solicitação PENDING no banco', async () => {
       const mockProfile = {
         id: 'sp-1',
         isVerified: false,
-        verifications: [], // nenhuma pendente
+        verifications: [],
       };
       mockPrisma.sellerProfile.findUnique.mockResolvedValue(mockProfile);
       mockStorage.createSignedUploadUrl.mockResolvedValue({
@@ -157,18 +274,31 @@ describe('SellersService', () => {
         path: 'verifications/sp-1/doc_0',
         publicUrl: 'https://cdn.example.com/doc_0',
       });
+      mockPrisma.sellerVerification.create.mockResolvedValue({
+        id: 'v-1',
+        status: 'PENDING',
+        documentUrls: [],
+        sellerProfileId: 'sp-1',
+      });
 
       const result = await service.requestVerification('user-1');
 
       expect(result).toHaveLength(5);
       expect(mockStorage.createSignedUploadUrl).toHaveBeenCalledTimes(5);
+      expect(mockPrisma.sellerVerification.create).toHaveBeenCalledWith({
+        data: {
+          sellerProfileId: 'sp-1',
+          documentUrls: [],
+          status: 'PENDING',
+        },
+      });
     });
 
     it('deve lançar ConflictException quando já existir verificação pendente', async () => {
       mockPrisma.sellerProfile.findUnique.mockResolvedValue({
         id: 'sp-1',
         isVerified: false,
-        verifications: [{ id: 'v-1', status: 'PENDING' }], // já pendente
+        verifications: [{ id: 'v-1', status: 'PENDING' }],
       });
 
       await expect(service.requestVerification('user-1')).rejects.toThrow(ConflictException);
@@ -178,7 +308,7 @@ describe('SellersService', () => {
     it('deve lançar ConflictException quando vendedor já estiver verificado', async () => {
       mockPrisma.sellerProfile.findUnique.mockResolvedValue({
         id: 'sp-1',
-        isVerified: true, // já verificado
+        isVerified: true,
         verifications: [],
       });
 
@@ -195,10 +325,15 @@ describe('SellersService', () => {
   });
 
   describe('confirmVerificationRequest', () => {
-    it('deve criar registro de verificação com status PENDING e as URLs dos documentos', async () => {
-      const mockProfile = { id: 'sp-1' };
+    it('deve atualizar registro de verificação existente com status PENDING e as URLs dos documentos', async () => {
+      const mockProfile = {
+        id: 'sp-1',
+        verifications: [
+          { id: 'v-1', status: 'PENDING', documentUrls: [] }
+        ]
+      };
       mockPrisma.sellerProfile.findUnique.mockResolvedValue(mockProfile);
-      mockPrisma.sellerVerification.create.mockResolvedValue({
+      mockPrisma.sellerVerification.update.mockResolvedValue({
         id: 'v-1',
         status: 'PENDING',
         documentUrls: ['url-1', 'url-2'],
@@ -208,15 +343,92 @@ describe('SellersService', () => {
       const result = await service.confirmVerificationRequest('user-1', ['url-1', 'url-2']);
 
       expect(result.status).toBe('PENDING');
-      expect(mockPrisma.sellerVerification.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            sellerProfileId: 'sp-1',
-            documentUrls: ['url-1', 'url-2'],
-            status: 'PENDING',
-          }),
-        }),
-      );
+      expect(mockPrisma.sellerVerification.update).toHaveBeenCalledWith({
+        where: { id: 'v-1' },
+        data: {
+          documentUrls: ['url-1', 'url-2'],
+        },
+      });
+    });
+
+    it('deve lançar BadRequestException se não houver verificação pendente para atualizar', async () => {
+      const mockProfile = {
+        id: 'sp-1',
+        verifications: []
+      };
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue(mockProfile);
+
+      await expect(
+        service.confirmVerificationRequest('user-1', ['url-1', 'url-2'])
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('update', () => {
+    const updateDto = { storeName: 'Novo Nome', openHours: { mon: '09-18' } };
+
+    it('deve atualizar o perfil de vendedor com sucesso', async () => {
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue({ id: 'sp-1', userId: 'user-1' });
+      mockPrisma.sellerProfile.update.mockResolvedValue({ id: 'sp-1', ...updateDto });
+
+      const result = await service.update('user-1', updateDto);
+
+      expect(result).toHaveProperty('storeName', 'Novo Nome');
+      expect(mockPrisma.sellerProfile.update).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+        data: {
+          ...updateDto,
+          openHours: updateDto.openHours,
+        },
+      });
+    });
+
+    it('deve lançar NotFoundException se o vendedor não for encontrado', async () => {
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue(null);
+
+      await expect(service.update('user-1', updateDto)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('confirmLogoUpload', () => {
+    it('deve atualizar o logo do vendedor com sucesso', async () => {
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue({ id: 'sp-1', userId: 'user-1' });
+      mockPrisma.sellerProfile.update.mockResolvedValue({ id: 'sp-1', logo: 'https://new-logo.png' });
+
+      const result = await service.confirmLogoUpload('user-1', 'https://new-logo.png');
+
+      expect(result.logo).toBe('https://new-logo.png');
+      expect(mockPrisma.sellerProfile.update).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+        data: { logo: 'https://new-logo.png' },
+      });
+    });
+
+    it('deve lançar NotFoundException se o vendedor não for encontrado', async () => {
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue(null);
+
+      await expect(service.confirmLogoUpload('user-1', 'https://logo.png')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getStats', () => {
+    it('deve retornar as estatísticas do vendedor com sucesso', async () => {
+      const stats = { activeListings: 10, rating: 4.5 };
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue({
+        id: 'sp-1',
+        userId: 'user-1',
+        stats,
+      });
+
+      const result = await service.getStats('user-1');
+
+      expect(result).toEqual(stats);
+    });
+
+    it('deve lançar NotFoundException se o vendedor não for encontrado', async () => {
+      mockPrisma.sellerProfile.findUnique.mockResolvedValue(null);
+
+      await expect(service.getStats('user-1')).rejects.toThrow(NotFoundException);
     });
   });
 });
